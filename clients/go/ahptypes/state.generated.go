@@ -563,6 +563,12 @@ type AgentCapabilities struct {
 	// session starts with. An empty object `{}` advertises multi-chat without
 	// forking; set {@link MultipleChatsCapability.fork} to also allow forking.
 	MultipleChats *MultipleChatsCapability `json:"multipleChats,omitempty"`
+	// The session's agent can be granted tool access to more than one working
+	// directory, with all directories treated as equal peers (no primary). When
+	// absent, clients MUST NOT call `addWorkspaceFolder` / `removeWorkspaceFolder`
+	// and MUST NOT set more than one entry in
+	// {@link CreateSessionParams.workingDirectories}.
+	MultipleWorkspaceFolders *MultipleWorkspaceFoldersCapability `json:"multipleWorkspaceFolders,omitempty"`
 }
 
 // Options for the {@link AgentCapabilities.multipleChats} capability.
@@ -571,6 +577,12 @@ type MultipleChatsCapability struct {
 	// clients MUST NOT pass a {@link ChatForkSource} (`source`) to `createChat`.
 	// Forking always implies multi-chat support.
 	Fork *bool `json:"fork,omitempty"`
+}
+
+// Options for the {@link AgentCapabilities.multipleWorkspaceFolders} capability.
+// Currently carries no sub-options; presence of an empty object `{}` is the
+// entire signal.
+type MultipleWorkspaceFoldersCapability struct {
 }
 
 type SessionModelInfo struct {

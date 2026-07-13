@@ -49,6 +49,10 @@ import type {
 import type {
   CreateSessionParams,
   DisposeSessionParams,
+  AddWorkspaceFolderParams,
+  AddWorkspaceFolderResult,
+  RemoveWorkspaceFolderParams,
+  RemoveWorkspaceFolderResult,
   FetchTurnsParams,
   FetchTurnsResult,
   CompletionsParams,
@@ -153,6 +157,8 @@ export interface CommandMap {
   'subscribe': { params: SubscribeParams; result: SubscribeResult };
   'createSession': { params: CreateSessionParams; result: null };
   'disposeSession': { params: DisposeSessionParams; result: null };
+  'addWorkspaceFolder': { params: AddWorkspaceFolderParams; result: AddWorkspaceFolderResult };
+  'removeWorkspaceFolder': { params: RemoveWorkspaceFolderParams; result: RemoveWorkspaceFolderResult };
   'createChat': { params: CreateChatParams; result: null };
   'disposeChat': { params: DisposeChatParams; result: null };
   'createTerminal': { params: CreateTerminalParams; result: null };

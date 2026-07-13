@@ -110,6 +110,14 @@ export interface AgentCapabilities {
    * forking; set {@link MultipleChatsCapability.fork} to also allow forking.
    */
   multipleChats?: MultipleChatsCapability;
+  /**
+   * The session's agent can be granted tool access to more than one working
+   * directory, with all directories treated as equal peers (no primary). When
+   * absent, clients MUST NOT call `addWorkspaceFolder` / `removeWorkspaceFolder`
+   * and MUST NOT set more than one entry in
+   * {@link CreateSessionParams.workingDirectories}.
+   */
+  multipleWorkspaceFolders?: MultipleWorkspaceFoldersCapability;
 }
 
 /**
@@ -125,6 +133,15 @@ export interface MultipleChatsCapability {
    */
   fork?: boolean;
 }
+
+/**
+ * Options for the {@link AgentCapabilities.multipleWorkspaceFolders} capability.
+ * Currently carries no sub-options; presence of an empty object `{}` is the
+ * entire signal.
+ *
+ * @category Root State
+ */
+export interface MultipleWorkspaceFoldersCapability {}
 
 /**
  * @category Root State

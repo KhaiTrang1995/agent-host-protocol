@@ -369,8 +369,20 @@ data class CreateSessionParams(
      */
     val provider: String? = null,
     /**
-     * Working directory for the session
+     * The working directories the session's agent is granted tool access to.
+     * A session may span multiple directories, all of which are equal peers —
+     * there is no privileged "primary" directory.
+     *
+     * A client MUST NOT supply more than one entry unless the agent advertises
+     * {@link AgentCapabilities.multipleWorkspaceFolders}; a server without that
+     * capability treats only the first entry as the session's working directory
+     * and ignores the rest. Use `addWorkspaceFolder` / `removeWorkspaceFolder`
+     * to change the set after the session has started.
+     *
+     * Ignored for forked sessions — a fork inherits its working directories
+     * from the source session identified by `fork`.
      */
+    val workingDirectories: List<String>? = null,
     val workingDirectory: String? = null,
     /**
      * Fork from an existing session. The new session is populated with content
@@ -412,6 +424,54 @@ data class DisposeSessionParams(
      * Channel URI this command targets.
      */
     val channel: String
+)
+
+@Serializable
+data class AddWorkspaceFolderParams(
+    /**
+     * Channel URI this command targets.
+     */
+    val channel: String,
+    /**
+     * Directory to grant tool access to.
+     */
+    val folder: String
+)
+
+@Serializable
+data class RemoveWorkspaceFolderParams(
+    /**
+     * Channel URI this command targets.
+     */
+    val channel: String,
+    /**
+     * Directory to revoke tool access to.
+     */
+    val folder: String
+)
+
+@Serializable
+data class WorkspaceFolderResult(
+    /**
+     * The session's working directories after the mutation.
+     */
+    val directories: List<String>
+)
+
+@Serializable
+data class AddWorkspaceFolderResult(
+    /**
+     * The session's working directories after the mutation.
+     */
+    val directories: List<String>
+)
+
+@Serializable
+data class RemoveWorkspaceFolderResult(
+    /**
+     * The session's working directories after the mutation.
+     */
+    val directories: List<String>
 )
 
 @Serializable

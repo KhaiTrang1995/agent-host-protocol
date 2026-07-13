@@ -552,6 +552,7 @@ const STATE_STRUCTS = [
   'Icon', 'ProtectedResourceMetadata', 'RootState', 'RootConfigState', 'AgentInfo',
   'AgentCapabilities',
   'MultipleChatsCapability',
+  'MultipleWorkspaceFoldersCapability',
   'SessionModelInfo', 'ModelSelection', 'AgentSelection', 'ConfigPropertySchema', 'ConfigSchema',
   'PendingMessage', 'ChatState', 'ChatSummary', 'SessionState', 'SessionActiveClient',
   'SessionChatInputRequest', 'SessionToolConfirmationRequest', 'SessionToolClientExecutionRequest',
@@ -1327,6 +1328,8 @@ const COMMAND_STRUCTS = [
   'ReconnectParams', 'ReconnectReplayResult', 'ReconnectSnapshotResult',
   'SubscribeParams', 'SubscribeView', 'SubscriptionDeliveryOptions', 'SubscribeResult',
   'SessionForkSource', 'CreateSessionParams', 'DisposeSessionParams',
+  'AddWorkspaceFolderParams', 'RemoveWorkspaceFolderParams',
+  'WorkspaceFolderResult', 'AddWorkspaceFolderResult', 'RemoveWorkspaceFolderResult',
   'ChatForkSource', 'CreateChatParams', 'DisposeChatParams',
   'ListSessionsParams', 'ListSessionsResult',
   'ResourceReadParams', 'ResourceReadResult',
@@ -1684,6 +1687,14 @@ public enum AHPCommands {
 
     public static func disposeSession(id: Int, params: DisposeSessionParams) -> JsonRpcRequest<DisposeSessionParams> {
         JsonRpcRequest(id: id, method: "disposeSession", params: params)
+    }
+
+    public static func addWorkspaceFolder(id: Int, params: AddWorkspaceFolderParams) -> JsonRpcRequest<AddWorkspaceFolderParams> {
+        JsonRpcRequest(id: id, method: "addWorkspaceFolder", params: params)
+    }
+
+    public static func removeWorkspaceFolder(id: Int, params: RemoveWorkspaceFolderParams) -> JsonRpcRequest<RemoveWorkspaceFolderParams> {
+        JsonRpcRequest(id: id, method: "removeWorkspaceFolder", params: params)
     }
 
     public static func listSessions(id: Int, params: ListSessionsParams) -> JsonRpcRequest<ListSessionsParams> {

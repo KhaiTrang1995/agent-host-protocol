@@ -354,7 +354,19 @@ public struct CreateSessionParams: Codable, Sendable {
     public var channel: String
     /// Agent provider ID
     public var provider: String?
-    /// Working directory for the session
+    /// The working directories the session's agent is granted tool access to.
+    /// A session may span multiple directories, all of which are equal peers —
+    /// there is no privileged "primary" directory.
+    ///
+    /// A client MUST NOT supply more than one entry unless the agent advertises
+    /// {@link AgentCapabilities.multipleWorkspaceFolders}; a server without that
+    /// capability treats only the first entry as the session's working directory
+    /// and ignores the rest. Use `addWorkspaceFolder` / `removeWorkspaceFolder`
+    /// to change the set after the session has started.
+    ///
+    /// Ignored for forked sessions — a fork inherits its working directories
+    /// from the source session identified by `fork`.
+    public var workingDirectories: [String]?
     public var workingDirectory: String?
     /// Fork from an existing session. The new session is populated with content
     /// from the source session up to and including the specified turn's response.
@@ -384,6 +396,7 @@ public struct CreateSessionParams: Codable, Sendable {
     public init(
         channel: String,
         provider: String? = nil,
+        workingDirectories: [String]? = nil,
         workingDirectory: String? = nil,
         fork: SessionForkSource? = nil,
         config: [String: AnyCodable]? = nil,
@@ -392,6 +405,7 @@ public struct CreateSessionParams: Codable, Sendable {
     ) {
         self.channel = channel
         self.provider = provider
+        self.workingDirectories = workingDirectories
         self.workingDirectory = workingDirectory
         self.fork = fork
         self.config = config
@@ -408,6 +422,69 @@ public struct DisposeSessionParams: Codable, Sendable {
         channel: String
     ) {
         self.channel = channel
+    }
+}
+
+public struct AddWorkspaceFolderParams: Codable, Sendable {
+    /// Channel URI this command targets.
+    public var channel: String
+    /// Directory to grant tool access to.
+    public var folder: String
+
+    public init(
+        channel: String,
+        folder: String
+    ) {
+        self.channel = channel
+        self.folder = folder
+    }
+}
+
+public struct RemoveWorkspaceFolderParams: Codable, Sendable {
+    /// Channel URI this command targets.
+    public var channel: String
+    /// Directory to revoke tool access to.
+    public var folder: String
+
+    public init(
+        channel: String,
+        folder: String
+    ) {
+        self.channel = channel
+        self.folder = folder
+    }
+}
+
+public struct WorkspaceFolderResult: Codable, Sendable {
+    /// The session's working directories after the mutation.
+    public var directories: [String]
+
+    public init(
+        directories: [String]
+    ) {
+        self.directories = directories
+    }
+}
+
+public struct AddWorkspaceFolderResult: Codable, Sendable {
+    /// The session's working directories after the mutation.
+    public var directories: [String]
+
+    public init(
+        directories: [String]
+    ) {
+        self.directories = directories
+    }
+}
+
+public struct RemoveWorkspaceFolderResult: Codable, Sendable {
+    /// The session's working directories after the mutation.
+    public var directories: [String]
+
+    public init(
+        directories: [String]
+    ) {
+        self.directories = directories
     }
 }
 

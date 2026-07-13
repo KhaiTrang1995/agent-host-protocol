@@ -66,7 +66,27 @@ export interface CreateSessionParams extends BaseParams {
   channel: URI;
   /** Agent provider ID */
   provider?: string;
-  /** Working directory for the session */
+  /**
+   * The working directories the session's agent is granted tool access to.
+   * A session may span multiple directories, all of which are equal peers —
+   * there is no privileged "primary" directory.
+   *
+   * A client MUST NOT supply more than one entry unless the agent advertises
+   * {@link AgentCapabilities.multipleWorkspaceFolders}; a server without that
+   * capability treats only the first entry as the session's working directory
+   * and ignores the rest. Use `addWorkspaceFolder` / `removeWorkspaceFolder`
+   * to change the set after the session has started.
+   *
+   * Ignored for forked sessions — a fork inherits its working directories
+   * from the source session identified by `fork`.
+   */
+  workingDirectories?: URI[];
+  /**
+   * @deprecated Use {@link workingDirectories} instead. Retained as a
+   * single-directory shorthand for backwards compatibility: when set, it is
+   * equivalent to `workingDirectories: [workingDirectory]`. If both are
+   * provided, `workingDirectories` takes precedence and this field is ignored.
+   */
   workingDirectory?: URI;
   /**
    * Fork from an existing session. The new session is populated with content
@@ -116,6 +136,75 @@ export interface CreateSessionParams extends BaseParams {
  * @version 1
  */
 export interface DisposeSessionParams extends BaseParams {}
+
+// ─── addWorkspaceFolder ──────────────────────────────────────────────────────
+
+/**
+ * Grants the session's agent tool access to a working directory, adding it to
+ * the session's set of {@link CreateSessionParams.workingDirectories | working
+ * directories}. Only valid when the agent advertises
+ * `multipleWorkspaceFolders`; servers MUST reject this command otherwise.
+ *
+ * All directories in the set are equal peers — there is no privileged
+ * "primary". Adding a directory that is already in the set is a no-op that
+ * still returns the current full set.
+ *
+ * @category Commands
+ * @method addWorkspaceFolder
+ * @direction Client → Server
+ * @messageType Request
+ * @version 0.6.0
+ */
+export interface AddWorkspaceFolderParams extends BaseParams {
+  /** Directory to grant tool access to. */
+  folder: URI;
+}
+
+// ─── removeWorkspaceFolder ───────────────────────────────────────────────────
+
+/**
+ * Revokes the session's agent tool access to one of its working directories.
+ * There is no server-side primitive to "remove" a single directory mid-session
+ * — the server instead reconfigures the agent with the reduced directory set
+ * and returns it, so this command is safe to model as idempotent: removing a
+ * directory that is not in the set is a no-op that still returns the current
+ * full set.
+ *
+ * A server MAY refuse to remove a directory it cannot relinquish while the
+ * session is live (for example one bound to the running agent process),
+ * returning an error rather than a result. The protocol itself designates no
+ * directory as special.
+ *
+ * @category Commands
+ * @method removeWorkspaceFolder
+ * @direction Client → Server
+ * @messageType Request
+ * @version 0.6.0
+ */
+export interface RemoveWorkspaceFolderParams extends BaseParams {
+  /** Directory to revoke tool access to. */
+  folder: URI;
+}
+
+/**
+ * Result shared by the `addWorkspaceFolder` and `removeWorkspaceFolder`
+ * commands: the session's full set of working directories after the mutation.
+ * All entries are equal peers; the order carries no meaning.
+ */
+export interface WorkspaceFolderResult {
+  /** The session's working directories after the mutation. */
+  directories: URI[];
+}
+
+/**
+ * Result of the `addWorkspaceFolder` command. See {@link WorkspaceFolderResult}.
+ */
+export interface AddWorkspaceFolderResult extends WorkspaceFolderResult {}
+
+/**
+ * Result of the `removeWorkspaceFolder` command. See {@link WorkspaceFolderResult}.
+ */
+export interface RemoveWorkspaceFolderResult extends WorkspaceFolderResult {}
 
 // ─── fetchTurns ──────────────────────────────────────────────────────────────
 

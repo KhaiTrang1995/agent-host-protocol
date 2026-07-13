@@ -56,6 +56,8 @@ type _ExpectedCommands =
   | 'subscribe'
   | 'createSession'
   | 'disposeSession'
+  | 'addWorkspaceFolder'
+  | 'removeWorkspaceFolder'
   | 'createChat'
   | 'disposeChat'
   | 'createTerminal'

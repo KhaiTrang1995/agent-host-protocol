@@ -305,8 +305,20 @@ type CreateSessionParams struct {
 	Channel URI `json:"channel"`
 	// Agent provider ID
 	Provider *string `json:"provider,omitempty"`
-	// Working directory for the session
-	WorkingDirectory *URI `json:"workingDirectory,omitempty"`
+	// The working directories the session's agent is granted tool access to.
+	// A session may span multiple directories, all of which are equal peers —
+	// there is no privileged "primary" directory.
+	//
+	// A client MUST NOT supply more than one entry unless the agent advertises
+	// {@link AgentCapabilities.multipleWorkspaceFolders}; a server without that
+	// capability treats only the first entry as the session's working directory
+	// and ignores the rest. Use `addWorkspaceFolder` / `removeWorkspaceFolder`
+	// to change the set after the session has started.
+	//
+	// Ignored for forked sessions — a fork inherits its working directories
+	// from the source session identified by `fork`.
+	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
+	WorkingDirectory   *URI  `json:"workingDirectory,omitempty"`
 	// Fork from an existing session. The new session is populated with content
 	// from the source session up to and including the specified turn's response.
 	Fork *SessionForkSource `json:"fork,omitempty"`
@@ -339,6 +351,59 @@ type CreateSessionParams struct {
 type DisposeSessionParams struct {
 	// Channel URI this command targets.
 	Channel URI `json:"channel"`
+}
+
+// Grants the session's agent tool access to a working directory, adding it to
+// the session's set of {@link CreateSessionParams.workingDirectories | working
+// directories}. Only valid when the agent advertises
+// `multipleWorkspaceFolders`; servers MUST reject this command otherwise.
+//
+// All directories in the set are equal peers — there is no privileged
+// "primary". Adding a directory that is already in the set is a no-op that
+// still returns the current full set.
+type AddWorkspaceFolderParams struct {
+	// Channel URI this command targets.
+	Channel URI `json:"channel"`
+	// Directory to grant tool access to.
+	Folder URI `json:"folder"`
+}
+
+// Revokes the session's agent tool access to one of its working directories.
+// There is no server-side primitive to "remove" a single directory mid-session
+// — the server instead reconfigures the agent with the reduced directory set
+// and returns it, so this command is safe to model as idempotent: removing a
+// directory that is not in the set is a no-op that still returns the current
+// full set.
+//
+// A server MAY refuse to remove a directory it cannot relinquish while the
+// session is live (for example one bound to the running agent process),
+// returning an error rather than a result. The protocol itself designates no
+// directory as special.
+type RemoveWorkspaceFolderParams struct {
+	// Channel URI this command targets.
+	Channel URI `json:"channel"`
+	// Directory to revoke tool access to.
+	Folder URI `json:"folder"`
+}
+
+// Result shared by the `addWorkspaceFolder` and `removeWorkspaceFolder`
+// commands: the session's full set of working directories after the mutation.
+// All entries are equal peers; the order carries no meaning.
+type WorkspaceFolderResult struct {
+	// The session's working directories after the mutation.
+	Directories []URI `json:"directories"`
+}
+
+// Result of the `addWorkspaceFolder` command. See {@link WorkspaceFolderResult}.
+type AddWorkspaceFolderResult struct {
+	// The session's working directories after the mutation.
+	Directories []URI `json:"directories"`
+}
+
+// Result of the `removeWorkspaceFolder` command. See {@link WorkspaceFolderResult}.
+type RemoveWorkspaceFolderResult struct {
+	// The session's working directories after the mutation.
+	Directories []URI `json:"directories"`
 }
 
 // Identifies a source chat and turn to fork from.

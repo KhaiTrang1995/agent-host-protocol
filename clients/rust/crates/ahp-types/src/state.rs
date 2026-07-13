@@ -779,6 +779,13 @@ pub struct AgentCapabilities {
     /// forking; set {@link MultipleChatsCapability.fork} to also allow forking.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub multiple_chats: Option<MultipleChatsCapability>,
+    /// The session's agent can be granted tool access to more than one working
+    /// directory, with all directories treated as equal peers (no primary). When
+    /// absent, clients MUST NOT call `addWorkspaceFolder` / `removeWorkspaceFolder`
+    /// and MUST NOT set more than one entry in
+    /// {@link CreateSessionParams.workingDirectories}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub multiple_workspace_folders: Option<MultipleWorkspaceFoldersCapability>,
 }
 
 /// Options for the {@link AgentCapabilities.multipleChats} capability.
@@ -791,6 +798,13 @@ pub struct MultipleChatsCapability {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fork: Option<bool>,
 }
+
+/// Options for the {@link AgentCapabilities.multipleWorkspaceFolders} capability.
+/// Currently carries no sub-options; presence of an empty object `{}` is the
+/// entire signal.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MultipleWorkspaceFoldersCapability {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

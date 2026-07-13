@@ -73,7 +73,8 @@ SessionState {
   status: number        // SessionStatus bitset
   activity?: string
   project?: ProjectInfo
-  workingDirectory?: URI
+  workingDirectory?: URI       // deprecated: use workingDirectories
+  workingDirectories?: URI[]   // equal-peer working directories
   annotations?: AnnotationsSummary
 
   lifecycle: 'creating' | 'ready' | 'creationFailed'
@@ -107,7 +108,8 @@ SessionSummary {
   createdAt: string   // ISO 8601, e.g. "2025-03-10T18:42:03.123Z"
   modifiedAt: string  // ISO 8601
   project?: ProjectInfo
-  workingDirectory?: URI
+  workingDirectory?: URI       // deprecated: use workingDirectories
+  workingDirectories?: URI[]   // equal-peer working directories
   annotations?: AnnotationsSummary
   changes?: ChangesSummary
 }
@@ -550,6 +552,53 @@ createSession({
 ```
 
 The forked session is an independent copy — subsequent changes to either session do not affect the other. The server broadcasts `root/sessionAdded` for the new session as usual.
+
+## Multiroot Sessions
+
+A session can be granted tool access to more than one working directory when the
+agent advertises the `multipleWorkspaceFolders` capability. All directories are
+**equal peers** — there is no privileged "primary".
+
+### Creating a multiroot session
+
+Pass `workingDirectories` (plural) in `createSession`:
+
+```typescript
+createSession({
+  channel: 'ahp-session:/<uuid>',
+  provider: 'copilot',
+  workingDirectories: [
+    'file:///workspace/frontend',
+    'file:///workspace/backend',
+  ],
+});
+```
+
+A client MUST NOT pass more than one entry unless the agent advertises
+`multipleWorkspaceFolders`. Servers without that capability treat only the
+first entry as the session's working directory and ignore the rest.
+
+The singular `workingDirectory` field is deprecated in favour of
+`workingDirectories` but is retained as a backwards-compatible shorthand;
+servers MUST still honour it when `workingDirectories` is absent.
+
+Forked sessions ignore `workingDirectories` — they inherit the working
+directories of the source session.
+
+### Managing directories after creation
+
+Two commands let clients mutate the directory set on a running session:
+
+| Command | Effect |
+| --- | --- |
+| `addWorkspaceFolder` | Grants tool access to the given directory. Adding a directory already in the set is a no-op. |
+| `removeWorkspaceFolder` | Revokes tool access to the given directory. There is no atomic server-side "remove one" primitive; the server reconfigures to the reduced set. Removing a directory not in the set is a no-op. A server MAY return an error if it cannot relinquish a directory while the session is live. |
+
+Both commands return the **full directory set after the mutation** (the
+`directories` field of `AddWorkspaceFolderResult` / `RemoveWorkspaceFolderResult`).
+
+Before issuing either command, a client MUST verify that the agent advertises
+`multipleWorkspaceFolders`; servers MUST reject these commands otherwise.
 
 ## Next Steps
 

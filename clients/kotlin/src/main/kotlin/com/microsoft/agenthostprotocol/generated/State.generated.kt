@@ -920,7 +920,15 @@ data class AgentCapabilities(
      * session starts with. An empty object `{}` advertises multi-chat without
      * forking; set {@link MultipleChatsCapability.fork} to also allow forking.
      */
-    val multipleChats: MultipleChatsCapability? = null
+    val multipleChats: MultipleChatsCapability? = null,
+    /**
+     * The session's agent can be granted tool access to more than one working
+     * directory, with all directories treated as equal peers (no primary). When
+     * absent, clients MUST NOT call `addWorkspaceFolder` / `removeWorkspaceFolder`
+     * and MUST NOT set more than one entry in
+     * {@link CreateSessionParams.workingDirectories}.
+     */
+    val multipleWorkspaceFolders: MultipleWorkspaceFoldersCapability? = null
 )
 
 @Serializable
@@ -932,6 +940,9 @@ data class MultipleChatsCapability(
      */
     val fork: Boolean? = null
 )
+
+@Serializable
+class MultipleWorkspaceFoldersCapability
 
 @Serializable
 data class SessionModelInfo(

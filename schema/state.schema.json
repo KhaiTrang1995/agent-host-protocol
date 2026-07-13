@@ -538,6 +538,10 @@
         "multipleChats": {
           "$ref": "#/$defs/MultipleChatsCapability",
           "description": "The agent can host more than one concurrent chat per session. When absent,\nclients MUST NOT call `createChat` to open chats beyond the default one the\nsession starts with. An empty object `{}` advertises multi-chat without\nforking; set {@link MultipleChatsCapability.fork} to also allow forking."
+        },
+        "multipleWorkspaceFolders": {
+          "$ref": "#/$defs/MultipleWorkspaceFoldersCapability",
+          "description": "The session's agent can be granted tool access to more than one working\ndirectory, with all directories treated as equal peers (no primary). When\nabsent, clients MUST NOT call `addWorkspaceFolder` / `removeWorkspaceFolder`\nand MUST NOT set more than one entry in\n{@link CreateSessionParams.workingDirectories}."
         }
       }
     },
@@ -550,6 +554,11 @@
           "description": "The agent can fork a chat from a specific turn. When absent or `false`,\nclients MUST NOT pass a {@link ChatForkSource} (`source`) to `createChat`.\nForking always implies multi-chat support."
         }
       }
+    },
+    "MultipleWorkspaceFoldersCapability": {
+      "type": "object",
+      "description": "Options for the {@link AgentCapabilities.multipleWorkspaceFolders} capability.\nCurrently carries no sub-options; presence of an empty object `{}` is the\nentire signal.",
+      "properties": {}
     },
     "SessionModelInfo": {
       "type": "object",

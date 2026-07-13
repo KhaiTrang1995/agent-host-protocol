@@ -615,11 +615,19 @@ public struct AgentCapabilities: Codable, Sendable {
     /// session starts with. An empty object `{}` advertises multi-chat without
     /// forking; set {@link MultipleChatsCapability.fork} to also allow forking.
     public var multipleChats: MultipleChatsCapability?
+    /// The session's agent can be granted tool access to more than one working
+    /// directory, with all directories treated as equal peers (no primary). When
+    /// absent, clients MUST NOT call `addWorkspaceFolder` / `removeWorkspaceFolder`
+    /// and MUST NOT set more than one entry in
+    /// {@link CreateSessionParams.workingDirectories}.
+    public var multipleWorkspaceFolders: MultipleWorkspaceFoldersCapability?
 
     public init(
-        multipleChats: MultipleChatsCapability? = nil
+        multipleChats: MultipleChatsCapability? = nil,
+        multipleWorkspaceFolders: MultipleWorkspaceFoldersCapability? = nil
     ) {
         self.multipleChats = multipleChats
+        self.multipleWorkspaceFolders = multipleWorkspaceFolders
     }
 }
 
@@ -633,6 +641,14 @@ public struct MultipleChatsCapability: Codable, Sendable {
         fork: Bool? = nil
     ) {
         self.fork = fork
+    }
+}
+
+public struct MultipleWorkspaceFoldersCapability: Codable, Sendable {
+
+    public init(
+
+    ) {
     }
 }
 

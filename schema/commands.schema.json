@@ -955,9 +955,15 @@
           "type": "string",
           "description": "Agent provider ID"
         },
+        "workingDirectories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The working directories the session's agent is granted tool access to.\nA session may span multiple directories, all of which are equal peers —\nthere is no privileged \"primary\" directory.\n\nA client MUST NOT supply more than one entry unless the agent advertises\n{@link AgentCapabilities.multipleWorkspaceFolders}; a server without that\ncapability treats only the first entry as the session's working directory\nand ignores the rest. Use `addWorkspaceFolder` / `removeWorkspaceFolder`\nto change the set after the session has started.\n\nIgnored for forked sessions — a fork inherits its working directories\nfrom the source session identified by `fork`."
+        },
         "workingDirectory": {
-          "$ref": "#/$defs/URI",
-          "description": "Working directory for the session"
+          "$ref": "#/$defs/URI"
         },
         "fork": {
           "$ref": "#/$defs/SessionForkSource",
@@ -992,6 +998,90 @@
       },
       "required": [
         "channel"
+      ]
+    },
+    "AddWorkspaceFolderParams": {
+      "type": "object",
+      "description": "Grants the session's agent tool access to a working directory, adding it to\nthe session's set of {@link CreateSessionParams.workingDirectories | working\ndirectories}. Only valid when the agent advertises\n`multipleWorkspaceFolders`; servers MUST reject this command otherwise.\n\nAll directories in the set are equal peers — there is no privileged\n\"primary\". Adding a directory that is already in the set is a no-op that\nstill returns the current full set.",
+      "properties": {
+        "channel": {
+          "$ref": "#/$defs/URI",
+          "description": "Channel URI this command targets."
+        },
+        "folder": {
+          "$ref": "#/$defs/URI",
+          "description": "Directory to grant tool access to."
+        }
+      },
+      "required": [
+        "channel",
+        "folder"
+      ]
+    },
+    "RemoveWorkspaceFolderParams": {
+      "type": "object",
+      "description": "Revokes the session's agent tool access to one of its working directories.\nThere is no server-side primitive to \"remove\" a single directory mid-session\n— the server instead reconfigures the agent with the reduced directory set\nand returns it, so this command is safe to model as idempotent: removing a\ndirectory that is not in the set is a no-op that still returns the current\nfull set.\n\nA server MAY refuse to remove a directory it cannot relinquish while the\nsession is live (for example one bound to the running agent process),\nreturning an error rather than a result. The protocol itself designates no\ndirectory as special.",
+      "properties": {
+        "channel": {
+          "$ref": "#/$defs/URI",
+          "description": "Channel URI this command targets."
+        },
+        "folder": {
+          "$ref": "#/$defs/URI",
+          "description": "Directory to revoke tool access to."
+        }
+      },
+      "required": [
+        "channel",
+        "folder"
+      ]
+    },
+    "WorkspaceFolderResult": {
+      "type": "object",
+      "description": "Result shared by the `addWorkspaceFolder` and `removeWorkspaceFolder`\ncommands: the session's full set of working directories after the mutation.\nAll entries are equal peers; the order carries no meaning.",
+      "properties": {
+        "directories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The session's working directories after the mutation."
+        }
+      },
+      "required": [
+        "directories"
+      ]
+    },
+    "AddWorkspaceFolderResult": {
+      "type": "object",
+      "description": "Result of the `addWorkspaceFolder` command. See {@link WorkspaceFolderResult}.",
+      "properties": {
+        "directories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The session's working directories after the mutation."
+        }
+      },
+      "required": [
+        "directories"
+      ]
+    },
+    "RemoveWorkspaceFolderResult": {
+      "type": "object",
+      "description": "Result of the `removeWorkspaceFolder` command. See {@link WorkspaceFolderResult}.",
+      "properties": {
+        "directories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The session's working directories after the mutation."
+        }
+      },
+      "required": [
+        "directories"
       ]
     },
     "FetchTurnsParams": {
@@ -1836,6 +1926,10 @@
         "multipleChats": {
           "$ref": "#/$defs/MultipleChatsCapability",
           "description": "The agent can host more than one concurrent chat per session. When absent,\nclients MUST NOT call `createChat` to open chats beyond the default one the\nsession starts with. An empty object `{}` advertises multi-chat without\nforking; set {@link MultipleChatsCapability.fork} to also allow forking."
+        },
+        "multipleWorkspaceFolders": {
+          "$ref": "#/$defs/MultipleWorkspaceFoldersCapability",
+          "description": "The session's agent can be granted tool access to more than one working\ndirectory, with all directories treated as equal peers (no primary). When\nabsent, clients MUST NOT call `addWorkspaceFolder` / `removeWorkspaceFolder`\nand MUST NOT set more than one entry in\n{@link CreateSessionParams.workingDirectories}."
         }
       }
     },
@@ -1848,6 +1942,11 @@
           "description": "The agent can fork a chat from a specific turn. When absent or `false`,\nclients MUST NOT pass a {@link ChatForkSource} (`source`) to `createChat`.\nForking always implies multi-chat support."
         }
       }
+    },
+    "MultipleWorkspaceFoldersCapability": {
+      "type": "object",
+      "description": "Options for the {@link AgentCapabilities.multipleWorkspaceFolders} capability.\nCurrently carries no sub-options; presence of an empty object `{}` is the\nentire signal.",
+      "properties": {}
     },
     "SessionModelInfo": {
       "type": "object",
