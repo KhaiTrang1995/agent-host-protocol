@@ -659,8 +659,9 @@ createChat({
 });
 ```
 
-Forked chats (those with a `source`) inherit the source chat's
-`workingDirectories` and primary; both fields are ignored for them.
+Forked chats (`source.kind: "fork"`) inherit the source chat's
+`workingDirectories` and primary, so both fields are ignored for forks. Side
+chats can still choose their own subset and primary.
 
 #### Managing the subset after creation
 

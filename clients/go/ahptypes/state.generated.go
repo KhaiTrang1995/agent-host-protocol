@@ -69,6 +69,8 @@ const (
 	ChatOriginKindUser ChatOriginKind = "user"
 	// Forked from an existing chat at a specific turn.
 	ChatOriginKindFork ChatOriginKind = "fork"
+	// Created as an independent side conversation from a specific turn.
+	ChatOriginKindSideChat ChatOriginKind = "sideChat"
 	// Spawned by a tool call running in another chat (e.g. a sub-agent delegation).
 	ChatOriginKindTool ChatOriginKind = "tool"
 )
@@ -200,6 +202,8 @@ const (
 	MessageAttachmentKindResource MessageAttachmentKind = "resource"
 	// An attachment that references annotations on an annotations channel.
 	MessageAttachmentKindAnnotations MessageAttachmentKind = "annotations"
+	// An attachment that references a bounded transcript from another chat.
+	MessageAttachmentKindChat MessageAttachmentKind = "chat"
 )
 
 // Discriminant for response part types.
@@ -582,7 +586,8 @@ type AgentCapabilities struct {
 	// The agent can host more than one concurrent chat per session. When absent,
 	// clients MUST NOT call `createChat` to open chats beyond the default one the
 	// session starts with. An empty object `{}` advertises multi-chat without
-	// forking; set {@link MultipleChatsCapability.fork} to also allow forking.
+	// source-based creation; set {@link MultipleChatsCapability.fork} or
+	// {@link MultipleChatsCapability.sideChat} to allow the corresponding mode.
 	MultipleChats *MultipleChatsCapability `json:"multipleChats,omitempty"`
 	// The session's agent can be granted tool access to more than one working
 	// directory. The directories are treated as equal peers except where the
@@ -598,9 +603,18 @@ type AgentCapabilities struct {
 // Options for the {@link AgentCapabilities.multipleChats} capability.
 type MultipleChatsCapability struct {
 	// The agent can fork a chat from a specific turn. When absent or `false`,
-	// clients MUST NOT pass a {@link ChatForkSource} (`source`) to `createChat`.
+	// clients MUST NOT pass a {@link ChatSource} with `kind: "fork"` to
+	// `createChat`.
 	// Forking always implies multi-chat support.
 	Fork *bool `json:"fork,omitempty"`
+	// The agent can create a side chat from a specific turn. When absent or
+	// `false`, clients MUST NOT pass a {@link ChatSource} with
+	// `kind: "sideChat"` to `createChat`.
+	//
+	// A side chat receives the source turn as context without copying the source
+	// transcript into its own visible history. Side-chat support always implies
+	// multi-chat support.
+	SideChat *bool `json:"sideChat,omitempty"`
 }
 
 // Options for the {@link AgentCapabilities.multipleWorkingDirectories} capability.
@@ -1682,6 +1696,50 @@ type MessageAnnotationsAttachment struct {
 	// Specific {@link Annotation.id | annotation ids} to reference. When
 	// omitted, the attachment references all annotations on the channel.
 	AnnotationIds []string `json:"annotationIds,omitempty"`
+}
+
+// An attachment that references a chat transcript through a fixed completed
+// turn.
+//
+// The referenced chat MUST belong to the same session as the message's chat.
+// The host resolves the transcript from its first retained turn through
+// `endTurn`, inclusive, when accepting the message. Later turns do not
+// change the context represented by an already-sent attachment.
+//
+// Hosts MUST NOT recursively expand chat attachments found inside the
+// referenced transcript. Clients SHOULD keep rendering `label` if the
+// referenced chat is later pruned, and treat opening `resource` as best-effort.
+type MessageChatAttachment struct {
+	// A human-readable label for the attachment (e.g. the filename of a file
+	// attachment). Used for display in UI.
+	Label string `json:"label"`
+	// If defined, the range in {@link Message.text} that references this
+	// attachment. This is a text range, not a byte range.
+	Range *TextRange `json:"range,omitempty"`
+	// Advisory display hint for clients rendering this attachment. Recognized
+	// values include:
+	//
+	// - `'image'`: the attachment is an image
+	// - `'document'`: the attachment is a textual document
+	// - `'symbol'`: the attachment is a code symbol (e.g. a function or class)
+	// - `'directory'`: the attachment is a folder
+	// - `'selection'`: the attachment is a selection within a document
+	//
+	// Implementations MAY provide additional values; clients SHOULD fall back
+	// to a reasonable default when an unknown value is encountered.
+	DisplayKind *string `json:"displayKind,omitempty"`
+	// Additional implementation-defined metadata for the attachment.
+	//
+	// If the attachment was produced by the `completions` command, the client
+	// MUST preserve every property of `_meta` originally returned by the agent
+	// host when sending the user message containing the accepted completion.
+	Meta map[string]json.RawMessage `json:"_meta,omitempty"`
+	// Discriminant
+	Type MessageAttachmentKind `json:"type"`
+	// URI of the referenced chat.
+	Resource URI `json:"resource"`
+	// Last completed turn included in the referenced transcript.
+	EndTurn string `json:"endTurn"`
 }
 
 type MarkdownResponsePart struct {
@@ -4155,6 +4213,7 @@ func (*SimpleMessageAttachment) isMessageAttachment()           {}
 func (*MessageEmbeddedResourceAttachment) isMessageAttachment() {}
 func (*MessageResourceAttachment) isMessageAttachment()         {}
 func (*MessageAnnotationsAttachment) isMessageAttachment()      {}
+func (*MessageChatAttachment) isMessageAttachment()             {}
 
 // MessageAttachmentUnknown carries an unrecognized MessageAttachment variant — typically a discriminator value introduced by a newer protocol version. The original JSON object is preserved verbatim so that re-encoding round-trips faithfully.
 type MessageAttachmentUnknown struct {
@@ -4190,6 +4249,12 @@ func (u *MessageAttachment) UnmarshalJSON(data []byte) error {
 		u.Value = &value
 	case "annotations":
 		var value MessageAnnotationsAttachment
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	case "chat":
+		var value MessageChatAttachment
 		if err := json.Unmarshal(data, &value); err != nil {
 			return err
 		}
@@ -4742,6 +4807,14 @@ type ChatForkOrigin struct {
 
 func (*ChatForkOrigin) isChatOrigin() {}
 
+type ChatSideChatOrigin struct {
+	Kind   ChatOriginKind `json:"kind"`
+	Chat   URI            `json:"chat"`
+	TurnId string         `json:"turnId"`
+}
+
+func (*ChatSideChatOrigin) isChatOrigin() {}
+
 type ChatToolOrigin struct {
 	Kind       ChatOriginKind `json:"kind"`
 	Chat       URI            `json:"chat"`
@@ -4770,6 +4843,12 @@ func (o *ChatOrigin) UnmarshalJSON(data []byte) error {
 		o.Value = &v
 	case "fork":
 		var v ChatForkOrigin
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		o.Value = &v
+	case "sideChat":
+		var v ChatSideChatOrigin
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}

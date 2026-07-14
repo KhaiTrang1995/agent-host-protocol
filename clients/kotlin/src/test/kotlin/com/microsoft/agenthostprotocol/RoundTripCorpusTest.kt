@@ -30,6 +30,7 @@ package com.microsoft.agenthostprotocol
 
 import com.microsoft.agenthostprotocol.generated.ActionEnvelope
 import com.microsoft.agenthostprotocol.generated.ChangesetOperationTarget
+import com.microsoft.agenthostprotocol.generated.ChatSource
 import com.microsoft.agenthostprotocol.generated.Customization
 import com.microsoft.agenthostprotocol.generated.Implementation
 import com.microsoft.agenthostprotocol.generated.InitializeResult
@@ -251,6 +252,7 @@ class RoundTripCorpusTest {
             "PartialSessionSummary" -> rt(PartialSessionSummary.serializer())
             "Implementation" -> rt(Implementation.serializer())
             "InitializeResult" -> rt(InitializeResult.serializer())
+            "ChatSource" -> rt(ChatSource.serializer())
             else -> fail(
                 "$file: unknown wire type \"$typeName\". " +
                     "Add a decode entry to decodeAndReencode.",

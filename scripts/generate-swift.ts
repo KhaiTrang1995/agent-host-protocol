@@ -572,7 +572,7 @@ const STATE_STRUCTS = [
   'ChatInputRequest',
   'TextPosition', 'TextRange', 'TextSelection',
   'SimpleMessageAttachment', 'MessageEmbeddedResourceAttachment', 'MessageResourceAttachment',
-  'MessageAnnotationsAttachment',
+  'MessageAnnotationsAttachment', 'MessageChatAttachment',
   'MarkdownResponsePart', 'ContentRef',
   'ResourceReponsePart', 'ToolCallResponsePart', 'ReasoningResponsePart',
   'SystemNotificationResponsePart', 'InputRequestResponsePart',
@@ -724,6 +724,7 @@ const MESSAGE_ATTACHMENT_UNION: UnionConfig = {
     { caseName: 'embeddedResource', structName: 'MessageEmbeddedResourceAttachment', discriminantValue: 'embeddedResource' },
     { caseName: 'resource', structName: 'MessageResourceAttachment', discriminantValue: 'resource' },
     { caseName: 'annotations', structName: 'MessageAnnotationsAttachment', discriminantValue: 'annotations' },
+    { caseName: 'chat', structName: 'MessageChatAttachment', discriminantValue: 'chat' },
   ],
 };
 
@@ -989,9 +990,22 @@ public struct ChatOriginTool: Codable, Sendable {
     }
 }
 
+public struct ChatOriginSideChat: Codable, Sendable {
+    public var kind: ChatOriginKind
+    public var chat: String
+    public var turnId: String
+
+    public init(kind: ChatOriginKind = .sideChat, chat: String, turnId: String) {
+        self.kind = kind
+        self.chat = chat
+        self.turnId = turnId
+    }
+}
+
 public enum ChatOrigin: Codable, Sendable {
     case user(ChatOriginUser)
     case fork(ChatOriginFork)
+    case sideChat(ChatOriginSideChat)
     case tool(ChatOriginTool)
 
     private enum DiscriminatorCodingKeys: String, CodingKey { case kind }
@@ -1002,6 +1016,7 @@ public enum ChatOrigin: Codable, Sendable {
         switch discriminant {
         case "user": self = .user(try ChatOriginUser(from: decoder))
         case "fork": self = .fork(try ChatOriginFork(from: decoder))
+        case "sideChat": self = .sideChat(try ChatOriginSideChat(from: decoder))
         case "tool": self = .tool(try ChatOriginTool(from: decoder))
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "Unknown ChatOrigin kind: \\(discriminant)")
@@ -1012,6 +1027,7 @@ public enum ChatOrigin: Codable, Sendable {
         switch self {
         case .user(let value): try value.encode(to: encoder)
         case .fork(let value): try value.encode(to: encoder)
+        case .sideChat(let value): try value.encode(to: encoder)
         case .tool(let value): try value.encode(to: encoder)
         }
     }
@@ -1346,14 +1362,14 @@ function generateActionsFile(project: Project): string {
 
 // ─── Commands File Generator ─────────────────────────────────────────────────
 
-const COMMAND_ENUMS = ['ReconnectResultType', 'ContentEncoding', 'CompletionItemKind', 'ResourceType', 'ResourceWriteMode'];
+const COMMAND_ENUMS = ['ReconnectResultType', 'ChatSourceKind', 'ContentEncoding', 'CompletionItemKind', 'ResourceType', 'ResourceWriteMode'];
 
 const COMMAND_STRUCTS = [
   'InitializeParams', 'InitializeResult', 'ClientCapabilities', 'Implementation',
   'ReconnectParams', 'ReconnectReplayResult', 'ReconnectSnapshotResult',
   'SubscribeParams', 'SubscribeView', 'SubscriptionDeliveryOptions', 'SubscribeResult',
   'SessionForkSource', 'CreateSessionParams', 'DisposeSessionParams',
-  'ChatForkSource', 'CreateChatParams', 'DisposeChatParams',
+  'ChatSource', 'CreateChatParams', 'DisposeChatParams',
   'ListSessionsParams', 'ListSessionsResult',
   'ResourceReadParams', 'ResourceReadResult',
   'ResourceWriteParams', 'ResourceWriteResult',

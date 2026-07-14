@@ -738,6 +738,7 @@ const STATE_STRUCTS: { name: string; omitDiscriminants?: boolean; rustName?: str
   { name: 'MessageEmbeddedResourceAttachment', omitDiscriminants: true },
   { name: 'MessageResourceAttachment', omitDiscriminants: true },
   { name: 'MessageAnnotationsAttachment', omitDiscriminants: true },
+  { name: 'MessageChatAttachment', omitDiscriminants: true },
   { name: 'MarkdownResponsePart', omitDiscriminants: true },
   { name: 'ContentRef' },
   { name: 'ResourceReponsePart', omitDiscriminants: true, rustName: 'ResourceResponsePart' },
@@ -943,6 +944,7 @@ const MESSAGE_ATTACHMENT_UNION: UnionConfig = {
     { variantName: 'EmbeddedResource', innerType: 'MessageEmbeddedResourceAttachment', wireValue: 'embeddedResource' },
     { variantName: 'Resource', innerType: 'MessageResourceAttachment', wireValue: 'resource' },
     { variantName: 'Annotations', innerType: 'MessageAnnotationsAttachment', wireValue: 'annotations' },
+    { variantName: 'Chat', innerType: 'MessageChatAttachment', wireValue: 'chat' },
   ],
   unknown: true,
 };
@@ -1055,6 +1057,15 @@ pub enum ChatOrigin {
         /// URI of the chat this one was forked from.
         chat: Uri,
         /// Turn the fork was taken from.
+        #[serde(rename = "turnId")]
+        turn_id: String,
+    },
+    /// Independent side conversation created from a specific turn.
+    #[serde(rename = "sideChat")]
+    SideChat {
+        /// URI of the chat that supplied the side-chat context.
+        chat: Uri,
+        /// Turn through which context was supplied.
         #[serde(rename = "turnId")]
         turn_id: String,
     },
@@ -1403,7 +1414,7 @@ pub struct ActionEnvelope {
 
 // ─── Commands File Generator ─────────────────────────────────────────────────
 
-const COMMAND_ENUMS = ['ReconnectResultType', 'ContentEncoding', 'CompletionItemKind', 'ResourceType', 'ResourceWriteMode'];
+const COMMAND_ENUMS = ['ReconnectResultType', 'ChatSourceKind', 'ContentEncoding', 'CompletionItemKind', 'ResourceType', 'ResourceWriteMode'];
 
 const COMMAND_STRUCTS: { name: string; omitDiscriminants?: boolean; rustName?: string }[] = [
   { name: 'InitializeParams' }, { name: 'InitializeResult' },
@@ -1414,7 +1425,7 @@ const COMMAND_STRUCTS: { name: string; omitDiscriminants?: boolean; rustName?: s
   { name: 'SubscribeParams' }, { name: 'SubscribeView' }, { name: 'SubscriptionDeliveryOptions' }, { name: 'SubscribeResult' },
   { name: 'SessionForkSource' }, { name: 'CreateSessionParams' },
   { name: 'DisposeSessionParams' },
-  { name: 'ChatForkSource' }, { name: 'CreateChatParams' },
+  { name: 'ChatSource' }, { name: 'CreateChatParams' },
   { name: 'DisposeChatParams' },
   { name: 'ListSessionsParams' }, { name: 'ListSessionsResult' },
   { name: 'ResourceReadParams' }, { name: 'ResourceReadResult' },

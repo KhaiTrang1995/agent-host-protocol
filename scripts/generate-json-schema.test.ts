@@ -90,6 +90,18 @@ describe('generated JSON schemas', () => {
           `${file} references ${dangling.length} undefined $def(s) (bug #302.2): ${dangling.slice(0, 10).join(', ')}`,
         );
       });
+
+      it('constrains every ChatOrigin branch to a distinct kind', () => {
+        const defs = schema.$defs as Record<string, Record<string, unknown>>;
+        const chatOrigin = defs.ChatOrigin;
+        const branches = chatOrigin.oneOf as Array<Record<string, unknown>>;
+        const kinds = branches.map((branch) => {
+          const properties = branch.properties as Record<string, Record<string, unknown>>;
+          return properties.kind.const;
+        });
+
+        assert.deepEqual(kinds, ['user', 'fork', 'sideChat', 'tool']);
+      });
     });
   }
 });

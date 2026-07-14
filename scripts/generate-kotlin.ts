@@ -822,7 +822,7 @@ const STATE_STRUCTS = [
   'ChatInputRequest',
   'TextPosition', 'TextRange', 'TextSelection',
   'SimpleMessageAttachment', 'MessageEmbeddedResourceAttachment', 'MessageResourceAttachment',
-  'MessageAnnotationsAttachment',
+  'MessageAnnotationsAttachment', 'MessageChatAttachment',
   'MarkdownResponsePart', 'ContentRef',
   'ResourceReponsePart', 'ToolCallResponsePart', 'ReasoningResponsePart',
   'SystemNotificationResponsePart', 'InputRequestResponsePart',
@@ -919,6 +919,7 @@ function generateChatOriginKotlin(): string {
 sealed interface ChatOrigin {
     @JvmInline value class User(val value: ChatOriginUser) : ChatOrigin
     @JvmInline value class Fork(val value: ChatOriginFork) : ChatOrigin
+    @JvmInline value class SideChat(val value: ChatOriginSideChat) : ChatOrigin
     @JvmInline value class Tool(val value: ChatOriginTool) : ChatOrigin
     @JvmInline value class Unknown(val raw: JsonObject) : ChatOrigin
 }
@@ -942,6 +943,13 @@ data class ChatOriginTool(
     val toolCallId: String,
 )
 
+@Serializable
+data class ChatOriginSideChat(
+    val kind: ChatOriginKind = ChatOriginKind.SIDE_CHAT,
+    val chat: String,
+    val turnId: String,
+)
+
 internal object ChatOriginSerializer : KSerializer<ChatOrigin> {
     override val descriptor: SerialDescriptor = buildClassSerialDescriptor("ChatOrigin")
 
@@ -952,6 +960,7 @@ internal object ChatOriginSerializer : KSerializer<ChatOrigin> {
         return when ((obj["kind"] as? JsonPrimitive)?.contentOrNull) {
             "user" -> ChatOrigin.User(input.json.decodeFromJsonElement(ChatOriginUser.serializer(), element))
             "fork" -> ChatOrigin.Fork(input.json.decodeFromJsonElement(ChatOriginFork.serializer(), element))
+            "sideChat" -> ChatOrigin.SideChat(input.json.decodeFromJsonElement(ChatOriginSideChat.serializer(), element))
             "tool" -> ChatOrigin.Tool(input.json.decodeFromJsonElement(ChatOriginTool.serializer(), element))
             else -> ChatOrigin.Unknown(obj)
         }
@@ -962,6 +971,7 @@ internal object ChatOriginSerializer : KSerializer<ChatOrigin> {
         val element: JsonElement = when (value) {
             is ChatOrigin.User -> output.json.encodeToJsonElement(ChatOriginUser.serializer(), value.value)
             is ChatOrigin.Fork -> output.json.encodeToJsonElement(ChatOriginFork.serializer(), value.value)
+            is ChatOrigin.SideChat -> output.json.encodeToJsonElement(ChatOriginSideChat.serializer(), value.value)
             is ChatOrigin.Tool -> output.json.encodeToJsonElement(ChatOriginTool.serializer(), value.value)
             is ChatOrigin.Unknown -> value.raw
         }
@@ -1018,6 +1028,7 @@ const MESSAGE_ATTACHMENT_UNION: UnionConfig = {
     { caseName: 'EmbeddedResource', structName: 'MessageEmbeddedResourceAttachment', discriminantValue: 'embeddedResource' },
     { caseName: 'Resource', structName: 'MessageResourceAttachment', discriminantValue: 'resource' },
     { caseName: 'Annotations', structName: 'MessageAnnotationsAttachment', discriminantValue: 'annotations' },
+    { caseName: 'Chat', structName: 'MessageChatAttachment', discriminantValue: 'chat' },
   ],
   unknown: true,
 };
@@ -1427,7 +1438,7 @@ function generateActionsFile(project: Project): string {
 
 // ─── Commands File Generator ─────────────────────────────────────────────────
 
-const COMMAND_ENUMS = ['ReconnectResultType', 'ContentEncoding', 'CompletionItemKind', 'ResourceType', 'ResourceWriteMode'];
+const COMMAND_ENUMS = ['ReconnectResultType', 'ChatSourceKind', 'ContentEncoding', 'CompletionItemKind', 'ResourceType', 'ResourceWriteMode'];
 
 const COMMAND_STRUCTS = [
   'InitializeParams', 'InitializeResult',
@@ -1435,7 +1446,7 @@ const COMMAND_STRUCTS = [
   'ReconnectParams', 'ReconnectReplayResult', 'ReconnectSnapshotResult',
   'SubscribeParams', 'SubscribeView', 'SubscriptionDeliveryOptions', 'SubscribeResult',
   'SessionForkSource', 'CreateSessionParams', 'DisposeSessionParams',
-  'ChatForkSource', 'CreateChatParams', 'DisposeChatParams',
+  'ChatSource', 'CreateChatParams', 'DisposeChatParams',
   'ListSessionsParams', 'ListSessionsResult',
   'ResourceReadParams', 'ResourceReadResult',
   'ResourceWriteParams', 'ResourceWriteResult',

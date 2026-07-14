@@ -214,20 +214,14 @@ function typeTextToSchema(typeText: string, project: Project, _depth = 0): JsonS
   // value as a `const`. Without this the capitalized-identifier fallback below
   // emits a `$ref` to `#/$defs/ActionType.ChatTurnStarted` that is never
   // defined (dangling). Must run before the interface-reference fallback.
-  const enumMemberMatch = cleaned.match(/^([A-Z]\w*)\.(\w+)$/);
-  if (enumMemberMatch) {
-    const [, enumName, memberName] = enumMemberMatch;
-    const en = findEnum(project, enumName);
-    const member = en?.getMember(memberName);
-    const value = member?.getValue();
-    if (value !== undefined) {
-      return { const: value };
-    }
+  const enumMemberSchema = enumMemberToSchema(cleaned, project);
+  if (enumMemberSchema) {
+    return enumMemberSchema;
   }
 
   // Inline object: { message: string; code?: string }
   if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
-    return inlineObjectToSchema(cleaned);
+    return inlineObjectToSchema(cleaned, project);
   }
 
   // Interface references: check if it's a known interface
@@ -256,7 +250,16 @@ function splitUnionType(typeText: string): string[] {
   return parts;
 }
 
-function inlineObjectToSchema(text: string): JsonSchema {
+function enumMemberToSchema(typeText: string, project: Project): JsonSchema | undefined {
+  const match = typeText.match(/^([A-Z]\w*)\.(\w+)$/);
+  if (!match) return undefined;
+
+  const [, enumName, memberName] = match;
+  const value = findEnum(project, enumName)?.getMember(memberName)?.getValue();
+  return value === undefined ? undefined : { const: value };
+}
+
+function inlineObjectToSchema(text: string, project: Project): JsonSchema {
   // Parse { key: type; key?: type } style, stripping any JSDoc/block comments
   const cleaned = text.replace(/\/\*[\s\S]*?\*\//g, '');
   const inner = cleaned.slice(cleaned.indexOf('{') + 1, cleaned.lastIndexOf('}')).trim();
@@ -267,7 +270,9 @@ function inlineObjectToSchema(text: string): JsonSchema {
     const match = field.match(/^(\w+)(\?)?:\s*(.+)$/);
     if (match) {
       const [, name, optional, type] = match;
-      schema.properties![name] = { type: mapSimpleType(type.trim()) };
+      const fieldType = type.trim();
+      schema.properties![name] =
+        enumMemberToSchema(fieldType, project) ?? { type: mapSimpleType(fieldType) };
       if (!optional) {
         schema.required!.push(name);
       }

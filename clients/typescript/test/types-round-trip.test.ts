@@ -60,6 +60,7 @@ import type {
 } from '../src/types/channels-session/state.js';
 import type { SessionAddedParams } from '../src/types/channels-root/notifications.js';
 import type { Implementation, InitializeResult } from '../src/types/common/commands.js';
+import type { ChatSource } from '../src/types/channels-chat/commands.js';
 
 // ─── Fixture directory ───────────────────────────────────────────────────────
 
@@ -242,6 +243,7 @@ function bindToType(file: string, type: string, parsed: unknown): void {
     case 'PartialSessionSummary': void (parsed as Partial<SessionSummary>); break;
     case 'Implementation':     void (parsed as Implementation); break;
     case 'InitializeResult':    void (parsed as InitializeResult); break;
+    case 'ChatSource':          void (parsed as ChatSource); break;
     default:
       throw new Error(
         `${file}: unknown wire type "${type}". Add a decode entry to bindToType.`,

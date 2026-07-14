@@ -31,6 +31,17 @@ pub enum ReconnectResultType {
     Snapshot,
 }
 
+/// How a new chat uses its source chat and turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ChatSourceKind {
+    /// Copy source history through the referenced turn into the new chat.
+    #[serde(rename = "fork")]
+    Fork,
+    /// Supply source context without copying it into the new chat's visible history.
+    #[serde(rename = "sideChat")]
+    SideChat,
+}
+
 /// Encoding of fetched content data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ContentEncoding {
@@ -468,13 +479,17 @@ pub struct DisposeSessionParams {
     pub channel: Uri,
 }
 
-/// Identifies a source chat and turn to fork from.
+/// Identifies a source chat and completed turn for a new chat.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatForkSource {
-    /// URI of the existing chat to fork from
+pub struct ChatSource {
+    /// How the source is used.
+    pub kind: ChatSourceKind,
+    /// URI of the existing source chat.
     pub chat: Uri,
-    /// Turn ID in the source chat; content up to and including this turn's response is copied
+    /// Completed turn in the source chat. For a fork, content through this turn is
+    /// copied. For a side chat, that content is supplied as context but is not
+    /// copied into the new chat's visible `turns`.
     pub turn_id: String,
 }
 
@@ -489,14 +504,20 @@ pub struct CreateChatParams {
     /// Optional initial message for the new chat.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_message: Option<Message>,
-    /// Optional source chat and turn to fork from.
+    /// Optional source chat and completed turn.
+    ///
+    /// The source chat MUST belong to this session. Clients MUST only request
+    /// `kind: "fork"` when the selected agent advertises
+    /// `capabilities.multipleChats.fork`, and
+    /// `kind: "sideChat"` when the selected agent advertises
+    /// `capabilities.multipleChats.sideChat`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<ChatForkSource>,
+    pub source: Option<ChatSource>,
     /// Initial working-directory subset for this chat. Every entry MUST be
     /// present in the owning session's `workingDirectories`; the server MUST
     /// reject any entry that is not. When absent, the chat inherits the full
-    /// session set. Forked chats (`source`) inherit the source chat's
-    /// `workingDirectories`; this field is ignored for forked chats.
+    /// session set. Forked chats (`source.kind === "fork"`) inherit the source
+    /// chat's `workingDirectories`; this field is ignored for forks.
     ///
     /// A client MUST NOT supply this field unless the agent advertises
     /// {@link AgentCapabilities.multipleWorkingDirectories}.
@@ -509,8 +530,8 @@ pub struct CreateChatParams {
     /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY
     /// reject creation that omits it, or fall back to the first of the chat's
     /// directories. Fixed at creation and reported (read-only) on
-    /// {@link ChatState.primaryWorkingDirectory}. Ignored for forked chats (a fork
-    /// inherits the source chat's primary).
+    /// {@link ChatState.primaryWorkingDirectory}. Ignored for forks (a
+    /// `source.kind === "fork"` chat inherits the source chat's primary).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primary_working_directory: Option<Uri>,
 }

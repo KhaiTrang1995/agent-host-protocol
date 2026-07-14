@@ -11,12 +11,29 @@ import type { Message } from './state.js';
 // ─── createChat ──────────────────────────────────────────────────────────────
 
 /**
- * Identifies a source chat and turn to fork from.
+ * How a new chat uses its source chat and turn.
  */
-export interface ChatForkSource {
-  /** URI of the existing chat to fork from */
+export const enum ChatSourceKind {
+  /** Copy source history through the referenced turn into the new chat. */
+  Fork = 'fork',
+  /** Supply source context without copying it into the new chat's visible history. */
+  SideChat = 'sideChat',
+}
+
+/**
+ * Identifies a source chat and completed turn for a new chat.
+ *
+ */
+export interface ChatSource {
+  /** How the source is used. */
+  kind: ChatSourceKind;
+  /** URI of the existing source chat. */
   chat: URI;
-  /** Turn ID in the source chat; content up to and including this turn's response is copied */
+  /**
+   * Completed turn in the source chat. For a fork, content through this turn is
+   * copied. For a side chat, that content is supplied as context but is not
+   * copied into the new chat's visible `turns`.
+   */
   turnId: string;
 }
 
@@ -36,14 +53,22 @@ export interface CreateChatParams extends BaseParams {
   chat: URI;
   /** Optional initial message for the new chat. */
   initialMessage?: Message;
-  /** Optional source chat and turn to fork from. */
-  source?: ChatForkSource;
+  /**
+   * Optional source chat and completed turn.
+   *
+   * The source chat MUST belong to this session. Clients MUST only request
+   * `kind: "fork"` when the selected agent advertises
+   * `capabilities.multipleChats.fork`, and
+   * `kind: "sideChat"` when the selected agent advertises
+   * `capabilities.multipleChats.sideChat`.
+   */
+  source?: ChatSource;
   /**
    * Initial working-directory subset for this chat. Every entry MUST be
    * present in the owning session's `workingDirectories`; the server MUST
    * reject any entry that is not. When absent, the chat inherits the full
-   * session set. Forked chats (`source`) inherit the source chat's
-   * `workingDirectories`; this field is ignored for forked chats.
+   * session set. Forked chats (`source.kind === "fork"`) inherit the source
+   * chat's `workingDirectories`; this field is ignored for forks.
    *
    * A client MUST NOT supply this field unless the agent advertises
    * {@link AgentCapabilities.multipleWorkingDirectories}.
@@ -57,8 +82,8 @@ export interface CreateChatParams extends BaseParams {
    * {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY
    * reject creation that omits it, or fall back to the first of the chat's
    * directories. Fixed at creation and reported (read-only) on
-   * {@link ChatState.primaryWorkingDirectory}. Ignored for forked chats (a fork
-   * inherits the source chat's primary).
+   * {@link ChatState.primaryWorkingDirectory}. Ignored for forks (a
+   * `source.kind === "fork"` chat inherits the source chat's primary).
    */
   primaryWorkingDirectory?: URI;
 }

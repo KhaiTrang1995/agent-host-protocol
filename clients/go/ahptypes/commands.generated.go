@@ -23,6 +23,16 @@ const (
 	ReconnectResultTypeSnapshot ReconnectResultType = "snapshot"
 )
 
+// How a new chat uses its source chat and turn.
+type ChatSourceKind string
+
+const (
+	// Copy source history through the referenced turn into the new chat.
+	ChatSourceKindFork ChatSourceKind = "fork"
+	// Supply source context without copying it into the new chat's visible history.
+	ChatSourceKindSideChat ChatSourceKind = "sideChat"
+)
+
 // Encoding of fetched content data.
 type ContentEncoding string
 
@@ -374,11 +384,15 @@ type DisposeSessionParams struct {
 	Channel URI `json:"channel"`
 }
 
-// Identifies a source chat and turn to fork from.
-type ChatForkSource struct {
-	// URI of the existing chat to fork from
+// Identifies a source chat and completed turn for a new chat.
+type ChatSource struct {
+	// How the source is used.
+	Kind ChatSourceKind `json:"kind"`
+	// URI of the existing source chat.
 	Chat URI `json:"chat"`
-	// Turn ID in the source chat; content up to and including this turn's response is copied
+	// Completed turn in the source chat. For a fork, content through this turn is
+	// copied. For a side chat, that content is supplied as context but is not
+	// copied into the new chat's visible `turns`.
 	TurnId string `json:"turnId"`
 }
 
@@ -390,13 +404,19 @@ type CreateChatParams struct {
 	Chat URI `json:"chat"`
 	// Optional initial message for the new chat.
 	InitialMessage *Message `json:"initialMessage,omitempty"`
-	// Optional source chat and turn to fork from.
-	Source *ChatForkSource `json:"source,omitempty"`
+	// Optional source chat and completed turn.
+	//
+	// The source chat MUST belong to this session. Clients MUST only request
+	// `kind: "fork"` when the selected agent advertises
+	// `capabilities.multipleChats.fork`, and
+	// `kind: "sideChat"` when the selected agent advertises
+	// `capabilities.multipleChats.sideChat`.
+	Source *ChatSource `json:"source,omitempty"`
 	// Initial working-directory subset for this chat. Every entry MUST be
 	// present in the owning session's `workingDirectories`; the server MUST
 	// reject any entry that is not. When absent, the chat inherits the full
-	// session set. Forked chats (`source`) inherit the source chat's
-	// `workingDirectories`; this field is ignored for forked chats.
+	// session set. Forked chats (`source.kind === "fork"`) inherit the source
+	// chat's `workingDirectories`; this field is ignored for forks.
 	//
 	// A client MUST NOT supply this field unless the agent advertises
 	// {@link AgentCapabilities.multipleWorkingDirectories}.
@@ -408,8 +428,8 @@ type CreateChatParams struct {
 	// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY
 	// reject creation that omits it, or fall back to the first of the chat's
 	// directories. Fixed at creation and reported (read-only) on
-	// {@link ChatState.primaryWorkingDirectory}. Ignored for forked chats (a fork
-	// inherits the source chat's primary).
+	// {@link ChatState.primaryWorkingDirectory}. Ignored for forks (a
+	// `source.kind === "fork"` chat inherits the source chat's primary).
 	PrimaryWorkingDirectory *URI `json:"primaryWorkingDirectory,omitempty"`
 }
 

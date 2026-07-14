@@ -14,6 +14,8 @@ export type {
   RootState,
   RootConfigState,
   AgentInfo,
+  AgentCapabilities,
+  MultipleChatsCapability,
   ProtectedResourceMetadata,
   ProjectInfo,
   SessionModelInfo,
@@ -39,6 +41,7 @@ export type {
   MessageEmbeddedResourceAttachment,
   MessageResourceAttachment,
   MessageAnnotationsAttachment,
+  MessageChatAttachment,
   MarkdownResponsePart,
   ContentRef,
   ToolCallResponsePart,
@@ -285,7 +288,7 @@ export type {
   SessionForkSource,
   DisposeSessionParams,
   CreateChatParams,
-  ChatForkSource,
+  ChatSource,
   DisposeChatParams,
   CreateTerminalParams,
   DisposeTerminalParams,
@@ -338,7 +341,7 @@ export type {
   ChangesetOperationFollowUp,
 } from './commands.js';
 
-export { ReconnectResultType, ContentEncoding, CompletionItemKind, ResourceType, ResourceWriteMode } from './commands.js';
+export { ReconnectResultType, ChatSourceKind, ContentEncoding, CompletionItemKind, ResourceType, ResourceWriteMode } from './commands.js';
 
 // Notification types
 export type {

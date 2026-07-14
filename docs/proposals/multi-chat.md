@@ -425,10 +425,25 @@ a `copilot` per piece of work; `/resume` reopens one at a time):
  (desktop app: N/A — terminal-only)
 ```
 
-### 8.2 Forking
+### 8.2 Forking and side chats
 
 A new chat is forked from a point in an existing chat, seeded with that history,
 then diverges on its own. Both chats keep sharing the session's context.
+
+A **side chat** starts from the same kind of `(chat, turn)` reference but does
+not copy the parent's turns into its own transcript. It is a focused,
+independent conversation that can later be pulled back into the main chat as a
+bounded chat attachment. The distinction keeps the side transcript clean while
+making the result durable and reusable:
+
+| Mode | Source context | New chat's visible history | Return path |
+| --- | --- | --- | --- |
+| Fork | Copied through the source turn | Starts with copied parent turns | Continue either branch |
+| Side chat | Supplied through the source turn | Starts empty | Attach through a completed side-chat turn |
+
+Agents advertise these independently through `multipleChats.fork` and
+`multipleChats.sideChat`, so clients only offer creation modes the selected
+agent supports.
 
 > **Real-world example:** Mid-debugging, at message 12 the agent proposes two
 > fixes for a race condition. Rather than lose the current thread, the developer

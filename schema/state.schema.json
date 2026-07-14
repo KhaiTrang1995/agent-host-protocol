@@ -537,7 +537,7 @@
       "properties": {
         "multipleChats": {
           "$ref": "#/$defs/MultipleChatsCapability",
-          "description": "The agent can host more than one concurrent chat per session. When absent,\nclients MUST NOT call `createChat` to open chats beyond the default one the\nsession starts with. An empty object `{}` advertises multi-chat without\nforking; set {@link MultipleChatsCapability.fork} to also allow forking."
+          "description": "The agent can host more than one concurrent chat per session. When absent,\nclients MUST NOT call `createChat` to open chats beyond the default one the\nsession starts with. An empty object `{}` advertises multi-chat without\nsource-based creation; set {@link MultipleChatsCapability.fork} or\n{@link MultipleChatsCapability.sideChat} to allow the corresponding mode."
         },
         "multipleWorkingDirectories": {
           "$ref": "#/$defs/MultipleWorkingDirectoriesCapability",
@@ -551,7 +551,11 @@
       "properties": {
         "fork": {
           "type": "boolean",
-          "description": "The agent can fork a chat from a specific turn. When absent or `false`,\nclients MUST NOT pass a {@link ChatForkSource} (`source`) to `createChat`.\nForking always implies multi-chat support."
+          "description": "The agent can fork a chat from a specific turn. When absent or `false`,\nclients MUST NOT pass a {@link ChatSource} with `kind: \"fork\"` to\n`createChat`.\nForking always implies multi-chat support."
+        },
+        "sideChat": {
+          "type": "boolean",
+          "description": "The agent can create a side chat from a specific turn. When absent or\n`false`, clients MUST NOT pass a {@link ChatSource} with\n`kind: \"sideChat\"` to `createChat`.\n\nA side chat receives the source turn as context without copying the source\ntranscript into its own visible history. Side-chat support always implies\nmulti-chat support."
         }
       }
     },
@@ -3213,6 +3217,47 @@
         "resource"
       ]
     },
+    "MessageChatAttachment": {
+      "type": "object",
+      "description": "An attachment that references a chat transcript through a fixed completed\nturn.\n\nThe referenced chat MUST belong to the same session as the message's chat.\nThe host resolves the transcript from its first retained turn through\n`endTurn`, inclusive, when accepting the message. Later turns do not\nchange the context represented by an already-sent attachment.\n\nHosts MUST NOT recursively expand chat attachments found inside the\nreferenced transcript. Clients SHOULD keep rendering `label` if the\nreferenced chat is later pruned, and treat opening `resource` as best-effort.",
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "A human-readable label for the attachment (e.g. the filename of a file\nattachment). Used for display in UI."
+        },
+        "range": {
+          "$ref": "#/$defs/TextRange",
+          "description": "If defined, the range in {@link Message.text} that references this\nattachment. This is a text range, not a byte range."
+        },
+        "displayKind": {
+          "type": "string",
+          "description": "Advisory display hint for clients rendering this attachment. Recognized\nvalues include:\n\n- `'image'`: the attachment is an image\n- `'document'`: the attachment is a textual document\n- `'symbol'`: the attachment is a code symbol (e.g. a function or class)\n- `'directory'`: the attachment is a folder\n- `'selection'`: the attachment is a selection within a document\n\nImplementations MAY provide additional values; clients SHOULD fall back\nto a reasonable default when an unknown value is encountered."
+        },
+        "_meta": {
+          "type": "object",
+          "additionalProperties": {},
+          "description": "Additional implementation-defined metadata for the attachment.\n\nIf the attachment was produced by the `completions` command, the client\nMUST preserve every property of `_meta` originally returned by the agent\nhost when sending the user message containing the accepted completion."
+        },
+        "type": {
+          "const": "chat",
+          "description": "Discriminant"
+        },
+        "resource": {
+          "$ref": "#/$defs/URI",
+          "description": "URI of the referenced chat."
+        },
+        "endTurn": {
+          "type": "string",
+          "description": "Last completed turn included in the referenced transcript."
+        }
+      },
+      "required": [
+        "label",
+        "type",
+        "resource",
+        "endTurn"
+      ]
+    },
     "MarkdownResponsePart": {
       "type": "object",
       "properties": {
@@ -4983,7 +5028,7 @@
           "type": "object",
           "properties": {
             "kind": {
-              "type": "string"
+              "const": "user"
             }
           },
           "required": [
@@ -4994,7 +5039,7 @@
           "type": "object",
           "properties": {
             "kind": {
-              "type": "string"
+              "const": "fork"
             },
             "chat": {
               "type": "string"
@@ -5013,7 +5058,26 @@
           "type": "object",
           "properties": {
             "kind": {
+              "const": "sideChat"
+            },
+            "chat": {
               "type": "string"
+            },
+            "turnId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "chat",
+            "turnId"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "tool"
             },
             "chat": {
               "type": "string"
@@ -5094,6 +5158,9 @@
         },
         {
           "$ref": "#/$defs/MessageAnnotationsAttachment"
+        },
+        {
+          "$ref": "#/$defs/MessageChatAttachment"
         }
       ],
       "description": "An attachment associated with a {@link Message}."

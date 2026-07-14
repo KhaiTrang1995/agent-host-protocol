@@ -707,6 +707,7 @@ const STATE_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: strin
   { name: 'MessageEmbeddedResourceAttachment' },
   { name: 'MessageResourceAttachment' },
   { name: 'MessageAnnotationsAttachment' },
+  { name: 'MessageChatAttachment' },
   { name: 'MarkdownResponsePart' },
   { name: 'ContentRef' },
   { name: 'ResourceReponsePart', goName: 'ResourceResponsePart' },
@@ -912,6 +913,7 @@ const MESSAGE_ATTACHMENT_UNION: UnionConfig = {
     { variantName: 'EmbeddedResource', innerType: 'MessageEmbeddedResourceAttachment', wireValue: 'embeddedResource' },
     { variantName: 'Resource', innerType: 'MessageResourceAttachment', wireValue: 'resource' },
     { variantName: 'Annotations', innerType: 'MessageAnnotationsAttachment', wireValue: 'annotations' },
+    { variantName: 'Chat', innerType: 'MessageChatAttachment', wireValue: 'chat' },
   ],
   unknown: true,
 };
@@ -1028,6 +1030,14 @@ type ChatForkOrigin struct {
 
 func (*ChatForkOrigin) isChatOrigin() {}
 
+type ChatSideChatOrigin struct {
+\tKind   ChatOriginKind \`json:"kind"\`
+\tChat   URI            \`json:"chat"\`
+\tTurnId string         \`json:"turnId"\`
+}
+
+func (*ChatSideChatOrigin) isChatOrigin() {}
+
 type ChatToolOrigin struct {
 \tKind       ChatOriginKind \`json:"kind"\`
 \tChat       URI            \`json:"chat"\`
@@ -1056,6 +1066,12 @@ func (o *ChatOrigin) UnmarshalJSON(data []byte) error {
 \t\to.Value = &v
 \tcase "fork":
 \t\tvar v ChatForkOrigin
+\t\tif err := json.Unmarshal(data, &v); err != nil {
+\t\t\treturn err
+\t\t}
+\t\to.Value = &v
+\tcase "sideChat":
+\t\tvar v ChatSideChatOrigin
 \t\tif err := json.Unmarshal(data, &v); err != nil {
 \t\t\treturn err
 \t\t}
@@ -1454,7 +1470,7 @@ function generateActionsFile(project: Project): string {
 
 // ─── Commands File Generator ─────────────────────────────────────────────────
 
-const COMMAND_ENUMS = ['ReconnectResultType', 'ContentEncoding', 'CompletionItemKind', 'ResourceType', 'ResourceWriteMode'];
+const COMMAND_ENUMS = ['ReconnectResultType', 'ChatSourceKind', 'ContentEncoding', 'CompletionItemKind', 'ResourceType', 'ResourceWriteMode'];
 
 const COMMAND_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: string }[] = [
   { name: 'InitializeParams' }, { name: 'InitializeResult' },
@@ -1465,7 +1481,7 @@ const COMMAND_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: str
   { name: 'SubscribeParams' }, { name: 'SubscribeView' }, { name: 'SubscriptionDeliveryOptions' }, { name: 'SubscribeResult' },
   { name: 'SessionForkSource' }, { name: 'CreateSessionParams' },
   { name: 'DisposeSessionParams' },
-  { name: 'ChatForkSource' }, { name: 'CreateChatParams' }, { name: 'DisposeChatParams' },
+  { name: 'ChatSource' }, { name: 'CreateChatParams' }, { name: 'DisposeChatParams' },
   { name: 'ListSessionsParams' }, { name: 'ListSessionsResult' },
   { name: 'ResourceReadParams' }, { name: 'ResourceReadResult' },
   { name: 'ResourceWriteParams' }, { name: 'ResourceWriteResult' },
