@@ -29,10 +29,17 @@ Changeset {
   uriTemplate: string
   description?: string
   /**
-   * Advisory hint: one of `'session'`, `'branch'`, `'uncommitted'`,
-   * `'turn'`, or `'compare-turns'`. Other values allowed.
+   * Advisory hint: one of `'session'`, `'directory'`, `'branch'`,
+   * `'uncommitted'`, `'turn'`, or `'compare-turns'`. Other values allowed.
    */
   changeKind: string
+  /**
+   * Working directory this changeset is scoped to, when it covers a single
+   * directory of a multiroot session. One of the session's
+   * `workingDirectories`. Omitted for single-directory or session-wide
+   * changesets.
+   */
+  workingDirectory?: URI
   /** Optional capability declarations (presence-flag objects). */
   capabilities?: {
     /** Present ⇒ this changeset supports the per-file review workflow. */
@@ -54,6 +61,10 @@ unknown variables.
 | _(none)_                                  | A static, session-wide changeset. The template is itself a subscribable URI. |
 | `{turnId}`                                | Per-turn slice. Expand with a `Turn.id` from one of the session's chats.     |
 | `{originalTurnId}` and `{modifiedTurnId}` | Diff between two turns. Both must be present.                                |
+
+### Multiroot Sessions
+
+A session with multiple [working directories](/guide/state-model#multiroot-sessions) groups its changes **by directory**: the host advertises one catalogue entry per working directory, each carrying a `workingDirectory` (one of the session's `workingDirectories`) and typically `changeKind: 'directory'`. This keeps each changeset a flat list of files rather than nesting changes as arrays-of-arrays. A host MAY additionally advertise a session-wide entry (no `workingDirectory`) that rolls up every directory.
 
 ### Changeset State
 

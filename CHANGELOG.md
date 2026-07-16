@@ -60,6 +60,11 @@ Spec version: `0.6.0`
 - `removeChatWorkspaceFolder` command — removes a directory from a chat's
   working-directory subset (idempotent). Returns `RemoveChatWorkspaceFolderResult`
   with the chat's full subset after the mutation.
+- `Changeset.workingDirectory` — an optional working directory a changeset is
+  scoped to (one of the session's `workingDirectories`), plus a `'directory'`
+  `changeKind` hint. A multiroot session groups its changes by directory by
+  advertising one changeset per working directory rather than nesting changes
+  as arrays-of-arrays.
 
 ### Deprecated
 

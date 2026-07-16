@@ -3609,6 +3609,9 @@ pub struct Changeset {
     ///
     /// - `'session'`: a static, session-wide changeset covering all changes the
     ///   agent has produced in this session.
+    /// - `'directory'`: all changes the agent has produced within a single
+    ///   {@link workingDirectory | working directory} of a multiroot session.
+    ///   Paired with {@link workingDirectory}.
     /// - `'branch'`: changes relative to a base branch (e.g. a feature branch
     ///   diffed against `main`).
     /// - `'uncommitted'`: the workspace's current uncommitted changes.
@@ -3621,6 +3624,17 @@ pub struct Changeset {
     /// Implementations MAY provide additional values; clients SHOULD fall back
     /// to a reasonable default when an unknown value is encountered.
     pub change_kind: String,
+    /// The working directory this changeset is scoped to, when it covers changes
+    /// within a single directory of a multiroot session. MUST be one of the
+    /// session's {@link SessionState.workingDirectories}.
+    ///
+    /// A host with multiple working directories groups changes by directory by
+    /// advertising one changeset per directory, each carrying its
+    /// `workingDirectory` — rather than nesting changes as arrays-of-arrays.
+    /// Omit for changesets that are not directory-scoped (e.g. a single-directory
+    /// session, or a session-wide roll-up spanning every directory).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directory: Option<Uri>,
     /// Optional capability declarations for this changeset. Absent (or an empty
     /// object) means the changeset advertises no optional capabilities.
     ///
