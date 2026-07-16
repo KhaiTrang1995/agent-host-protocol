@@ -1439,6 +1439,8 @@ const COMMAND_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: str
   { name: 'AddWorkspaceFolderParams' }, { name: 'RemoveWorkspaceFolderParams' },
   { name: 'WorkspaceFolderResult' }, { name: 'AddWorkspaceFolderResult' }, { name: 'RemoveWorkspaceFolderResult' },
   { name: 'ChatForkSource' }, { name: 'CreateChatParams' }, { name: 'DisposeChatParams' },
+  { name: 'AddChatWorkspaceFolderParams' }, { name: 'RemoveChatWorkspaceFolderParams' },
+  { name: 'ChatWorkspaceFolderResult' }, { name: 'AddChatWorkspaceFolderResult' }, { name: 'RemoveChatWorkspaceFolderResult' },
   { name: 'ListSessionsParams' }, { name: 'ListSessionsResult' },
   { name: 'ResourceReadParams' }, { name: 'ResourceReadResult' },
   { name: 'ResourceWriteParams' }, { name: 'ResourceWriteResult' },

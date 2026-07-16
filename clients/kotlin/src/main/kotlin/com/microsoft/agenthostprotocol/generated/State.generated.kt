@@ -1132,14 +1132,22 @@ data class ChatState(
     val interactivity: ChatInteractivity? = null,
     /**
      * Optional per-chat working directory.
-     *
-     * If absent, the chat inherits
-     * {@link SessionState.workingDirectory | the session's working directory}.
-     * Hosts MAY override this for individual chats — for example, to give a
-     * subordinate chat its own git worktree so multiple chats in a session can
-     * make independent edits that the orchestrator later merges back.
      */
     val workingDirectory: String? = null,
+    /**
+     * The subset of the session's
+     * {@link SessionState.workingDirectories | `workingDirectories`} that this
+     * chat's agent has tool access to. Every entry MUST be present in the owning
+     * session's `workingDirectories`; servers MUST reject `addChatWorkspaceFolder`
+     * calls that violate this constraint.
+     *
+     * When absent, the chat inherits the full session set. When present but empty
+     * (not recommended), the chat has no working-directory tool access at all.
+     *
+     * Use `addChatWorkspaceFolder` / `removeChatWorkspaceFolder` to update the
+     * set on a running chat.
+     */
+    val workingDirectories: List<String>? = null,
     /**
      * Completed turns
      */
@@ -1226,12 +1234,13 @@ data class ChatSummary(
     val interactivity: ChatInteractivity? = null,
     /**
      * Optional per-chat working directory.
-     *
-     * If absent, the chat inherits
-     * {@link SessionSummary.workingDirectory | the session's working directory}.
-     * See {@link ChatState.workingDirectory} for usage notes.
      */
-    val workingDirectory: String? = null
+    val workingDirectory: String? = null,
+    /**
+     * The subset of the session's working directories this chat uses.
+     * See {@link ChatState.workingDirectories} for the full semantics.
+     */
+    val workingDirectories: List<String>? = null
 )
 
 @Serializable
@@ -1263,6 +1272,17 @@ data class SessionState(
      * does not.
      */
     val workingDirectory: String? = null,
+    /**
+     * The full set of working directories the session's agent has tool access
+     * to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
+     * entries are equal peers — there is no privileged "primary". Individual
+     * chats MAY restrict to a subset via
+     * {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
+     *
+     * When absent, fall back to {@link workingDirectory} (if set) as a
+     * single-entry set.
+     */
+    val workingDirectories: List<String>? = null,
     /**
      * Lightweight summary of this session's inline annotations channel
      * (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
@@ -1505,6 +1525,17 @@ data class SessionSummary(
      * does not.
      */
     val workingDirectory: String? = null,
+    /**
+     * The full set of working directories the session's agent has tool access
+     * to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
+     * entries are equal peers — there is no privileged "primary". Individual
+     * chats MAY restrict to a subset via
+     * {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
+     *
+     * When absent, fall back to {@link workingDirectory} (if set) as a
+     * single-entry set.
+     */
+    val workingDirectories: List<String>? = null,
     /**
      * Lightweight summary of this session's inline annotations channel
      * (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render

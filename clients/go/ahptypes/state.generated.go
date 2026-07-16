@@ -710,6 +710,15 @@ type SessionState struct {
 	// `workingDirectory`}; this field acts as the fallback for any chat that
 	// does not.
 	WorkingDirectory *URI `json:"workingDirectory,omitempty"`
+	// The full set of working directories the session's agent has tool access
+	// to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
+	// entries are equal peers — there is no privileged "primary". Individual
+	// chats MAY restrict to a subset via
+	// {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
+	//
+	// When absent, fall back to {@link workingDirectory} (if set) as a
+	// single-entry set.
+	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
 	// Lightweight summary of this session's inline annotations channel
 	// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
 	// annotation / entry counts without subscribing. Absent when the session
@@ -914,9 +923,9 @@ type SessionToolClientExecutionRequest struct {
 //     chat currently driving the promoted status bits when a non-default chat
 //     wins (e.g. the chat that raised `InputNeeded`).
 //   - `modifiedAt`: the max of all chats' `modifiedAt`.
-//   - `workingDirectory`: the session-level **default**. Individual chats MAY
-//     override via {@link ChatSummary.workingDirectory}; aggregating these up
-//     is meaningless and SHOULD NOT be attempted.
+//   - `workingDirectory` / `workingDirectories`: the session-level set. Individual
+//     chats MAY restrict to a subset via {@link ChatSummary.workingDirectories};
+//     aggregating these up is meaningless and SHOULD NOT be attempted.
 //   - `changes`: optional roll-up across all chats. Producers MAY sum the
 //     per-chat changeset stats or report the most expensive chat's stats —
 //     whichever is cheaper for the host to compute.
@@ -940,6 +949,15 @@ type SessionSummary struct {
 	// `workingDirectory`}; this field acts as the fallback for any chat that
 	// does not.
 	WorkingDirectory *URI `json:"workingDirectory,omitempty"`
+	// The full set of working directories the session's agent has tool access
+	// to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
+	// entries are equal peers — there is no privileged "primary". Individual
+	// chats MAY restrict to a subset via
+	// {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
+	//
+	// When absent, fall back to {@link workingDirectory} (if set) as a
+	// single-entry set.
+	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
 	// Lightweight summary of this session's inline annotations channel
 	// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
 	// annotation / entry counts without subscribing. Absent when the session
@@ -1007,13 +1025,19 @@ type ChatState struct {
 	// compatibility.
 	Interactivity *ChatInteractivity `json:"interactivity,omitempty"`
 	// Optional per-chat working directory.
-	//
-	// If absent, the chat inherits
-	// {@link SessionState.workingDirectory | the session's working directory}.
-	// Hosts MAY override this for individual chats — for example, to give a
-	// subordinate chat its own git worktree so multiple chats in a session can
-	// make independent edits that the orchestrator later merges back.
 	WorkingDirectory *URI `json:"workingDirectory,omitempty"`
+	// The subset of the session's
+	// {@link SessionState.workingDirectories | `workingDirectories`} that this
+	// chat's agent has tool access to. Every entry MUST be present in the owning
+	// session's `workingDirectories`; servers MUST reject `addChatWorkspaceFolder`
+	// calls that violate this constraint.
+	//
+	// When absent, the chat inherits the full session set. When present but empty
+	// (not recommended), the chat has no working-directory tool access at all.
+	//
+	// Use `addChatWorkspaceFolder` / `removeChatWorkspaceFolder` to update the
+	// set on a running chat.
+	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
 	// Completed turns
 	Turns []Turn `json:"turns"`
 	// Cursor for loading older completed turns into this chat state.
@@ -1070,11 +1094,10 @@ type ChatSummary struct {
 	// compatibility.
 	Interactivity *ChatInteractivity `json:"interactivity,omitempty"`
 	// Optional per-chat working directory.
-	//
-	// If absent, the chat inherits
-	// {@link SessionSummary.workingDirectory | the session's working directory}.
-	// See {@link ChatState.workingDirectory} for usage notes.
 	WorkingDirectory *URI `json:"workingDirectory,omitempty"`
+	// The subset of the session's working directories this chat uses.
+	// See {@link ChatState.workingDirectories} for the full semantics.
+	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
 }
 
 // A message queued for future delivery to the agent.

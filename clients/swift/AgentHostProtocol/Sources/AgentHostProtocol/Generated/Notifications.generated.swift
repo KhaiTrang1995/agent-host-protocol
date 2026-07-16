@@ -187,6 +187,15 @@ public struct PartialSessionSummary: Codable, Sendable {
     /// `workingDirectory`}; this field acts as the fallback for any chat that
     /// does not.
     public var workingDirectory: String?
+    /// The full set of working directories the session's agent has tool access
+    /// to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
+    /// entries are equal peers — there is no privileged "primary". Individual
+    /// chats MAY restrict to a subset via
+    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
+    ///
+    /// When absent, fall back to {@link workingDirectory} (if set) as a
+    /// single-entry set.
+    public var workingDirectories: [String]?
     /// Lightweight summary of this session's inline annotations channel
     /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
     /// annotation / entry counts without subscribing. Absent when the session
@@ -216,6 +225,7 @@ public struct PartialSessionSummary: Codable, Sendable {
         case activity
         case project
         case workingDirectory
+        case workingDirectories
         case annotations
         case resource
         case createdAt
@@ -231,6 +241,7 @@ public struct PartialSessionSummary: Codable, Sendable {
         activity: String? = nil,
         project: ProjectInfo? = nil,
         workingDirectory: String? = nil,
+        workingDirectories: [String]? = nil,
         annotations: AnnotationsSummary? = nil,
         resource: String? = nil,
         createdAt: String? = nil,
@@ -244,6 +255,7 @@ public struct PartialSessionSummary: Codable, Sendable {
         self.activity = activity
         self.project = project
         self.workingDirectory = workingDirectory
+        self.workingDirectories = workingDirectories
         self.annotations = annotations
         self.resource = resource
         self.createdAt = createdAt

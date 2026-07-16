@@ -1331,6 +1331,8 @@ const COMMAND_STRUCTS = [
   'AddWorkspaceFolderParams', 'RemoveWorkspaceFolderParams',
   'WorkspaceFolderResult', 'AddWorkspaceFolderResult', 'RemoveWorkspaceFolderResult',
   'ChatForkSource', 'CreateChatParams', 'DisposeChatParams',
+  'AddChatWorkspaceFolderParams', 'RemoveChatWorkspaceFolderParams',
+  'ChatWorkspaceFolderResult', 'AddChatWorkspaceFolderResult', 'RemoveChatWorkspaceFolderResult',
   'ListSessionsParams', 'ListSessionsResult',
   'ResourceReadParams', 'ResourceReadResult',
   'ResourceWriteParams', 'ResourceWriteResult',

@@ -503,7 +503,18 @@ data class CreateChatParams(
     /**
      * Optional source chat and turn to fork from.
      */
-    val source: ChatForkSource? = null
+    val source: ChatForkSource? = null,
+    /**
+     * Initial working-directory subset for this chat. Every entry MUST be
+     * present in the owning session's `workingDirectories`; the server MUST
+     * reject any entry that is not. When absent, the chat inherits the full
+     * session set. Forked chats (`source`) inherit the source chat's
+     * `workingDirectories`; this field is ignored for forked chats.
+     *
+     * A client MUST NOT supply this field unless the agent advertises
+     * {@link AgentCapabilities.multipleWorkspaceFolders}.
+     */
+    val workingDirectories: List<String>? = null
 )
 
 @Serializable
@@ -512,6 +523,54 @@ data class DisposeChatParams(
      * Channel URI this command targets.
      */
     val channel: String
+)
+
+@Serializable
+data class AddChatWorkspaceFolderParams(
+    /**
+     * Channel URI this command targets.
+     */
+    val channel: String,
+    /**
+     * Directory to grant tool access to. Must be in the session's `workingDirectories`.
+     */
+    val folder: String
+)
+
+@Serializable
+data class RemoveChatWorkspaceFolderParams(
+    /**
+     * Channel URI this command targets.
+     */
+    val channel: String,
+    /**
+     * Directory to revoke tool access to.
+     */
+    val folder: String
+)
+
+@Serializable
+data class ChatWorkspaceFolderResult(
+    /**
+     * The chat's working directories after the mutation.
+     */
+    val directories: List<String>
+)
+
+@Serializable
+data class AddChatWorkspaceFolderResult(
+    /**
+     * The chat's working directories after the mutation.
+     */
+    val directories: List<String>
+)
+
+@Serializable
+data class RemoveChatWorkspaceFolderResult(
+    /**
+     * The chat's working directories after the mutation.
+     */
+    val directories: List<String>
 )
 
 @Serializable

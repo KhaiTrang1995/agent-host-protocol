@@ -254,6 +254,16 @@ pub struct PartialSessionSummary {
     /// does not.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_directory: Option<Uri>,
+    /// The full set of working directories the session's agent has tool access
+    /// to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
+    /// entries are equal peers — there is no privileged "primary". Individual
+    /// chats MAY restrict to a subset via
+    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
+    ///
+    /// When absent, fall back to {@link workingDirectory} (if set) as a
+    /// single-entry set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directories: Option<Vec<Uri>>,
     /// Lightweight summary of this session's inline annotations channel
     /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
     /// annotation / entry counts without subscribing. Absent when the session

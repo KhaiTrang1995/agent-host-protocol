@@ -152,7 +152,8 @@ ChatState {
   activity?: string
   modifiedAt: string
   origin?: ChatOrigin      // how the chat came to exist (user / fork / tool)
-  workingDirectory?: URI
+  workingDirectory?: URI          // deprecated: use workingDirectories
+  workingDirectories?: URI[]      // subset of session's workingDirectories
 
   turns: Turn[]                       // completed turns
   turnsNextCursor?: string            // page older turns via fetchTurns
@@ -599,6 +600,49 @@ Both commands return the **full directory set after the mutation** (the
 
 Before issuing either command, a client MUST verify that the agent advertises
 `multipleWorkspaceFolders`; servers MUST reject these commands otherwise.
+
+### Per-chat working-directory subsets
+
+Each chat within a multiroot session may further restrict the directories it
+uses to a **subset** of the session's `workingDirectories`. This lets
+different chats in the same session each focus on a different part of the
+workspace — for example, a frontend chat and a backend chat.
+
+The effective set for a chat is recorded in `ChatState.workingDirectories` /
+`ChatSummary.workingDirectories`. When absent the chat inherits the full
+session set.
+
+#### Setting at create time
+
+Pass `workingDirectories` to `createChat`. Every entry must already exist in
+the session's `workingDirectories`:
+
+```typescript
+createChat({
+  channel: 'ahp-session:/<uuid>',
+  chat: 'ahp-chat:/<uuid>',
+  workingDirectories: ['file:///workspace/frontend'],  // subset
+});
+```
+
+Forked chats (those with a `source`) inherit the source chat's
+`workingDirectories`; the field is ignored for them.
+
+#### Managing the subset after creation
+
+Two commands mutate a running chat's working-directory subset:
+
+| Command | Effect |
+| --- | --- |
+| `addChatWorkspaceFolder` | Adds a directory to the chat's subset. The directory MUST already be in the session's `workingDirectories`; servers MUST reject with `InvalidParams` otherwise. Adding a directory already in the chat's set is a no-op. |
+| `removeChatWorkspaceFolder` | Removes a directory from the chat's subset (idempotent). |
+
+Both commands return the **full chat subset after the mutation** (the
+`directories` field of `AddChatWorkspaceFolderResult` /
+`RemoveChatWorkspaceFolderResult`).
+
+A client MUST NOT issue these commands unless the agent advertises
+`multipleWorkspaceFolders`.
 
 ## Next Steps
 

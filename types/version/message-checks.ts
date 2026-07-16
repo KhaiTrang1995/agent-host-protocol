@@ -60,6 +60,8 @@ type _ExpectedCommands =
   | 'removeWorkspaceFolder'
   | 'createChat'
   | 'disposeChat'
+  | 'addChatWorkspaceFolder'
+  | 'removeChatWorkspaceFolder'
   | 'createTerminal'
   | 'disposeTerminal'
   | 'createResourceWatch'

@@ -1406,12 +1406,13 @@ data class PartialChatSummary(
     val interactivity: ChatInteractivity? = null,
     /**
      * Optional per-chat working directory.
-     *
-     * If absent, the chat inherits
-     * {@link SessionSummary.workingDirectory | the session's working directory}.
-     * See {@link ChatState.workingDirectory} for usage notes.
      */
-    val workingDirectory: String? = null
+    val workingDirectory: String? = null,
+    /**
+     * The subset of the session's working directories this chat uses.
+     * See {@link ChatState.workingDirectories} for the full semantics.
+     */
+    val workingDirectories: List<String>? = null
 )
 
 // ─── StateAction Union ──────────────────────────────────────────────────────

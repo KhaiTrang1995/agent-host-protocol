@@ -534,6 +534,16 @@ pub struct CreateChatParams {
     /// Optional source chat and turn to fork from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<ChatForkSource>,
+    /// Initial working-directory subset for this chat. Every entry MUST be
+    /// present in the owning session's `workingDirectories`; the server MUST
+    /// reject any entry that is not. When absent, the chat inherits the full
+    /// session set. Forked chats (`source`) inherit the source chat's
+    /// `workingDirectories`; this field is ignored for forked chats.
+    ///
+    /// A client MUST NOT supply this field unless the agent advertises
+    /// {@link AgentCapabilities.multipleWorkspaceFolders}.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directories: Option<Vec<Uri>>,
 }
 
 /// Disposes a chat and cleans up server-side resources.
@@ -542,6 +552,64 @@ pub struct CreateChatParams {
 pub struct DisposeChatParams {
     /// Channel URI this command targets.
     pub channel: Uri,
+}
+
+/// Grants this chat's agent tool access to a working directory, adding it to
+/// the chat's {@link ChatState.workingDirectories | `workingDirectories`} subset.
+/// The directory MUST already be present in the owning session's
+/// `workingDirectories`; servers MUST reject with `InvalidParams` otherwise.
+///
+/// Only valid when the agent advertises `multipleWorkspaceFolders`. Adding a
+/// directory already in the chat's set is a no-op that still returns the current
+/// full set.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddChatWorkspaceFolderParams {
+    /// Channel URI this command targets.
+    pub channel: Uri,
+    /// Directory to grant tool access to. Must be in the session's `workingDirectories`.
+    pub folder: Uri,
+}
+
+/// Revokes this chat's agent tool access to one of its working directories.
+/// Analogous to the session-level `removeWorkspaceFolder`: the server
+/// reconfigures the chat to the reduced subset and returns it. Removing a
+/// directory not in the chat's set is a no-op that still returns the current
+/// full set.
+///
+/// Only valid when the agent advertises `multipleWorkspaceFolders`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveChatWorkspaceFolderParams {
+    /// Channel URI this command targets.
+    pub channel: Uri,
+    /// Directory to revoke tool access to.
+    pub folder: Uri,
+}
+
+/// Result shared by `addChatWorkspaceFolder` and `removeChatWorkspaceFolder`:
+/// the chat's full working-directory subset after the mutation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatWorkspaceFolderResult {
+    /// The chat's working directories after the mutation.
+    pub directories: Vec<Uri>,
+}
+
+/// Result of the `addChatWorkspaceFolder` command. See {@link ChatWorkspaceFolderResult}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddChatWorkspaceFolderResult {
+    /// The chat's working directories after the mutation.
+    pub directories: Vec<Uri>,
+}
+
+/// Result of the `removeChatWorkspaceFolder` command. See {@link ChatWorkspaceFolderResult}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveChatWorkspaceFolderResult {
+    /// The chat's working directories after the mutation.
+    pub directories: Vec<Uri>,
 }
 
 /// Returns a list of session summaries. Used to populate session lists and sidebars.

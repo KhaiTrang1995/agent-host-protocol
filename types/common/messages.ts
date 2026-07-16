@@ -61,6 +61,10 @@ import type {
 import type {
   CreateChatParams,
   DisposeChatParams,
+  AddChatWorkspaceFolderParams,
+  AddChatWorkspaceFolderResult,
+  RemoveChatWorkspaceFolderParams,
+  RemoveChatWorkspaceFolderResult,
 } from '../channels-chat/commands.js';
 import type {
   CreateTerminalParams,
@@ -161,6 +165,8 @@ export interface CommandMap {
   'removeWorkspaceFolder': { params: RemoveWorkspaceFolderParams; result: RemoveWorkspaceFolderResult };
   'createChat': { params: CreateChatParams; result: null };
   'disposeChat': { params: DisposeChatParams; result: null };
+  'addChatWorkspaceFolder': { params: AddChatWorkspaceFolderParams; result: AddChatWorkspaceFolderResult };
+  'removeChatWorkspaceFolder': { params: RemoveChatWorkspaceFolderParams; result: RemoveChatWorkspaceFolderResult };
   'createTerminal': { params: CreateTerminalParams; result: null };
   'disposeTerminal': { params: DisposeTerminalParams; result: null };
   'createResourceWatch': { params: CreateResourceWatchParams; result: CreateResourceWatchResult };

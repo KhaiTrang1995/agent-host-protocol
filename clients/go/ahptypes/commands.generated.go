@@ -424,12 +424,69 @@ type CreateChatParams struct {
 	InitialMessage *Message `json:"initialMessage,omitempty"`
 	// Optional source chat and turn to fork from.
 	Source *ChatForkSource `json:"source,omitempty"`
+	// Initial working-directory subset for this chat. Every entry MUST be
+	// present in the owning session's `workingDirectories`; the server MUST
+	// reject any entry that is not. When absent, the chat inherits the full
+	// session set. Forked chats (`source`) inherit the source chat's
+	// `workingDirectories`; this field is ignored for forked chats.
+	//
+	// A client MUST NOT supply this field unless the agent advertises
+	// {@link AgentCapabilities.multipleWorkspaceFolders}.
+	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
 }
 
 // Disposes a chat and cleans up server-side resources.
 type DisposeChatParams struct {
 	// Channel URI this command targets.
 	Channel URI `json:"channel"`
+}
+
+// Grants this chat's agent tool access to a working directory, adding it to
+// the chat's {@link ChatState.workingDirectories | `workingDirectories`} subset.
+// The directory MUST already be present in the owning session's
+// `workingDirectories`; servers MUST reject with `InvalidParams` otherwise.
+//
+// Only valid when the agent advertises `multipleWorkspaceFolders`. Adding a
+// directory already in the chat's set is a no-op that still returns the current
+// full set.
+type AddChatWorkspaceFolderParams struct {
+	// Channel URI this command targets.
+	Channel URI `json:"channel"`
+	// Directory to grant tool access to. Must be in the session's `workingDirectories`.
+	Folder URI `json:"folder"`
+}
+
+// Revokes this chat's agent tool access to one of its working directories.
+// Analogous to the session-level `removeWorkspaceFolder`: the server
+// reconfigures the chat to the reduced subset and returns it. Removing a
+// directory not in the chat's set is a no-op that still returns the current
+// full set.
+//
+// Only valid when the agent advertises `multipleWorkspaceFolders`.
+type RemoveChatWorkspaceFolderParams struct {
+	// Channel URI this command targets.
+	Channel URI `json:"channel"`
+	// Directory to revoke tool access to.
+	Folder URI `json:"folder"`
+}
+
+// Result shared by `addChatWorkspaceFolder` and `removeChatWorkspaceFolder`:
+// the chat's full working-directory subset after the mutation.
+type ChatWorkspaceFolderResult struct {
+	// The chat's working directories after the mutation.
+	Directories []URI `json:"directories"`
+}
+
+// Result of the `addChatWorkspaceFolder` command. See {@link ChatWorkspaceFolderResult}.
+type AddChatWorkspaceFolderResult struct {
+	// The chat's working directories after the mutation.
+	Directories []URI `json:"directories"`
+}
+
+// Result of the `removeChatWorkspaceFolder` command. See {@link ChatWorkspaceFolderResult}.
+type RemoveChatWorkspaceFolderResult struct {
+	// The chat's working directories after the mutation.
+	Directories []URI `json:"directories"`
 }
 
 // Returns a list of session summaries. Used to populate session lists and sidebars.

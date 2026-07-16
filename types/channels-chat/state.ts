@@ -60,13 +60,26 @@ export interface ChatState {
   /**
    * Optional per-chat working directory.
    *
-   * If absent, the chat inherits
-   * {@link SessionState.workingDirectory | the session's working directory}.
-   * Hosts MAY override this for individual chats — for example, to give a
-   * subordinate chat its own git worktree so multiple chats in a session can
-   * make independent edits that the orchestrator later merges back.
+   * @deprecated Use {@link workingDirectories} instead. Retained as a
+   * single-directory shorthand for backwards compatibility. When
+   * `workingDirectories` is present this field reflects its first entry so
+   * older clients continue to see a usable value.
    */
   workingDirectory?: URI;
+  /**
+   * The subset of the session's
+   * {@link SessionState.workingDirectories | `workingDirectories`} that this
+   * chat's agent has tool access to. Every entry MUST be present in the owning
+   * session's `workingDirectories`; servers MUST reject `addChatWorkspaceFolder`
+   * calls that violate this constraint.
+   *
+   * When absent, the chat inherits the full session set. When present but empty
+   * (not recommended), the chat has no working-directory tool access at all.
+   *
+   * Use `addChatWorkspaceFolder` / `removeChatWorkspaceFolder` to update the
+   * set on a running chat.
+   */
+  workingDirectories?: URI[];
 
   // ── Conversation contents ──────────────────────────────────────────
   /** Completed turns */
@@ -139,11 +152,16 @@ export interface ChatSummary {
   /**
    * Optional per-chat working directory.
    *
-   * If absent, the chat inherits
-   * {@link SessionSummary.workingDirectory | the session's working directory}.
-   * See {@link ChatState.workingDirectory} for usage notes.
+   * @deprecated Use {@link workingDirectories} instead. Retained as a
+   * single-directory shorthand for backwards compatibility. When
+   * `workingDirectories` is present this field reflects its first entry.
    */
   workingDirectory?: URI;
+  /**
+   * The subset of the session's working directories this chat uses.
+   * See {@link ChatState.workingDirectories} for the full semantics.
+   */
+  workingDirectories?: URI[];
 }
 
 /**

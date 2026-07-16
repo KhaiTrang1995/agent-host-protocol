@@ -1837,11 +1837,10 @@ public struct PartialChatSummary: Codable, Sendable {
     /// compatibility.
     public var interactivity: ChatInteractivity?
     /// Optional per-chat working directory.
-    ///
-    /// If absent, the chat inherits
-    /// {@link SessionSummary.workingDirectory | the session's working directory}.
-    /// See {@link ChatState.workingDirectory} for usage notes.
     public var workingDirectory: String?
+    /// The subset of the session's working directories this chat uses.
+    /// See {@link ChatState.workingDirectories} for the full semantics.
+    public var workingDirectories: [String]?
 
     public init(
         resource: String? = nil,
@@ -1851,7 +1850,8 @@ public struct PartialChatSummary: Codable, Sendable {
         modifiedAt: String? = nil,
         origin: ChatOrigin? = nil,
         interactivity: ChatInteractivity? = nil,
-        workingDirectory: String? = nil
+        workingDirectory: String? = nil,
+        workingDirectories: [String]? = nil
     ) {
         self.resource = resource
         self.title = title
@@ -1861,6 +1861,7 @@ public struct PartialChatSummary: Codable, Sendable {
         self.origin = origin
         self.interactivity = interactivity
         self.workingDirectory = workingDirectory
+        self.workingDirectories = workingDirectories
     }
 }
 

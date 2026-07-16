@@ -987,14 +987,21 @@ pub struct ChatState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interactivity: Option<ChatInteractivity>,
     /// Optional per-chat working directory.
-    ///
-    /// If absent, the chat inherits
-    /// {@link SessionState.workingDirectory | the session's working directory}.
-    /// Hosts MAY override this for individual chats — for example, to give a
-    /// subordinate chat its own git worktree so multiple chats in a session can
-    /// make independent edits that the orchestrator later merges back.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_directory: Option<Uri>,
+    /// The subset of the session's
+    /// {@link SessionState.workingDirectories | `workingDirectories`} that this
+    /// chat's agent has tool access to. Every entry MUST be present in the owning
+    /// session's `workingDirectories`; servers MUST reject `addChatWorkspaceFolder`
+    /// calls that violate this constraint.
+    ///
+    /// When absent, the chat inherits the full session set. When present but empty
+    /// (not recommended), the chat has no working-directory tool access at all.
+    ///
+    /// Use `addChatWorkspaceFolder` / `removeChatWorkspaceFolder` to update the
+    /// set on a running chat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directories: Option<Vec<Uri>>,
     /// Completed turns
     pub turns: Vec<Turn>,
     /// Cursor for loading older completed turns into this chat state.
@@ -1063,12 +1070,12 @@ pub struct ChatSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interactivity: Option<ChatInteractivity>,
     /// Optional per-chat working directory.
-    ///
-    /// If absent, the chat inherits
-    /// {@link SessionSummary.workingDirectory | the session's working directory}.
-    /// See {@link ChatState.workingDirectory} for usage notes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_directory: Option<Uri>,
+    /// The subset of the session's working directories this chat uses.
+    /// See {@link ChatState.workingDirectories} for the full semantics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directories: Option<Vec<Uri>>,
 }
 
 /// Full state for a single session, loaded when a client subscribes to the session's URI.
@@ -1099,6 +1106,16 @@ pub struct SessionState {
     /// does not.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_directory: Option<Uri>,
+    /// The full set of working directories the session's agent has tool access
+    /// to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
+    /// entries are equal peers — there is no privileged "primary". Individual
+    /// chats MAY restrict to a subset via
+    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
+    ///
+    /// When absent, fall back to {@link workingDirectory} (if set) as a
+    /// single-entry set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directories: Option<Vec<Uri>>,
     /// Lightweight summary of this session's inline annotations channel
     /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
     /// annotation / entry counts without subscribing. Absent when the session
@@ -1319,9 +1336,9 @@ pub struct SessionToolClientExecutionRequest {
 ///   chat currently driving the promoted status bits when a non-default chat
 ///   wins (e.g. the chat that raised `InputNeeded`).
 /// - `modifiedAt`: the max of all chats' `modifiedAt`.
-/// - `workingDirectory`: the session-level **default**. Individual chats MAY
-///   override via {@link ChatSummary.workingDirectory}; aggregating these up
-///   is meaningless and SHOULD NOT be attempted.
+/// - `workingDirectory` / `workingDirectories`: the session-level set. Individual
+///   chats MAY restrict to a subset via {@link ChatSummary.workingDirectories};
+///   aggregating these up is meaningless and SHOULD NOT be attempted.
 /// - `changes`: optional roll-up across all chats. Producers MAY sum the
 ///   per-chat changeset stats or report the most expensive chat's stats —
 ///   whichever is cheaper for the host to compute.
@@ -1350,6 +1367,16 @@ pub struct SessionSummary {
     /// does not.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_directory: Option<Uri>,
+    /// The full set of working directories the session's agent has tool access
+    /// to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
+    /// entries are equal peers — there is no privileged "primary". Individual
+    /// chats MAY restrict to a subset via
+    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
+    ///
+    /// When absent, fall back to {@link workingDirectory} (if set) as a
+    /// single-entry set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_directories: Option<Vec<Uri>>,
     /// Lightweight summary of this session's inline annotations channel
     /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
     /// annotation / entry counts without subscribing. Absent when the session

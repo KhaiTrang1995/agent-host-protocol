@@ -767,6 +767,13 @@
           "$ref": "#/$defs/URI",
           "description": "The default working directory URI for this session. Individual chats\nMAY override via {@link ChatSummary.workingDirectory | their own\n`workingDirectory`}; this field acts as the fallback for any chat that\ndoes not."
         },
+        "workingDirectories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The full set of working directories the session's agent has tool access\nto, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All\nentries are equal peers — there is no privileged \"primary\". Individual\nchats MAY restrict to a subset via\n{@link ChatSummary.workingDirectories | their own `workingDirectories`}.\n\nWhen absent, fall back to {@link workingDirectory} (if set) as a\nsingle-entry set."
+        },
         "annotations": {
           "$ref": "#/$defs/AnnotationsSummary",
           "description": "Lightweight summary of this session's inline annotations channel\n(`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render\nannotation / entry counts without subscribing. Absent when the session\ndoes not expose an annotations channel."
@@ -805,6 +812,13 @@
         "workingDirectory": {
           "$ref": "#/$defs/URI",
           "description": "The default working directory URI for this session. Individual chats\nMAY override via {@link ChatSummary.workingDirectory | their own\n`workingDirectory`}; this field acts as the fallback for any chat that\ndoes not."
+        },
+        "workingDirectories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The full set of working directories the session's agent has tool access\nto, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All\nentries are equal peers — there is no privileged \"primary\". Individual\nchats MAY restrict to a subset via\n{@link ChatSummary.workingDirectories | their own `workingDirectories`}.\n\nWhen absent, fall back to {@link workingDirectory} (if set) as a\nsingle-entry set."
         },
         "annotations": {
           "$ref": "#/$defs/AnnotationsSummary",
@@ -1049,7 +1063,7 @@
     },
     "SessionSummary": {
       "type": "object",
-      "description": "Lightweight catalog entry summarizing one session. Surfaced via\n{@link RootChannelCommands.listSessions | `root/listSessions`} and\n`root/sessionAdded`/`root/sessionSummaryChanged` notifications.\n\n**Aggregation across chats.** Once a session contains more than one chat,\nseveral `SessionSummary` fields are derived from the underlying\n{@link SessionState.chats | chat catalog}. Producers SHOULD follow these\nrules so clients that only consume the session summary (e.g. a session\nlist) still see meaningful state:\n\n- `status`: take the activity bits (`Idle` / `InProgress` / `InputNeeded` /\n  `Error` — bits 0–4) from the\n  {@link SessionState.defaultChat | default chat} when present, else from\n  the most recently modified chat. **Promote** `InputNeeded` whenever any\n  chat in the session needs input, and **promote** `Error` whenever any\n  chat is in an error state — both override the default-chat bits. The\n  orthogonal flag bits (`IsRead`, `IsArchived`) remain session-scoped.\n- `activity`: mirror the activity string of the default chat, or of the\n  chat currently driving the promoted status bits when a non-default chat\n  wins (e.g. the chat that raised `InputNeeded`).\n- `modifiedAt`: the max of all chats' `modifiedAt`.\n- `workingDirectory`: the session-level **default**. Individual chats MAY\n  override via {@link ChatSummary.workingDirectory}; aggregating these up\n  is meaningless and SHOULD NOT be attempted.\n- `changes`: optional roll-up across all chats. Producers MAY sum the\n  per-chat changeset stats or report the most expensive chat's stats —\n  whichever is cheaper for the host to compute.\n\nSessions with a single chat trivially satisfy all of the above (the chat's\nvalues pass through unchanged). The rules only matter once a session\ncarries multiple chats.",
+      "description": "Lightweight catalog entry summarizing one session. Surfaced via\n{@link RootChannelCommands.listSessions | `root/listSessions`} and\n`root/sessionAdded`/`root/sessionSummaryChanged` notifications.\n\n**Aggregation across chats.** Once a session contains more than one chat,\nseveral `SessionSummary` fields are derived from the underlying\n{@link SessionState.chats | chat catalog}. Producers SHOULD follow these\nrules so clients that only consume the session summary (e.g. a session\nlist) still see meaningful state:\n\n- `status`: take the activity bits (`Idle` / `InProgress` / `InputNeeded` /\n  `Error` — bits 0–4) from the\n  {@link SessionState.defaultChat | default chat} when present, else from\n  the most recently modified chat. **Promote** `InputNeeded` whenever any\n  chat in the session needs input, and **promote** `Error` whenever any\n  chat is in an error state — both override the default-chat bits. The\n  orthogonal flag bits (`IsRead`, `IsArchived`) remain session-scoped.\n- `activity`: mirror the activity string of the default chat, or of the\n  chat currently driving the promoted status bits when a non-default chat\n  wins (e.g. the chat that raised `InputNeeded`).\n- `modifiedAt`: the max of all chats' `modifiedAt`.\n- `workingDirectory` / `workingDirectories`: the session-level set. Individual\n  chats MAY restrict to a subset via {@link ChatSummary.workingDirectories};\n  aggregating these up is meaningless and SHOULD NOT be attempted.\n- `changes`: optional roll-up across all chats. Producers MAY sum the\n  per-chat changeset stats or report the most expensive chat's stats —\n  whichever is cheaper for the host to compute.\n\nSessions with a single chat trivially satisfy all of the above (the chat's\nvalues pass through unchanged). The rules only matter once a session\ncarries multiple chats.",
       "properties": {
         "provider": {
           "type": "string",
@@ -1074,6 +1088,13 @@
         "workingDirectory": {
           "$ref": "#/$defs/URI",
           "description": "The default working directory URI for this session. Individual chats\nMAY override via {@link ChatSummary.workingDirectory | their own\n`workingDirectory`}; this field acts as the fallback for any chat that\ndoes not."
+        },
+        "workingDirectories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The full set of working directories the session's agent has tool access\nto, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All\nentries are equal peers — there is no privileged \"primary\". Individual\nchats MAY restrict to a subset via\n{@link ChatSummary.workingDirectories | their own `workingDirectories`}.\n\nWhen absent, fall back to {@link workingDirectory} (if set) as a\nsingle-entry set."
         },
         "annotations": {
           "$ref": "#/$defs/AnnotationsSummary",
@@ -2301,7 +2322,14 @@
         },
         "workingDirectory": {
           "$ref": "#/$defs/URI",
-          "description": "Optional per-chat working directory.\n\nIf absent, the chat inherits\n{@link SessionState.workingDirectory | the session's working directory}.\nHosts MAY override this for individual chats — for example, to give a\nsubordinate chat its own git worktree so multiple chats in a session can\nmake independent edits that the orchestrator later merges back."
+          "description": "Optional per-chat working directory."
+        },
+        "workingDirectories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The subset of the session's\n{@link SessionState.workingDirectories | `workingDirectories`} that this\nchat's agent has tool access to. Every entry MUST be present in the owning\nsession's `workingDirectories`; servers MUST reject `addChatWorkspaceFolder`\ncalls that violate this constraint.\n\nWhen absent, the chat inherits the full session set. When present but empty\n(not recommended), the chat has no working-directory tool access at all.\n\nUse `addChatWorkspaceFolder` / `removeChatWorkspaceFolder` to update the\nset on a running chat."
         },
         "turns": {
           "type": "array",
@@ -2388,7 +2416,14 @@
         },
         "workingDirectory": {
           "$ref": "#/$defs/URI",
-          "description": "Optional per-chat working directory.\n\nIf absent, the chat inherits\n{@link SessionSummary.workingDirectory | the session's working directory}.\nSee {@link ChatState.workingDirectory} for usage notes."
+          "description": "Optional per-chat working directory."
+        },
+        "workingDirectories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The subset of the session's working directories this chat uses.\nSee {@link ChatState.workingDirectories} for the full semantics."
         }
       },
       "required": [
@@ -5874,6 +5909,13 @@
         "source": {
           "$ref": "#/$defs/ChatForkSource",
           "description": "Optional source chat and turn to fork from."
+        },
+        "workingDirectories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "Initial working-directory subset for this chat. Every entry MUST be\npresent in the owning session's `workingDirectories`; the server MUST\nreject any entry that is not. When absent, the chat inherits the full\nsession set. Forked chats (`source`) inherit the source chat's\n`workingDirectories`; this field is ignored for forked chats.\n\nA client MUST NOT supply this field unless the agent advertises\n{@link AgentCapabilities.multipleWorkspaceFolders}."
         }
       },
       "required": [
@@ -5892,6 +5934,90 @@
       },
       "required": [
         "channel"
+      ]
+    },
+    "AddChatWorkspaceFolderParams": {
+      "type": "object",
+      "description": "Grants this chat's agent tool access to a working directory, adding it to\nthe chat's {@link ChatState.workingDirectories | `workingDirectories`} subset.\nThe directory MUST already be present in the owning session's\n`workingDirectories`; servers MUST reject with `InvalidParams` otherwise.\n\nOnly valid when the agent advertises `multipleWorkspaceFolders`. Adding a\ndirectory already in the chat's set is a no-op that still returns the current\nfull set.",
+      "properties": {
+        "channel": {
+          "$ref": "#/$defs/URI",
+          "description": "Channel URI this command targets."
+        },
+        "folder": {
+          "$ref": "#/$defs/URI",
+          "description": "Directory to grant tool access to. Must be in the session's `workingDirectories`."
+        }
+      },
+      "required": [
+        "channel",
+        "folder"
+      ]
+    },
+    "RemoveChatWorkspaceFolderParams": {
+      "type": "object",
+      "description": "Revokes this chat's agent tool access to one of its working directories.\nAnalogous to the session-level `removeWorkspaceFolder`: the server\nreconfigures the chat to the reduced subset and returns it. Removing a\ndirectory not in the chat's set is a no-op that still returns the current\nfull set.\n\nOnly valid when the agent advertises `multipleWorkspaceFolders`.",
+      "properties": {
+        "channel": {
+          "$ref": "#/$defs/URI",
+          "description": "Channel URI this command targets."
+        },
+        "folder": {
+          "$ref": "#/$defs/URI",
+          "description": "Directory to revoke tool access to."
+        }
+      },
+      "required": [
+        "channel",
+        "folder"
+      ]
+    },
+    "ChatWorkspaceFolderResult": {
+      "type": "object",
+      "description": "Result shared by `addChatWorkspaceFolder` and `removeChatWorkspaceFolder`:\nthe chat's full working-directory subset after the mutation.",
+      "properties": {
+        "directories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The chat's working directories after the mutation."
+        }
+      },
+      "required": [
+        "directories"
+      ]
+    },
+    "AddChatWorkspaceFolderResult": {
+      "type": "object",
+      "description": "Result of the `addChatWorkspaceFolder` command. See {@link ChatWorkspaceFolderResult}.",
+      "properties": {
+        "directories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The chat's working directories after the mutation."
+        }
+      },
+      "required": [
+        "directories"
+      ]
+    },
+    "RemoveChatWorkspaceFolderResult": {
+      "type": "object",
+      "description": "Result of the `removeChatWorkspaceFolder` command. See {@link ChatWorkspaceFolderResult}.",
+      "properties": {
+        "directories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The chat's working directories after the mutation."
+        }
+      },
+      "required": [
+        "directories"
       ]
     },
     "CreateTerminalParams": {
@@ -7129,7 +7255,14 @@
             },
             "workingDirectory": {
               "$ref": "#/$defs/URI",
-              "description": "Optional per-chat working directory.\n\nIf absent, the chat inherits\n{@link SessionSummary.workingDirectory | the session's working directory}.\nSee {@link ChatState.workingDirectory} for usage notes."
+              "description": "Optional per-chat working directory."
+            },
+            "workingDirectories": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/URI"
+              },
+              "description": "The subset of the session's working directories this chat uses.\nSee {@link ChatState.workingDirectories} for the full semantics."
             }
           },
           "description": "Mutable summary fields that changed; omitted fields are unchanged.\n\nIdentity fields (`resource`) never change and MUST be omitted by\nsenders; receivers SHOULD ignore them if present."

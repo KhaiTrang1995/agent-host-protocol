@@ -512,17 +512,28 @@ public struct CreateChatParams: Codable, Sendable {
     public var initialMessage: Message?
     /// Optional source chat and turn to fork from.
     public var source: ChatForkSource?
+    /// Initial working-directory subset for this chat. Every entry MUST be
+    /// present in the owning session's `workingDirectories`; the server MUST
+    /// reject any entry that is not. When absent, the chat inherits the full
+    /// session set. Forked chats (`source`) inherit the source chat's
+    /// `workingDirectories`; this field is ignored for forked chats.
+    ///
+    /// A client MUST NOT supply this field unless the agent advertises
+    /// {@link AgentCapabilities.multipleWorkspaceFolders}.
+    public var workingDirectories: [String]?
 
     public init(
         channel: String,
         chat: String,
         initialMessage: Message? = nil,
-        source: ChatForkSource? = nil
+        source: ChatForkSource? = nil,
+        workingDirectories: [String]? = nil
     ) {
         self.channel = channel
         self.chat = chat
         self.initialMessage = initialMessage
         self.source = source
+        self.workingDirectories = workingDirectories
     }
 }
 
@@ -534,6 +545,69 @@ public struct DisposeChatParams: Codable, Sendable {
         channel: String
     ) {
         self.channel = channel
+    }
+}
+
+public struct AddChatWorkspaceFolderParams: Codable, Sendable {
+    /// Channel URI this command targets.
+    public var channel: String
+    /// Directory to grant tool access to. Must be in the session's `workingDirectories`.
+    public var folder: String
+
+    public init(
+        channel: String,
+        folder: String
+    ) {
+        self.channel = channel
+        self.folder = folder
+    }
+}
+
+public struct RemoveChatWorkspaceFolderParams: Codable, Sendable {
+    /// Channel URI this command targets.
+    public var channel: String
+    /// Directory to revoke tool access to.
+    public var folder: String
+
+    public init(
+        channel: String,
+        folder: String
+    ) {
+        self.channel = channel
+        self.folder = folder
+    }
+}
+
+public struct ChatWorkspaceFolderResult: Codable, Sendable {
+    /// The chat's working directories after the mutation.
+    public var directories: [String]
+
+    public init(
+        directories: [String]
+    ) {
+        self.directories = directories
+    }
+}
+
+public struct AddChatWorkspaceFolderResult: Codable, Sendable {
+    /// The chat's working directories after the mutation.
+    public var directories: [String]
+
+    public init(
+        directories: [String]
+    ) {
+        self.directories = directories
+    }
+}
+
+public struct RemoveChatWorkspaceFolderResult: Codable, Sendable {
+    /// The chat's working directories after the mutation.
+    public var directories: [String]
+
+    public init(
+        directories: [String]
+    ) {
+        self.directories = directories
     }
 }
 

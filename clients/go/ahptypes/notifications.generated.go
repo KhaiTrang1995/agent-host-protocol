@@ -222,6 +222,15 @@ type PartialSessionSummary struct {
 	// `workingDirectory`}; this field acts as the fallback for any chat that
 	// does not.
 	WorkingDirectory *URI `json:"workingDirectory,omitempty"`
+	// The full set of working directories the session's agent has tool access
+	// to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
+	// entries are equal peers — there is no privileged "primary". Individual
+	// chats MAY restrict to a subset via
+	// {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
+	//
+	// When absent, fall back to {@link workingDirectory} (if set) as a
+	// single-entry set.
+	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
 	// Lightweight summary of this session's inline annotations channel
 	// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
 	// annotation / entry counts without subscribing. Absent when the session
