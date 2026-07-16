@@ -214,49 +214,120 @@ flowchart LR
 
 ## 8. Protocol surface (for reviewers)
 
-The concrete, additive changes that back the framing above. Full detail lives in
-the [State Model](/guide/state-model#multiroot-sessions) and
-[Changesets](/guide/changesets) guides; this is the reviewer's map. Target spec
-version: **0.6.0**.
+The concrete, additive changes that back the framing above — a reviewer's map of
+the `types/` surface. Full prose detail lives in the
+[State Model](/guide/state-model#multiroot-sessions) and
+[Changesets](/guide/changesets) guides. Target spec version: **0.6.0**.
 
-**Capability** — `AgentCapabilities`
+Everything here is **additive and optional** — no field is required, no existing
+field changes type, and old clients that ignore the new surface behave exactly
+as today.
 
-- `multipleWorkspaceFolders?: MultipleWorkspaceFoldersCapability` — presence
-  (`{}`) signals support. When absent, clients MUST NOT send the add/remove
-  commands and MUST NOT supply more than one directory anywhere.
+### 8.1 Change table
 
-**Session** — `CreateSessionParams`, `SessionMetadata` (→ `SessionState` +
-`SessionSummary`)
+| Symbol | File | Kind |
+| --- | --- | --- |
+| `AgentCapabilities.multipleWorkspaceFolders?` | `channels-root/state.ts` | added (capability) |
+| `MultipleWorkspaceFoldersCapability` | `channels-root/state.ts` | added (type) |
+| `CreateSessionParams.workingDirectories?` | `channels-session/commands.ts` | added |
+| `CreateSessionParams.workingDirectory?` | `channels-session/commands.ts` | **deprecated** |
+| `SessionMetadata.workingDirectories?` (→ `SessionState`, `SessionSummary`) | `channels-session/state.ts` | added |
+| `SessionMetadata.workingDirectory?` | `channels-session/state.ts` | **deprecated** |
+| `addWorkspaceFolder` / `removeWorkspaceFolder` commands | `channels-session/commands.ts` | added (command) |
+| `WorkspaceFolderResult` (+ `Add…`/`Remove…Result`) | `channels-session/commands.ts` | added (type) |
+| `ChatState.workingDirectories?` / `ChatSummary.workingDirectories?` | `channels-chat/state.ts` | added |
+| `ChatState.workingDirectory?` / `ChatSummary.workingDirectory?` | `channels-chat/state.ts` | **deprecated** |
+| `CreateChatParams.workingDirectories?` | `channels-chat/commands.ts` | added |
+| `addChatWorkspaceFolder` / `removeChatWorkspaceFolder` commands | `channels-chat/commands.ts` | added (command) |
+| `ChatWorkspaceFolderResult` (+ `Add…`/`Remove…Result`) | `channels-chat/commands.ts` | added (type) |
+| `Changeset.workingDirectory?` + `'directory'` `changeKind` | `channels-changeset/state.ts` | added |
+| 4 command entries in `CommandMap` | `common/messages.ts` | added |
 
-- `workingDirectories?: URI[]` — the session's equal-peer directory set.
-- `workingDirectory?: URI` — **deprecated**; single-directory shorthand / mirror
-  of the first entry, retained for old clients.
+### 8.2 Type signatures
 
-**Runtime mutation** — new commands on the session channel
+```ts
+// ── Capability — channels-root/state.ts ──────────────────────────────────
+interface AgentCapabilities {
+  // …existing…
+  /** Presence ({}) = the agent supports >1 working directory per session. */
+  multipleWorkspaceFolders?: MultipleWorkspaceFoldersCapability;
+}
+interface MultipleWorkspaceFoldersCapability {} // presence-flag, reserved for options
 
-- `addWorkspaceFolder({ folder })` → `WorkspaceFolderResult { directories }`
-- `removeWorkspaceFolder({ folder })` → `WorkspaceFolderResult { directories }`
-  (idempotent; modelled as reconfigure-to-reduced-set; a server MAY refuse a
-  directory it can't relinquish while live).
+// ── Session create — channels-session/commands.ts ────────────────────────
+interface CreateSessionParams extends BaseParams {
+  // …existing…
+  /** The session's equal-peer working directories (no "primary"). */
+  workingDirectories?: URI[];
+  /** @deprecated single-directory shorthand; use workingDirectories. */
+  workingDirectory?: URI;
+}
 
-**Chat** — `ChatState`, `ChatSummary`, `CreateChatParams`
+// ── Session state — channels-session/state.ts (→ SessionState/SessionSummary)
+interface SessionMetadata {
+  // …existing…
+  workingDirectories?: URI[];
+  /** @deprecated mirror of workingDirectories[0] for old clients. */
+  workingDirectory?: URI;
+}
 
-- `workingDirectories?: URI[]` — the chat's subset (every entry MUST be one of
-  the session's). Absent → the session's whole set.
-- `workingDirectory?: URI` — **deprecated** singular shorthand.
+// ── Session runtime mutation — channels-session/commands.ts ───────────────
+// channel = session URI. Gated by multipleWorkspaceFolders.
+interface AddWorkspaceFolderParams    extends BaseParams { folder: URI; }
+interface RemoveWorkspaceFolderParams extends BaseParams { folder: URI; }
+interface WorkspaceFolderResult { directories: URI[]; } // full set after mutation
+interface AddWorkspaceFolderResult    extends WorkspaceFolderResult {}
+interface RemoveWorkspaceFolderResult extends WorkspaceFolderResult {}
 
-**Changes** — `Changeset`
+// ── Chat — channels-chat/state.ts & commands.ts ──────────────────────────
+interface ChatState /* and ChatSummary */ {
+  // …existing…
+  /** The chat's subset — every entry MUST be one of the session's dirs. */
+  workingDirectories?: URI[];
+  /** @deprecated single-directory shorthand. */
+  workingDirectory?: URI;
+}
+interface CreateChatParams extends BaseParams {
+  // …existing…
+  workingDirectories?: URI[]; // subset ⊆ session; absent → whole session set
+}
+// channel = chat URI. Gated by multipleWorkspaceFolders.
+interface AddChatWorkspaceFolderParams    extends BaseParams { folder: URI; }
+interface RemoveChatWorkspaceFolderParams extends BaseParams { folder: URI; }
+interface ChatWorkspaceFolderResult { directories: URI[]; }
+interface AddChatWorkspaceFolderResult    extends ChatWorkspaceFolderResult {}
+interface RemoveChatWorkspaceFolderResult extends ChatWorkspaceFolderResult {}
 
-- `workingDirectory?: URI` — the directory a changeset is scoped to; plus a
-  `'directory'` `changeKind` hint. Multiroot sessions advertise one changeset per
-  directory instead of nesting changes.
+// ── Changes — channels-changeset/state.ts ────────────────────────────────
+interface Changeset {
+  // …existing…
+  changeKind: string; // now also accepts 'directory'
+  /** Directory this changeset is scoped to (one of the session's dirs). */
+  workingDirectory?: URI;
+}
 
-**Versioning / gating**
+// ── Command registry — common/messages.ts ────────────────────────────────
+interface CommandMap {
+  // …existing…
+  addWorkspaceFolder:        { params: AddWorkspaceFolderParams;        result: AddWorkspaceFolderResult };
+  removeWorkspaceFolder:     { params: RemoveWorkspaceFolderParams;     result: RemoveWorkspaceFolderResult };
+  addChatWorkspaceFolder:    { params: AddChatWorkspaceFolderParams;    result: AddChatWorkspaceFolderResult };
+  removeChatWorkspaceFolder: { params: RemoveChatWorkspaceFolderParams; result: RemoveChatWorkspaceFolderResult };
+}
+```
 
-- `PROTOCOL_VERSION` bumps `0.5.1 → 0.6.0` (a capability boundary). The new
-  commands are gated by the capability + the `initialize` version handshake, not
-  by the action/notification introduced-in maps (they are commands, like
-  `createChat`).
+### 8.3 Versioning & gating
+
+- `PROTOCOL_VERSION` is **`0.6.0`** (a capability boundary; the branch's base
+  already advanced the ongoing-dev version to `0.6.0`). `SUPPORTED_PROTOCOL_VERSIONS`
+  = `[0.6.0, 0.5.2, 0.5.1]`.
+- The four new commands are gated by the `multipleWorkspaceFolders` capability
+  **plus** the `initialize` version handshake — not by the
+  `ACTION_INTRODUCED_IN` / `NOTIFICATION_INTRODUCED_IN` maps (those track state
+  actions and server notifications; commands are gated like `createChat`).
+- Removal (`removeWorkspaceFolder` / `removeChatWorkspaceFolder`) is idempotent
+  and modelled as *reconfigure-to-the-reduced-set*; a server MAY refuse a
+  directory it cannot relinquish while live.
 
 ---
 
