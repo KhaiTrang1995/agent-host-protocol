@@ -153,7 +153,7 @@ export interface DisposeSessionParams extends BaseParams {}
  * @method addWorkspaceFolder
  * @direction Client → Server
  * @messageType Request
- * @version 0.6.0
+ * @version 1
  */
 export interface AddWorkspaceFolderParams extends BaseParams {
   /** Directory to grant tool access to. */
@@ -179,7 +179,7 @@ export interface AddWorkspaceFolderParams extends BaseParams {
  * @method removeWorkspaceFolder
  * @direction Client → Server
  * @messageType Request
- * @version 0.6.0
+ * @version 1
  */
 export interface RemoveWorkspaceFolderParams extends BaseParams {
   /** Directory to revoke tool access to. */

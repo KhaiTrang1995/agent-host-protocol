@@ -81,7 +81,7 @@ export interface DisposeChatParams extends BaseParams {}
  * @method addChatWorkspaceFolder
  * @direction Client → Server
  * @messageType Request
- * @version 0.6.0
+ * @version 1
  */
 export interface AddChatWorkspaceFolderParams extends BaseParams {
   /** Directory to grant tool access to. Must be in the session's `workingDirectories`. */
@@ -103,7 +103,7 @@ export interface AddChatWorkspaceFolderParams extends BaseParams {
  * @method removeChatWorkspaceFolder
  * @direction Client → Server
  * @messageType Request
- * @version 0.6.0
+ * @version 1
  */
 export interface RemoveChatWorkspaceFolderParams extends BaseParams {
   /** Directory to revoke tool access to. */
