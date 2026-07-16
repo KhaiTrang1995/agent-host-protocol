@@ -515,7 +515,7 @@ public fun sessionReducer(state: SessionState, action: StateAction): SessionStat
                 activity = c.activity ?: prior.activity,
                 modifiedAt = c.modifiedAt ?: prior.modifiedAt,
                 origin = c.origin ?: prior.origin,
-                workingDirectory = c.workingDirectory ?: prior.workingDirectory,
+                workingDirectories = c.workingDirectories ?: prior.workingDirectories,
             )
             val updated = state.chats.toMutableList()
             updated[idx] = updatedSummary

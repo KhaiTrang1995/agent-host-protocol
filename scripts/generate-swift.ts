@@ -1108,6 +1108,10 @@ const ACTION_VARIANTS: { type: string; caseName: string; tsInterface: string }[]
   { type: 'session/serverToolsChanged', caseName: 'sessionServerToolsChanged', tsInterface: 'SessionServerToolsChangedAction' },
   { type: 'session/activeClientSet', caseName: 'sessionActiveClientSet', tsInterface: 'SessionActiveClientSetAction' },
   { type: 'session/activeClientRemoved', caseName: 'sessionActiveClientRemoved', tsInterface: 'SessionActiveClientRemovedAction' },
+  { type: 'session/workingDirectorySet', caseName: 'sessionWorkingDirectorySet', tsInterface: 'SessionWorkingDirectorySetAction' },
+  { type: 'session/workingDirectoryRemoved', caseName: 'sessionWorkingDirectoryRemoved', tsInterface: 'SessionWorkingDirectoryRemovedAction' },
+  { type: 'chat/workingDirectorySet', caseName: 'chatWorkingDirectorySet', tsInterface: 'ChatWorkingDirectorySetAction' },
+  { type: 'chat/workingDirectoryRemoved', caseName: 'chatWorkingDirectoryRemoved', tsInterface: 'ChatWorkingDirectoryRemovedAction' },
   { type: 'session/inputNeededSet', caseName: 'sessionInputNeededSet', tsInterface: 'SessionInputNeededSetAction' },
   { type: 'session/inputNeededRemoved', caseName: 'sessionInputNeededRemoved', tsInterface: 'SessionInputNeededRemovedAction' },
   { type: 'chat/pendingMessageSet', caseName: 'chatPendingMessageSet', tsInterface: 'ChatPendingMessageSetAction' },
@@ -1328,11 +1332,7 @@ const COMMAND_STRUCTS = [
   'ReconnectParams', 'ReconnectReplayResult', 'ReconnectSnapshotResult',
   'SubscribeParams', 'SubscribeView', 'SubscriptionDeliveryOptions', 'SubscribeResult',
   'SessionForkSource', 'CreateSessionParams', 'DisposeSessionParams',
-  'AddWorkspaceFolderParams', 'RemoveWorkspaceFolderParams',
-  'WorkspaceFolderResult', 'AddWorkspaceFolderResult', 'RemoveWorkspaceFolderResult',
   'ChatForkSource', 'CreateChatParams', 'DisposeChatParams',
-  'AddChatWorkspaceFolderParams', 'RemoveChatWorkspaceFolderParams',
-  'ChatWorkspaceFolderResult', 'AddChatWorkspaceFolderResult', 'RemoveChatWorkspaceFolderResult',
   'ListSessionsParams', 'ListSessionsResult',
   'ResourceReadParams', 'ResourceReadResult',
   'ResourceWriteParams', 'ResourceWriteResult',
@@ -1689,14 +1689,6 @@ public enum AHPCommands {
 
     public static func disposeSession(id: Int, params: DisposeSessionParams) -> JsonRpcRequest<DisposeSessionParams> {
         JsonRpcRequest(id: id, method: "disposeSession", params: params)
-    }
-
-    public static func addWorkspaceFolder(id: Int, params: AddWorkspaceFolderParams) -> JsonRpcRequest<AddWorkspaceFolderParams> {
-        JsonRpcRequest(id: id, method: "addWorkspaceFolder", params: params)
-    }
-
-    public static func removeWorkspaceFolder(id: Int, params: RemoveWorkspaceFolderParams) -> JsonRpcRequest<RemoveWorkspaceFolderParams> {
-        JsonRpcRequest(id: id, method: "removeWorkspaceFolder", params: params)
     }
 
     public static func listSessions(id: Int, params: ListSessionsParams) -> JsonRpcRequest<ListSessionsParams> {

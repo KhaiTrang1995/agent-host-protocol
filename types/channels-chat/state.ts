@@ -58,26 +58,17 @@ export interface ChatState {
    */
   interactivity?: ChatInteractivity;
   /**
-   * Optional per-chat working directory.
-   *
-   * @deprecated Use {@link workingDirectories} instead. Retained as a
-   * single-directory shorthand for backwards compatibility. When
-   * `workingDirectories` is present this field reflects its first entry so
-   * older clients continue to see a usable value.
-   */
-  workingDirectory?: URI;
-  /**
    * The subset of the session's
    * {@link SessionState.workingDirectories | `workingDirectories`} that this
    * chat's agent has tool access to. Every entry MUST be present in the owning
-   * session's `workingDirectories`; servers MUST reject `addChatWorkspaceFolder`
-   * calls that violate this constraint.
+   * session's `workingDirectories`; servers MUST reject a
+   * `chat/workingDirectorySet` action that violates this constraint.
    *
    * When absent, the chat inherits the full session set. When present but empty
    * (not recommended), the chat has no working-directory tool access at all.
    *
-   * Use `addChatWorkspaceFolder` / `removeChatWorkspaceFolder` to update the
-   * set on a running chat.
+   * Dispatch `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` to
+   * update the subset on a running chat.
    */
   workingDirectories?: URI[];
 
@@ -149,14 +140,6 @@ export interface ChatSummary {
    * compatibility.
    */
   interactivity?: ChatInteractivity;
-  /**
-   * Optional per-chat working directory.
-   *
-   * @deprecated Use {@link workingDirectories} instead. Retained as a
-   * single-directory shorthand for backwards compatibility. When
-   * `workingDirectories` is present this field reflects its first entry.
-   */
-  workingDirectory?: URI;
   /**
    * The subset of the session's working directories this chat uses.
    * See {@link ChatState.workingDirectories} for the full semantics.

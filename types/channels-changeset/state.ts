@@ -67,15 +67,24 @@ export interface Changeset {
    */
   changeKind: string;
   /**
-   * The working directory this changeset is scoped to, when it covers changes
-   * within a single directory of a multiroot session. MUST be one of the
-   * session's {@link SessionState.workingDirectories}.
+   * The working directory this changeset is scoped to. When set, it MUST be one
+   * of the owning session's {@link SessionState.workingDirectories}, and every
+   * file in the changeset belongs to that directory.
    *
-   * A host with multiple working directories groups changes by directory by
-   * advertising one changeset per directory, each carrying its
-   * `workingDirectory` — rather than nesting changes as arrays-of-arrays.
-   * Omit for changesets that are not directory-scoped (e.g. a single-directory
-   * session, or a session-wide roll-up spanning every directory).
+   * **Grouping is the host's responsibility, not the client's.** A host whose
+   * session has multiple working directories MUST group changes by directory —
+   * emitting one changeset per working directory, each carrying its
+   * `workingDirectory` — so that a client never has to derive a file's owning
+   * directory itself (e.g. by prefix-matching URIs, which the client cannot do
+   * correctly across nested repositories, symlinks, or submodules). This keeps
+   * AHP a display-ready presentation model (see the
+   * {@link /guide/doctrine | doctrine}): the host owns the filesystem/VCS
+   * knowledge and hands clients pre-grouped changesets.
+   *
+   * Omit only for changesets that are genuinely not scoped to a single working
+   * directory — e.g. a single-directory session (nothing to group), or an
+   * aggregate roll-up / out-of-tree changeset that intentionally spans (or sits
+   * outside) the working directories.
    */
   workingDirectory?: URI;
   /**

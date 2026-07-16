@@ -17,6 +17,8 @@ import type {
   SessionServerToolsChangedAction,
   SessionActiveClientSetAction,
   SessionActiveClientRemovedAction,
+  SessionWorkingDirectorySetAction,
+  SessionWorkingDirectoryRemovedAction,
   SessionInputNeededSetAction,
   SessionInputNeededRemovedAction,
   SessionCustomizationsChangedAction,
@@ -46,6 +48,8 @@ import type {
   ChatTurnCancelledAction,
   ChatErrorAction,
   ChatActivityChangedAction,
+  ChatWorkingDirectorySetAction,
+  ChatWorkingDirectoryRemovedAction,
   ChatUsageAction,
   ChatReasoningAction,
   ChatPendingMessageSetAction,
@@ -120,6 +124,8 @@ export type SessionAction =
   | SessionServerToolsChangedAction
   | SessionActiveClientSetAction
   | SessionActiveClientRemovedAction
+  | SessionWorkingDirectorySetAction
+  | SessionWorkingDirectoryRemovedAction
   | SessionInputNeededSetAction
   | SessionInputNeededRemovedAction
   | SessionCustomizationsChangedAction
@@ -142,6 +148,8 @@ export type ClientSessionAction =
   | SessionTitleChangedAction
   | SessionActiveClientSetAction
   | SessionActiveClientRemovedAction
+  | SessionWorkingDirectorySetAction
+  | SessionWorkingDirectoryRemovedAction
   | SessionCustomizationToggledAction
   | SessionMcpServerStartRequestedAction
   | SessionMcpServerStopRequestedAction
@@ -186,6 +194,8 @@ export type ChatAction =
   | ChatTurnCancelledAction
   | ChatErrorAction
   | ChatActivityChangedAction
+  | ChatWorkingDirectorySetAction
+  | ChatWorkingDirectoryRemovedAction
   | ChatUsageAction
   | ChatReasoningAction
   | ChatPendingMessageSetAction
@@ -207,6 +217,8 @@ export type ClientChatAction =
   | ChatToolCallResultConfirmedAction
   | ChatToolCallContentChangedAction
   | ChatTurnCancelledAction
+  | ChatWorkingDirectorySetAction
+  | ChatWorkingDirectoryRemovedAction
   | ChatPendingMessageSetAction
   | ChatPendingMessageRemovedAction
   | ChatQueuedMessagesReorderedAction
@@ -353,6 +365,8 @@ export const IS_CLIENT_DISPATCHABLE: { readonly [K in StateAction['type']]: bool
   [ActionType.SessionServerToolsChanged]: false,
   [ActionType.SessionActiveClientSet]: true,
   [ActionType.SessionActiveClientRemoved]: true,
+  [ActionType.SessionWorkingDirectorySet]: true,
+  [ActionType.SessionWorkingDirectoryRemoved]: true,
   [ActionType.SessionInputNeededSet]: false,
   [ActionType.SessionInputNeededRemoved]: false,
   [ActionType.SessionCustomizationsChanged]: false,
@@ -382,6 +396,8 @@ export const IS_CLIENT_DISPATCHABLE: { readonly [K in StateAction['type']]: bool
   [ActionType.ChatTurnCancelled]: true,
   [ActionType.ChatError]: false,
   [ActionType.ChatActivityChanged]: false,
+  [ActionType.ChatWorkingDirectorySet]: true,
+  [ActionType.ChatWorkingDirectoryRemoved]: true,
   [ActionType.ChatUsage]: false,
   [ActionType.ChatReasoning]: false,
   [ActionType.ChatPendingMessageSet]: true,

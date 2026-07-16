@@ -49,10 +49,6 @@ import type {
 import type {
   CreateSessionParams,
   DisposeSessionParams,
-  AddWorkspaceFolderParams,
-  AddWorkspaceFolderResult,
-  RemoveWorkspaceFolderParams,
-  RemoveWorkspaceFolderResult,
   FetchTurnsParams,
   FetchTurnsResult,
   CompletionsParams,
@@ -61,10 +57,6 @@ import type {
 import type {
   CreateChatParams,
   DisposeChatParams,
-  AddChatWorkspaceFolderParams,
-  AddChatWorkspaceFolderResult,
-  RemoveChatWorkspaceFolderParams,
-  RemoveChatWorkspaceFolderResult,
 } from '../channels-chat/commands.js';
 import type {
   CreateTerminalParams,
@@ -161,12 +153,8 @@ export interface CommandMap {
   'subscribe': { params: SubscribeParams; result: SubscribeResult };
   'createSession': { params: CreateSessionParams; result: null };
   'disposeSession': { params: DisposeSessionParams; result: null };
-  'addWorkspaceFolder': { params: AddWorkspaceFolderParams; result: AddWorkspaceFolderResult };
-  'removeWorkspaceFolder': { params: RemoveWorkspaceFolderParams; result: RemoveWorkspaceFolderResult };
   'createChat': { params: CreateChatParams; result: null };
   'disposeChat': { params: DisposeChatParams; result: null };
-  'addChatWorkspaceFolder': { params: AddChatWorkspaceFolderParams; result: AddChatWorkspaceFolderResult };
-  'removeChatWorkspaceFolder': { params: RemoveChatWorkspaceFolderParams; result: RemoveChatWorkspaceFolderResult };
   'createTerminal': { params: CreateTerminalParams; result: null };
   'disposeTerminal': { params: DisposeTerminalParams; result: null };
   'createResourceWatch': { params: CreateResourceWatchParams; result: CreateResourceWatchResult };

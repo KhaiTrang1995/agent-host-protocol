@@ -64,7 +64,11 @@ unknown variables.
 
 ### Multiroot Sessions
 
-A session with multiple [working directories](/guide/state-model#multiroot-sessions) groups its changes **by directory**: the host advertises one catalogue entry per working directory, each carrying a `workingDirectory` (one of the session's `workingDirectories`) and typically `changeKind: 'directory'`. This keeps each changeset a flat list of files rather than nesting changes as arrays-of-arrays. A host MAY additionally advertise a session-wide entry (no `workingDirectory`) that rolls up every directory.
+Grouping changes by directory is the **host's** responsibility, not the client's. A host whose session has multiple [working directories](/guide/state-model#multiroot-sessions) **MUST** group its changes by directory — advertising one catalogue entry per working directory, each carrying a `workingDirectory` (one of the session's `workingDirectories`) and typically `changeKind: 'directory'`. Each such changeset is a flat list of files belonging to that one directory.
+
+This follows AHP's [doctrine](/guide/doctrine): the protocol is a display-ready presentation model in which the host owns the authoritative filesystem/VCS knowledge. A client MUST NOT be required to derive a file's owning directory itself (e.g. by prefix-matching URIs) — which it cannot do correctly across nested repositories, symlinks, or submodules. The host, which knows the real repository boundaries, hands clients pre-grouped changesets.
+
+`workingDirectory` is omitted only for changesets that are genuinely not scoped to one directory: a single-directory session, or an intentional aggregate roll-up / out-of-tree changeset.
 
 ### Changeset State
 

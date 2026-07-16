@@ -627,8 +627,8 @@ pub fn apply_action_to_session(state: &mut SessionState, action: &StateAction) -
             if let Some(origin) = &a.changes.origin {
                 chat.origin = Some(origin.clone());
             }
-            if let Some(working_directory) = &a.changes.working_directory {
-                chat.working_directory = Some(working_directory.clone());
+            if let Some(working_directories) = &a.changes.working_directories {
+                chat.working_directories = Some(working_directories.clone());
             }
             ReduceOutcome::Applied
         }
@@ -1742,7 +1742,7 @@ mod tests {
             status: SessionStatus::Idle.bits(),
             activity: None,
             project: None,
-            working_directory: None,
+            working_directories: None,
             annotations: None,
             lifecycle: SessionLifecycle::Creating,
             creation_error: None,
@@ -1767,7 +1767,7 @@ mod tests {
             modified_at: "1970-01-01T00:00:00.000Z".into(),
             origin: None,
             interactivity: None,
-            working_directory: None,
+            working_directories: None,
             turns: Vec::new(),
             turns_next_cursor: None,
             active_turn: None,
@@ -1864,7 +1864,7 @@ mod tests {
             modified_at: "1970-01-01T00:00:00.000Z".into(),
             origin: None,
             interactivity: None,
-            working_directory: None,
+            working_directories: None,
         };
         let added = StateAction::SessionChatAdded(ahp_types::actions::SessionChatAddedAction {
             summary: chat.clone(),

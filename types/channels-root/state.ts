@@ -112,9 +112,12 @@ export interface AgentCapabilities {
   multipleChats?: MultipleChatsCapability;
   /**
    * The session's agent can be granted tool access to more than one working
-   * directory, with all directories treated as equal peers (no primary). When
-   * absent, clients MUST NOT call `addWorkspaceFolder` / `removeWorkspaceFolder`
-   * and MUST NOT set more than one entry in
+   * directory. The directories are treated as equal peers except where the
+   * agent advertises {@link MultipleWorkspaceFoldersCapability.immutablePrimary}
+   * (some backends pin their first directory as a fixed process root).
+   *
+   * When absent, clients MUST NOT mutate a session's or chat's working-directory
+   * set and MUST NOT set more than one entry in
    * {@link CreateSessionParams.workingDirectories}.
    */
   multipleWorkspaceFolders?: MultipleWorkspaceFoldersCapability;
@@ -136,12 +139,24 @@ export interface MultipleChatsCapability {
 
 /**
  * Options for the {@link AgentCapabilities.multipleWorkspaceFolders} capability.
- * Currently carries no sub-options; presence of an empty object `{}` is the
- * entire signal.
  *
  * @category Root State
  */
-export interface MultipleWorkspaceFoldersCapability {}
+export interface MultipleWorkspaceFoldersCapability {
+  /**
+   * The agent's **first** working directory (index `0` of
+   * {@link CreateSessionParams.workingDirectories}) is an immutable primary:
+   * it is fixed for the lifetime of the session — clients MUST NOT remove or
+   * reorder it. Additional directories after it remain equal peers that can be
+   * added and removed freely.
+   *
+   * Advertised by backends whose agent process is rooted at a single directory
+   * that cannot change once the session has started (e.g. the SDK's primary
+   * `workingDirectory`). When absent or `false`, all directories are equal
+   * peers and any of them may be removed.
+   */
+  immutablePrimary?: boolean;
+}
 
 /**
  * @category Root State

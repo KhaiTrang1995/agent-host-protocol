@@ -182,19 +182,15 @@ public struct PartialSessionSummary: Codable, Sendable {
     public var activity: String?
     /// Server-owned project for this session
     public var project: ProjectInfo?
-    /// The default working directory URI for this session. Individual chats
-    /// MAY override via {@link ChatSummary.workingDirectory | their own
-    /// `workingDirectory`}; this field acts as the fallback for any chat that
-    /// does not.
-    public var workingDirectory: String?
-    /// The full set of working directories the session's agent has tool access
-    /// to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
-    /// entries are equal peers — there is no privileged "primary". Individual
-    /// chats MAY restrict to a subset via
-    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
-    ///
-    /// When absent, fall back to {@link workingDirectory} (if set) as a
-    /// single-entry set.
+    /// The working directories the session's agent has tool access to, as
+    /// maintained by the `session/workingDirectorySet` /
+    /// `session/workingDirectoryRemoved` actions. Directories are equal peers
+    /// except when the agent advertises
+    /// {@link MultipleWorkspaceFoldersCapability.immutablePrimary} (the first
+    /// entry is then a fixed process root). Individual chats MAY restrict to a
+    /// subset via {@link ChatSummary.workingDirectories | their own
+    /// `workingDirectories`}; a chat that sets none operates against this full
+    /// set.
     public var workingDirectories: [String]?
     /// Lightweight summary of this session's inline annotations channel
     /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
@@ -224,7 +220,6 @@ public struct PartialSessionSummary: Codable, Sendable {
         case status
         case activity
         case project
-        case workingDirectory
         case workingDirectories
         case annotations
         case resource
@@ -240,7 +235,6 @@ public struct PartialSessionSummary: Codable, Sendable {
         status: SessionStatus? = nil,
         activity: String? = nil,
         project: ProjectInfo? = nil,
-        workingDirectory: String? = nil,
         workingDirectories: [String]? = nil,
         annotations: AnnotationsSummary? = nil,
         resource: String? = nil,
@@ -254,7 +248,6 @@ public struct PartialSessionSummary: Codable, Sendable {
         self.status = status
         self.activity = activity
         self.project = project
-        self.workingDirectory = workingDirectory
         self.workingDirectories = workingDirectories
         self.annotations = annotations
         self.resource = resource

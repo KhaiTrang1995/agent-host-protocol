@@ -616,9 +616,12 @@ public struct AgentCapabilities: Codable, Sendable {
     /// forking; set {@link MultipleChatsCapability.fork} to also allow forking.
     public var multipleChats: MultipleChatsCapability?
     /// The session's agent can be granted tool access to more than one working
-    /// directory, with all directories treated as equal peers (no primary). When
-    /// absent, clients MUST NOT call `addWorkspaceFolder` / `removeWorkspaceFolder`
-    /// and MUST NOT set more than one entry in
+    /// directory. The directories are treated as equal peers except where the
+    /// agent advertises {@link MultipleWorkspaceFoldersCapability.immutablePrimary}
+    /// (some backends pin their first directory as a fixed process root).
+    ///
+    /// When absent, clients MUST NOT mutate a session's or chat's working-directory
+    /// set and MUST NOT set more than one entry in
     /// {@link CreateSessionParams.workingDirectories}.
     public var multipleWorkspaceFolders: MultipleWorkspaceFoldersCapability?
 
@@ -645,10 +648,22 @@ public struct MultipleChatsCapability: Codable, Sendable {
 }
 
 public struct MultipleWorkspaceFoldersCapability: Codable, Sendable {
+    /// The agent's **first** working directory (index `0` of
+    /// {@link CreateSessionParams.workingDirectories}) is an immutable primary:
+    /// it is fixed for the lifetime of the session — clients MUST NOT remove or
+    /// reorder it. Additional directories after it remain equal peers that can be
+    /// added and removed freely.
+    ///
+    /// Advertised by backends whose agent process is rooted at a single directory
+    /// that cannot change once the session has started (e.g. the SDK's primary
+    /// `workingDirectory`). When absent or `false`, all directories are equal
+    /// peers and any of them may be removed.
+    public var immutablePrimary: Bool?
 
     public init(
-
+        immutablePrimary: Bool? = nil
     ) {
+        self.immutablePrimary = immutablePrimary
     }
 }
 
@@ -868,19 +883,17 @@ public struct ChatState: Codable, Sendable {
     /// Absence defaults to {@link ChatInteractivity.Full} for backward
     /// compatibility.
     public var interactivity: ChatInteractivity?
-    /// Optional per-chat working directory.
-    public var workingDirectory: String?
     /// The subset of the session's
     /// {@link SessionState.workingDirectories | `workingDirectories`} that this
     /// chat's agent has tool access to. Every entry MUST be present in the owning
-    /// session's `workingDirectories`; servers MUST reject `addChatWorkspaceFolder`
-    /// calls that violate this constraint.
+    /// session's `workingDirectories`; servers MUST reject a
+    /// `chat/workingDirectorySet` action that violates this constraint.
     ///
     /// When absent, the chat inherits the full session set. When present but empty
     /// (not recommended), the chat has no working-directory tool access at all.
     ///
-    /// Use `addChatWorkspaceFolder` / `removeChatWorkspaceFolder` to update the
-    /// set on a running chat.
+    /// Dispatch `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` to
+    /// update the subset on a running chat.
     public var workingDirectories: [String]?
     /// Completed turns
     public var turns: [Turn]
@@ -922,7 +935,6 @@ public struct ChatState: Codable, Sendable {
         case modifiedAt
         case origin
         case interactivity
-        case workingDirectory
         case workingDirectories
         case turns
         case turnsNextCursor
@@ -942,7 +954,6 @@ public struct ChatState: Codable, Sendable {
         modifiedAt: String,
         origin: ChatOrigin? = nil,
         interactivity: ChatInteractivity? = nil,
-        workingDirectory: String? = nil,
         workingDirectories: [String]? = nil,
         turns: [Turn],
         turnsNextCursor: String? = nil,
@@ -960,7 +971,6 @@ public struct ChatState: Codable, Sendable {
         self.modifiedAt = modifiedAt
         self.origin = origin
         self.interactivity = interactivity
-        self.workingDirectory = workingDirectory
         self.workingDirectories = workingDirectories
         self.turns = turns
         self.turnsNextCursor = turnsNextCursor
@@ -992,8 +1002,6 @@ public struct ChatSummary: Codable, Sendable {
     /// Absence defaults to {@link ChatInteractivity.Full} for backward
     /// compatibility.
     public var interactivity: ChatInteractivity?
-    /// Optional per-chat working directory.
-    public var workingDirectory: String?
     /// The subset of the session's working directories this chat uses.
     /// See {@link ChatState.workingDirectories} for the full semantics.
     public var workingDirectories: [String]?
@@ -1006,7 +1014,6 @@ public struct ChatSummary: Codable, Sendable {
         modifiedAt: String,
         origin: ChatOrigin? = nil,
         interactivity: ChatInteractivity? = nil,
-        workingDirectory: String? = nil,
         workingDirectories: [String]? = nil
     ) {
         self.resource = resource
@@ -1016,7 +1023,6 @@ public struct ChatSummary: Codable, Sendable {
         self.modifiedAt = modifiedAt
         self.origin = origin
         self.interactivity = interactivity
-        self.workingDirectory = workingDirectory
         self.workingDirectories = workingDirectories
     }
 }
@@ -1032,19 +1038,15 @@ public struct SessionState: Codable, Sendable {
     public var activity: String?
     /// Server-owned project for this session
     public var project: ProjectInfo?
-    /// The default working directory URI for this session. Individual chats
-    /// MAY override via {@link ChatSummary.workingDirectory | their own
-    /// `workingDirectory`}; this field acts as the fallback for any chat that
-    /// does not.
-    public var workingDirectory: String?
-    /// The full set of working directories the session's agent has tool access
-    /// to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
-    /// entries are equal peers — there is no privileged "primary". Individual
-    /// chats MAY restrict to a subset via
-    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
-    ///
-    /// When absent, fall back to {@link workingDirectory} (if set) as a
-    /// single-entry set.
+    /// The working directories the session's agent has tool access to, as
+    /// maintained by the `session/workingDirectorySet` /
+    /// `session/workingDirectoryRemoved` actions. Directories are equal peers
+    /// except when the agent advertises
+    /// {@link MultipleWorkspaceFoldersCapability.immutablePrimary} (the first
+    /// entry is then a fixed process root). Individual chats MAY restrict to a
+    /// subset via {@link ChatSummary.workingDirectories | their own
+    /// `workingDirectories`}; a chat that sets none operates against this full
+    /// set.
     public var workingDirectories: [String]?
     /// Lightweight summary of this session's inline annotations channel
     /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
@@ -1121,7 +1123,7 @@ public struct SessionState: Codable, Sendable {
     ///
     /// Clients MAY look for well-known keys here to provide enhanced UI.
     /// For example, a `git` key may provide extra git metadata about the session's
-    /// workingDirectory.
+    /// working directories.
     public var meta: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
@@ -1130,7 +1132,6 @@ public struct SessionState: Codable, Sendable {
         case status
         case activity
         case project
-        case workingDirectory
         case workingDirectories
         case annotations
         case lifecycle
@@ -1152,7 +1153,6 @@ public struct SessionState: Codable, Sendable {
         status: SessionStatus,
         activity: String? = nil,
         project: ProjectInfo? = nil,
-        workingDirectory: String? = nil,
         workingDirectories: [String]? = nil,
         annotations: AnnotationsSummary? = nil,
         lifecycle: SessionLifecycle,
@@ -1172,7 +1172,6 @@ public struct SessionState: Codable, Sendable {
         self.status = status
         self.activity = activity
         self.project = project
-        self.workingDirectory = workingDirectory
         self.workingDirectories = workingDirectories
         self.annotations = annotations
         self.lifecycle = lifecycle
@@ -1327,19 +1326,15 @@ public struct SessionSummary: Codable, Sendable {
     public var activity: String?
     /// Server-owned project for this session
     public var project: ProjectInfo?
-    /// The default working directory URI for this session. Individual chats
-    /// MAY override via {@link ChatSummary.workingDirectory | their own
-    /// `workingDirectory`}; this field acts as the fallback for any chat that
-    /// does not.
-    public var workingDirectory: String?
-    /// The full set of working directories the session's agent has tool access
-    /// to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
-    /// entries are equal peers — there is no privileged "primary". Individual
-    /// chats MAY restrict to a subset via
-    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
-    ///
-    /// When absent, fall back to {@link workingDirectory} (if set) as a
-    /// single-entry set.
+    /// The working directories the session's agent has tool access to, as
+    /// maintained by the `session/workingDirectorySet` /
+    /// `session/workingDirectoryRemoved` actions. Directories are equal peers
+    /// except when the agent advertises
+    /// {@link MultipleWorkspaceFoldersCapability.immutablePrimary} (the first
+    /// entry is then a fixed process root). Individual chats MAY restrict to a
+    /// subset via {@link ChatSummary.workingDirectories | their own
+    /// `workingDirectories`}; a chat that sets none operates against this full
+    /// set.
     public var workingDirectories: [String]?
     /// Lightweight summary of this session's inline annotations channel
     /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
@@ -1369,7 +1364,6 @@ public struct SessionSummary: Codable, Sendable {
         case status
         case activity
         case project
-        case workingDirectory
         case workingDirectories
         case annotations
         case resource
@@ -1385,7 +1379,6 @@ public struct SessionSummary: Codable, Sendable {
         status: SessionStatus,
         activity: String? = nil,
         project: ProjectInfo? = nil,
-        workingDirectory: String? = nil,
         workingDirectories: [String]? = nil,
         annotations: AnnotationsSummary? = nil,
         resource: String,
@@ -1399,7 +1392,6 @@ public struct SessionSummary: Codable, Sendable {
         self.status = status
         self.activity = activity
         self.project = project
-        self.workingDirectory = workingDirectory
         self.workingDirectories = workingDirectories
         self.annotations = annotations
         self.resource = resource
@@ -4520,15 +4512,24 @@ public struct Changeset: Codable, Sendable {
     /// Implementations MAY provide additional values; clients SHOULD fall back
     /// to a reasonable default when an unknown value is encountered.
     public var changeKind: String
-    /// The working directory this changeset is scoped to, when it covers changes
-    /// within a single directory of a multiroot session. MUST be one of the
-    /// session's {@link SessionState.workingDirectories}.
+    /// The working directory this changeset is scoped to. When set, it MUST be one
+    /// of the owning session's {@link SessionState.workingDirectories}, and every
+    /// file in the changeset belongs to that directory.
     ///
-    /// A host with multiple working directories groups changes by directory by
-    /// advertising one changeset per directory, each carrying its
-    /// `workingDirectory` — rather than nesting changes as arrays-of-arrays.
-    /// Omit for changesets that are not directory-scoped (e.g. a single-directory
-    /// session, or a session-wide roll-up spanning every directory).
+    /// **Grouping is the host's responsibility, not the client's.** A host whose
+    /// session has multiple working directories MUST group changes by directory —
+    /// emitting one changeset per working directory, each carrying its
+    /// `workingDirectory` — so that a client never has to derive a file's owning
+    /// directory itself (e.g. by prefix-matching URIs, which the client cannot do
+    /// correctly across nested repositories, symlinks, or submodules). This keeps
+    /// AHP a display-ready presentation model (see the
+    /// {@link /guide/doctrine | doctrine}): the host owns the filesystem/VCS
+    /// knowledge and hands clients pre-grouped changesets.
+    ///
+    /// Omit only for changesets that are genuinely not scoped to a single working
+    /// directory — e.g. a single-directory session (nothing to group), or an
+    /// aggregate roll-up / out-of-tree changeset that intentionally spans (or sits
+    /// outside) the working directories.
     public var workingDirectory: String?
     /// Optional capability declarations for this changeset. Absent (or an empty
     /// object) means the changeset advertises no optional capabilities.

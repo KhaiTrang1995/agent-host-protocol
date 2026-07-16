@@ -73,7 +73,6 @@ SessionState {
   status: number        // SessionStatus bitset
   activity?: string
   project?: ProjectInfo
-  workingDirectory?: URI       // deprecated: use workingDirectories
   workingDirectories?: URI[]   // equal-peer working directories
   annotations?: AnnotationsSummary
 
@@ -108,7 +107,6 @@ SessionSummary {
   createdAt: string   // ISO 8601, e.g. "2025-03-10T18:42:03.123Z"
   modifiedAt: string  // ISO 8601
   project?: ProjectInfo
-  workingDirectory?: URI       // deprecated: use workingDirectories
   workingDirectories?: URI[]   // equal-peer working directories
   annotations?: AnnotationsSummary
   changes?: ChangesSummary
@@ -152,7 +150,6 @@ ChatState {
   activity?: string
   modifiedAt: string
   origin?: ChatOrigin      // how the chat came to exist (user / fork / tool)
-  workingDirectory?: URI          // deprecated: use workingDirectories
   workingDirectories?: URI[]      // subset of session's workingDirectories
 
   turns: Turn[]                       // completed turns
@@ -579,27 +576,29 @@ A client MUST NOT pass more than one entry unless the agent advertises
 `multipleWorkspaceFolders`. Servers without that capability treat only the
 first entry as the session's working directory and ignore the rest.
 
-The singular `workingDirectory` field is deprecated in favour of
-`workingDirectories` but is retained as a backwards-compatible shorthand;
-servers MUST still honour it when `workingDirectories` is absent.
+The directories are equal peers unless the agent advertises
+`multipleWorkspaceFolders.immutablePrimary`, in which case the first entry is a
+fixed process root that clients MUST NOT remove or reorder.
 
 Forked sessions ignore `workingDirectories` — they inherit the working
 directories of the source session.
 
 ### Managing directories after creation
 
-Two commands let clients mutate the directory set on a running session:
+The directory set is state (`SessionState.workingDirectories`), so clients
+mutate it by **dispatching actions**, not by calling commands:
 
-| Command | Effect |
+| Action | Effect |
 | --- | --- |
-| `addWorkspaceFolder` | Grants tool access to the given directory. Adding a directory already in the set is a no-op. |
-| `removeWorkspaceFolder` | Revokes tool access to the given directory. There is no atomic server-side "remove one" primitive; the server reconfigures to the reduced set. Removing a directory not in the set is a no-op. A server MAY return an error if it cannot relinquish a directory while the session is live. |
+| `session/workingDirectorySet` | Adds `directory` to the set (creating it if absent). A no-op when the directory is already present. |
+| `session/workingDirectoryRemoved` | Removes `directory` from the set. A no-op when it is not present. There is no atomic backend "remove one" primitive — the host reconfigures its agent to the reduced set. A host MAY decline to apply the removal (e.g. an immutable primary), leaving the set unchanged. |
 
-Both commands return the **full directory set after the mutation** (the
-`directories` field of `AddWorkspaceFolderResult` / `RemoveWorkspaceFolderResult`).
+Both are `@clientDispatchable`. The resulting set is observed on
+`SessionState.workingDirectories` like any other state — there is no separate
+result payload.
 
-Before issuing either command, a client MUST verify that the agent advertises
-`multipleWorkspaceFolders`; servers MUST reject these commands otherwise.
+Before dispatching either action, a client MUST verify that the agent advertises
+`multipleWorkspaceFolders`.
 
 ### Per-chat working-directory subsets
 
@@ -630,18 +629,17 @@ Forked chats (those with a `source`) inherit the source chat's
 
 #### Managing the subset after creation
 
-Two commands mutate a running chat's working-directory subset:
+Two `@clientDispatchable` actions mutate a running chat's working-directory
+subset:
 
-| Command | Effect |
+| Action | Effect |
 | --- | --- |
-| `addChatWorkspaceFolder` | Adds a directory to the chat's subset. The directory MUST already be in the session's `workingDirectories`; servers MUST reject with `InvalidParams` otherwise. Adding a directory already in the chat's set is a no-op. |
-| `removeChatWorkspaceFolder` | Removes a directory from the chat's subset (idempotent). |
+| `chat/workingDirectorySet` | Adds `directory` to the chat's subset. It MUST already be in the session's `workingDirectories`; a host MUST reject a directory that is not. A no-op when already in the chat's subset. |
+| `chat/workingDirectoryRemoved` | Removes `directory` from the chat's subset (idempotent). Only affects the chat — the directory stays in the session's set. |
 
-Both commands return the **full chat subset after the mutation** (the
-`directories` field of `AddChatWorkspaceFolderResult` /
-`RemoveChatWorkspaceFolderResult`).
+The subset is observed on `ChatState.workingDirectories`.
 
-A client MUST NOT issue these commands unless the agent advertises
+A client MUST NOT dispatch these actions unless the agent advertises
 `multipleWorkspaceFolders`.
 
 ## Next Steps

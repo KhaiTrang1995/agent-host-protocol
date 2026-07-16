@@ -127,14 +127,14 @@ capabilities:
    working directory, each tagged with the directory it covers — so a UI can show
    "changes in repo-a / repo-b" without inventing arrays-of-arrays.
 
-6. **Graceful backward compatibility.** The old singular `workingDirectory`
-   fields are kept as a deprecated single-directory shorthand, so clients that
-   predate this feature keep working unchanged.
+6. **Server-owned change grouping.** A multiroot host MUST group changes by
+   directory — one changeset per working directory, each tagged with it — so
+   clients never re-derive a file's owning directory themselves.
 
 ```mermaid
 flowchart LR
     Cap["capability:<br/>multipleWorkspaceFolders?"] --> Create["createSession<br/>workingDirectories[]"]
-    Create --> Add["addWorkspaceFolder /<br/>removeWorkspaceFolder"]
+    Create --> Add["session/workingDirectorySet /<br/>Removed actions"]
     Create --> Chat["chat subset<br/>workingDirectories ⊆ session"]
     Create --> CS["changesets<br/>grouped by workingDirectory"]
 ```
@@ -151,9 +151,9 @@ kept as two separate checkouts.
 | User starts a task over `api/` and `client/` | A session with `workingDirectories: [api, client]`. |
 | Agent edits both repos | The agent has tool access to both directories, equal peers. |
 | User opens a focused thread on just the client | A chat pinned to `workingDirectories: [client]`. |
-| Agent later needs the shared `protos/` repo too | `addWorkspaceFolder(protos)` → set becomes `[api, client, protos]`. |
+| Agent later needs the shared `protos/` repo too | dispatch `session/workingDirectorySet(protos)` → set becomes `[api, client, protos]`. |
 | User reviews the diff | Three changesets, one per directory, each tagged with its `workingDirectory`. |
-| The `protos/` work turns out unnecessary | `removeWorkspaceFolder(protos)` → set reconfigures back to `[api, client]`. |
+| The `protos/` work turns out unnecessary | dispatch `session/workingDirectoryRemoved(protos)` → set reconfigures back to `[api, client]`. |
 
 The session stays one coherent conversation and one shared configuration
 throughout — no juggling three disconnected sessions.
@@ -169,9 +169,10 @@ throughout — no juggling three disconnected sessions.
 - **It is not per-file or per-glob scoping.** The unit is a working directory (a
   root), not arbitrary path patterns within it.
 
-- **It does not introduce a primary.** All directories are peers. Anything that
-  needs "the main one" (e.g. an old client) reads the deprecated singular field,
-  which is just a shorthand — not a semantic primary.
+- **No mandatory primary.** All directories are peers by default. A backend that
+  *must* pin its first directory (a fixed process root) advertises
+  `immutablePrimary` on the capability; clients then keep index `0` fixed. The
+  protocol has no other notion of a "main" directory.
 
 - **It is not multi-root *chats as sub-sessions*.** A chat narrowing to a subset
   is still one thread under one session's trust and identity. Independent agents
@@ -228,20 +229,23 @@ as today.
 | Symbol | File | Kind |
 | --- | --- | --- |
 | `AgentCapabilities.multipleWorkspaceFolders?` | `channels-root/state.ts` | added (capability) |
-| `MultipleWorkspaceFoldersCapability` | `channels-root/state.ts` | added (type) |
+| `MultipleWorkspaceFoldersCapability` (`immutablePrimary?`) | `channels-root/state.ts` | added (type) |
 | `CreateSessionParams.workingDirectories?` | `channels-session/commands.ts` | added |
-| `CreateSessionParams.workingDirectory?` | `channels-session/commands.ts` | **deprecated** |
 | `SessionMetadata.workingDirectories?` (→ `SessionState`, `SessionSummary`) | `channels-session/state.ts` | added |
-| `SessionMetadata.workingDirectory?` | `channels-session/state.ts` | **deprecated** |
-| `addWorkspaceFolder` / `removeWorkspaceFolder` commands | `channels-session/commands.ts` | added (command) |
-| `WorkspaceFolderResult` (+ `Add…`/`Remove…Result`) | `channels-session/commands.ts` | added (type) |
+| `session/workingDirectorySet` / `session/workingDirectoryRemoved` actions | `channels-session/actions.ts` | added (action) |
 | `ChatState.workingDirectories?` / `ChatSummary.workingDirectories?` | `channels-chat/state.ts` | added |
-| `ChatState.workingDirectory?` / `ChatSummary.workingDirectory?` | `channels-chat/state.ts` | **deprecated** |
 | `CreateChatParams.workingDirectories?` | `channels-chat/commands.ts` | added |
-| `addChatWorkspaceFolder` / `removeChatWorkspaceFolder` commands | `channels-chat/commands.ts` | added (command) |
-| `ChatWorkspaceFolderResult` (+ `Add…`/`Remove…Result`) | `channels-chat/commands.ts` | added (type) |
+| `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` actions | `channels-chat/actions.ts` | added (action) |
 | `Changeset.workingDirectory?` + `'directory'` `changeKind` | `channels-changeset/state.ts` | added |
-| 4 command entries in `CommandMap` | `common/messages.ts` | added |
+| 4 `ActionType` entries + `ACTION_INTRODUCED_IN` (`0.6.0`) | `common/actions.ts`, `version/registry.ts` | added |
+
+> **Revised after review.** The directory-mutation surface started as four
+> **commands** (`add/removeWorkspaceFolder`, `add/removeChatWorkspaceFolder`
+> with request/result types). Per review, it is now four **state actions**
+> following the keyed-collection convention — the set lives in state, so clients
+> mutate it by dispatching actions and observe the result on
+> `workingDirectories`. The deprecated singular `workingDirectory` fields were
+> **hard-removed** (0.6.0 is a breaking release), not kept as a shorthand.
 
 ### 8.2 Type signatures
 
@@ -252,108 +256,120 @@ interface AgentCapabilities {
   /** Presence ({}) = the agent supports >1 working directory per session. */
   multipleWorkspaceFolders?: MultipleWorkspaceFoldersCapability;
 }
-interface MultipleWorkspaceFoldersCapability {} // presence-flag, reserved for options
+interface MultipleWorkspaceFoldersCapability {
+  /** First directory is a fixed process root; clients MUST NOT remove/reorder it. */
+  immutablePrimary?: boolean;
+}
 
 // ── Session create — channels-session/commands.ts ────────────────────────
 interface CreateSessionParams extends BaseParams {
   // …existing…
-  /** The session's equal-peer working directories (no "primary"). */
+  /** The session's equal-peer working directories. */
   workingDirectories?: URI[];
-  /** @deprecated single-directory shorthand; use workingDirectories. */
-  workingDirectory?: URI;
 }
 
 // ── Session state — channels-session/state.ts (→ SessionState/SessionSummary)
 interface SessionMetadata {
   // …existing…
   workingDirectories?: URI[];
-  /** @deprecated mirror of workingDirectories[0] for old clients. */
-  workingDirectory?: URI;
 }
 
-// ── Session runtime mutation — channels-session/commands.ts ───────────────
-// channel = session URI. Gated by multipleWorkspaceFolders.
-interface AddWorkspaceFolderParams    extends BaseParams { folder: URI; }
-interface RemoveWorkspaceFolderParams extends BaseParams { folder: URI; }
-interface WorkspaceFolderResult { directories: URI[]; } // full set after mutation
-interface AddWorkspaceFolderResult    extends WorkspaceFolderResult {}
-interface RemoveWorkspaceFolderResult extends WorkspaceFolderResult {}
+// ── Session runtime mutation — channels-session/actions.ts ────────────────
+// channel = session URI. Gated by multipleWorkspaceFolders. @clientDispatchable.
+interface SessionWorkingDirectorySetAction {
+  type: ActionType.SessionWorkingDirectorySet;     // 'session/workingDirectorySet'
+  directory: URI;                                   // appended; no-op if present
+}
+interface SessionWorkingDirectoryRemovedAction {
+  type: ActionType.SessionWorkingDirectoryRemoved; // 'session/workingDirectoryRemoved'
+  directory: URI;                                   // removed; no-op if absent
+}
 
-// ── Chat — channels-chat/state.ts & commands.ts ──────────────────────────
+// ── Chat — channels-chat/state.ts, commands.ts & actions.ts ──────────────
 interface ChatState /* and ChatSummary */ {
   // …existing…
   /** The chat's subset — every entry MUST be one of the session's dirs. */
   workingDirectories?: URI[];
-  /** @deprecated single-directory shorthand. */
-  workingDirectory?: URI;
 }
 interface CreateChatParams extends BaseParams {
   // …existing…
   workingDirectories?: URI[]; // subset ⊆ session; absent → whole session set
 }
-// channel = chat URI. Gated by multipleWorkspaceFolders.
-interface AddChatWorkspaceFolderParams    extends BaseParams { folder: URI; }
-interface RemoveChatWorkspaceFolderParams extends BaseParams { folder: URI; }
-interface ChatWorkspaceFolderResult { directories: URI[]; }
-interface AddChatWorkspaceFolderResult    extends ChatWorkspaceFolderResult {}
-interface RemoveChatWorkspaceFolderResult extends ChatWorkspaceFolderResult {}
+// channel = chat URI. Gated by multipleWorkspaceFolders. @clientDispatchable.
+interface ChatWorkingDirectorySetAction {
+  type: ActionType.ChatWorkingDirectorySet;     // 'chat/workingDirectorySet'
+  directory: URI;                                // MUST be in the session set
+}
+interface ChatWorkingDirectoryRemovedAction {
+  type: ActionType.ChatWorkingDirectoryRemoved; // 'chat/workingDirectoryRemoved'
+  directory: URI;
+}
 
 // ── Changes — channels-changeset/state.ts ────────────────────────────────
 interface Changeset {
   // …existing…
   changeKind: string; // now also accepts 'directory'
-  /** Directory this changeset is scoped to (one of the session's dirs). */
+  /**
+   * Directory this changeset is scoped to (one of the session's dirs).
+   * A multiroot host MUST group changes by directory (one changeset per dir);
+   * omitted only for single-dir sessions or out-of-tree/aggregate changesets.
+   */
   workingDirectory?: URI;
-}
-
-// ── Command registry — common/messages.ts ────────────────────────────────
-interface CommandMap {
-  // …existing…
-  addWorkspaceFolder:        { params: AddWorkspaceFolderParams;        result: AddWorkspaceFolderResult };
-  removeWorkspaceFolder:     { params: RemoveWorkspaceFolderParams;     result: RemoveWorkspaceFolderResult };
-  addChatWorkspaceFolder:    { params: AddChatWorkspaceFolderParams;    result: AddChatWorkspaceFolderResult };
-  removeChatWorkspaceFolder: { params: RemoveChatWorkspaceFolderParams; result: RemoveChatWorkspaceFolderResult };
 }
 ```
 
 ### 8.3 Versioning & gating
 
-- `PROTOCOL_VERSION` is **`0.6.0`** (a capability boundary; the branch's base
+- `PROTOCOL_VERSION` is **`0.6.0`** (a breaking release; the branch's base
   already advanced the ongoing-dev version to `0.6.0`). `SUPPORTED_PROTOCOL_VERSIONS`
   = `[0.6.0, 0.5.2, 0.5.1]`.
-- The four new commands are gated by the `multipleWorkspaceFolders` capability
-  **plus** the `initialize` version handshake — not by the
-  `ACTION_INTRODUCED_IN` / `NOTIFICATION_INTRODUCED_IN` maps (those track state
-  actions and server notifications; commands are gated like `createChat`).
-- Removal (`removeWorkspaceFolder` / `removeChatWorkspaceFolder`) is idempotent
-  and modelled as *reconfigure-to-the-reduced-set*; a server MAY refuse a
-  directory it cannot relinquish while live.
+- The four directory mutations are **state actions**, so they carry
+  `ACTION_INTRODUCED_IN` entries at `0.6.0` (and are `@clientDispatchable`).
+  Everything else — the capability, the create-time fields, and the
+  `Changeset.workingDirectory` field — is gated by the `multipleWorkspaceFolders`
+  capability plus the `initialize` version handshake.
+- Removal actions are idempotent and modelled as
+  *reconfigure-to-the-reduced-set*; a host MAY decline to apply a removal (e.g.
+  an `immutablePrimary` directory), leaving the set unchanged.
 
 ---
 
 ## 9. Design decisions & resolved questions
 
-- **No primary directory.** *Resolved:* the set is equal peers. Rejected a
+- **No mandatory primary.** *Resolved:* the set is equal peers. Rejected a
   "primary + additional" split because it re-introduces the confusion the user
-  called out ("what's the relation between primary and secondary?").
+  called out ("what's the relation between primary and secondary?"). Backends
+  that genuinely pin a fixed process root opt in via
+  `MultipleWorkspaceFoldersCapability.immutablePrimary` (index `0` fixed).
 
-- **Deprecate, don't remove, `workingDirectory`.** *Resolved:* the singular field
-  is read by every existing client from session state; removing it would break
-  single-directory sessions too. It stays as a deprecated shorthand.
+- **Hard-remove the singular `workingDirectory`.** *Resolved (per review):* 0.6.0
+  is a breaking release, so the deprecated singular fields on
+  `CreateSessionParams` / `SessionMetadata` / `ChatState` / `ChatSummary` are
+  removed outright rather than kept as a shorthand.
+
+- **Directory mutations are state actions, not commands.** *Resolved (per
+  review):* `workingDirectories` is a keyed collection, so it follows the
+  established `*/workingDirectorySet` + `*/workingDirectoryRemoved` action
+  convention (session and chat) with pure reducers, rather than
+  request/response commands. The set lives in state; clients observe the result
+  there.
 
 - **Chat narrows to a subset (not exactly one).** *Resolved:* an earlier draft
   made a chat operate in exactly one directory; this was widened to "a subset ⊆
   the session's set," with absent meaning the whole set. Gated by the same
   capability.
 
-- **Changes grouped by directory, on the changeset.** *Resolved:* put a
-  `workingDirectory` on `Changeset` and advertise one per directory, rather than
-  an array-of-arrays or a per-file `root` tag. Reuses the catalogue abstraction
-  and keeps each changeset flat.
+- **Changes grouped by directory — server's job.** *Resolved (per review
+  pushback):* a multiroot host MUST group changes by directory
+  (`Changeset.workingDirectory`, one changeset per dir). Grouping is a host
+  responsibility per AHP's doctrine (display-ready state; host owns the
+  filesystem/VCS model) — clients must not re-derive it from file URIs, which
+  they cannot do correctly across nested repos/symlinks. The field stays
+  optional only for single-dir sessions and out-of-tree/aggregate changesets.
 
-- **Removal semantics.** *Resolved:* no single-remove primitive is assumed;
-  `removeWorkspaceFolder` reconfigures to the reduced set and returns it, so it is
-  idempotent and safe to retry.
+- **Removal semantics.** *Resolved:* no single-remove primitive is assumed; the
+  `*/workingDirectoryRemoved` action reduces to the reduced set, so it is
+  idempotent and safe to retry. A host MAY decline (e.g. an immutable primary).
 
 ---
 
@@ -364,11 +380,6 @@ interface CommandMap {
   context for resolving config (e.g. listing git branches for a worktree picker).
   Whether — and how — to make config resolution multiroot-aware is left as a
   follow-up.
-
-- **Hard removal of the singular field.** Since the spec is pre-1.0, a future
-  release *could* drop `workingDirectory` entirely. Kept deprecated for now to
-  avoid breaking existing single-directory clients; promote to removal later if
-  desired.
 
 - **Per-directory rollups on the lightweight summary.** `ChangesSummary` is a
   single aggregate today. If session-list UIs want per-repo badges without
@@ -384,10 +395,10 @@ interface CommandMap {
 
 - **Before:** a session is scoped to one `workingDirectory`.
 - **After:** a session owns a **set of equal-peer directories**; a **chat** works
-  in a **subset**; **changes group by directory**.
+  in a **subset**; **changes group by directory** (server-side).
 - **Why:** cross-directory / multi-repo / multi-root-workspace tasks are one
   coherent piece of work, not N disconnected sessions.
-- **How it stays safe:** capability-gated, additive, singular field deprecated
-  (not removed), removal modelled as reconfigure-to-reduced-set.
-- **What it is not:** not a permission model, not per-file scoping, not a primary
-  directory, not sub-sessions — those are separate/future axes.
+- **How it stays safe:** capability-gated, additive fields; directory mutations
+  are idempotent client-dispatchable actions; removal is reconfigure-to-reduced-set.
+- **What it is not:** not a permission model, not per-file scoping, not a
+  mandatory primary, not sub-sessions — those are separate/future axes.

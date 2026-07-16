@@ -27,59 +27,6 @@ changes accumulate. Track in-flight protocol changes via PRs touching
 
 Spec version: `0.6.0`
 
-### Added
-
-- `multipleWorkspaceFolders` capability on `AgentCapabilities`, gating
-  first-class multiroot session support. When absent, clients MUST NOT call
-  `addWorkspaceFolder` / `removeWorkspaceFolder` / `addChatWorkspaceFolder` /
-  `removeChatWorkspaceFolder` and MUST NOT set more than one entry in
-  `CreateSessionParams.workingDirectories` or `CreateChatParams.workingDirectories`.
-- `SessionMetadata.workingDirectories` (on `SessionState` and `SessionSummary`) —
-  the full set of working directories the session's agent has tool access to,
-  maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All entries are
-  equal peers with no privileged "primary".
-- `CreateSessionParams.workingDirectories` — initial working-directory set for
-  the session. Ignored for forked sessions.
-- `addWorkspaceFolder` command — grants a running session's agent tool access to
-  an additional working directory. Returns `AddWorkspaceFolderResult` carrying
-  the full directory set after the mutation.
-- `removeWorkspaceFolder` command — revokes tool access to one working directory
-  by reconfiguring the agent to the reduced set. There is no atomic server-side
-  "remove one" primitive; the command is idempotent. Returns
-  `RemoveWorkspaceFolderResult` carrying the full directory set after the
-  mutation.
-- `ChatState.workingDirectories` / `ChatSummary.workingDirectories` — the
-  subset of the session's `workingDirectories` that a specific chat's agent has
-  tool access to. When absent the chat inherits the full session set.
-- `CreateChatParams.workingDirectories` — initial working-directory subset for a
-  new chat. Every entry must already be present in the session's
-  `workingDirectories`. Ignored for forked chats (inherit source chat's set).
-- `addChatWorkspaceFolder` command — adds a directory to a chat's
-  working-directory subset (must already be in the session's set). Returns
-  `AddChatWorkspaceFolderResult` with the chat's full subset after the mutation.
-- `removeChatWorkspaceFolder` command — removes a directory from a chat's
-  working-directory subset (idempotent). Returns `RemoveChatWorkspaceFolderResult`
-  with the chat's full subset after the mutation.
-- `Changeset.workingDirectory` — an optional working directory a changeset is
-  scoped to (one of the session's `workingDirectories`), plus a `'directory'`
-  `changeKind` hint. A multiroot session groups its changes by directory by
-  advertising one changeset per working directory rather than nesting changes
-  as arrays-of-arrays.
-
-### Deprecated
-
-- `CreateSessionParams.workingDirectory` (singular) in favour of
-  `workingDirectories`. Retained as a single-directory shorthand for backwards
-  compatibility; servers MUST still honour it when `workingDirectories` is absent.
-- `SessionMetadata.workingDirectory` (singular, on `SessionState` and
-  `SessionSummary`) in favour of `workingDirectories`. Hosts SHOULD keep
-  populating the singular field (set to the first entry of `workingDirectories`)
-  so clients that predate 0.6.0 continue to see a usable value.
-- `ChatState.workingDirectory` / `ChatSummary.workingDirectory` (singular) in
-  favour of `workingDirectories`. Hosts SHOULD keep populating the singular
-  field (first entry of the chat's `workingDirectories`) for backwards
-  compatibility.
-
 ## [0.5.2] — 2026-07-09
 
 Spec version: `0.5.2`

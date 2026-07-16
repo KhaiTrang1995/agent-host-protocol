@@ -248,20 +248,15 @@ pub struct PartialSessionSummary {
     /// Server-owned project for this session
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<ProjectInfo>,
-    /// The default working directory URI for this session. Individual chats
-    /// MAY override via {@link ChatSummary.workingDirectory | their own
-    /// `workingDirectory`}; this field acts as the fallback for any chat that
-    /// does not.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub working_directory: Option<Uri>,
-    /// The full set of working directories the session's agent has tool access
-    /// to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
-    /// entries are equal peers — there is no privileged "primary". Individual
-    /// chats MAY restrict to a subset via
-    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
-    ///
-    /// When absent, fall back to {@link workingDirectory} (if set) as a
-    /// single-entry set.
+    /// The working directories the session's agent has tool access to, as
+    /// maintained by the `session/workingDirectorySet` /
+    /// `session/workingDirectoryRemoved` actions. Directories are equal peers
+    /// except when the agent advertises
+    /// {@link MultipleWorkspaceFoldersCapability.immutablePrimary} (the first
+    /// entry is then a fixed process root). Individual chats MAY restrict to a
+    /// subset via {@link ChatSummary.workingDirectories | their own
+    /// `workingDirectories`}; a chat that sets none operates against this full
+    /// set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_directories: Option<Vec<Uri>>,
     /// Lightweight summary of this session's inline annotations channel

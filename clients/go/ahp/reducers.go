@@ -726,8 +726,8 @@ func mergeChatSummaryPartial(summary *ahptypes.ChatSummary, changes ahptypes.Par
 	if changes.Origin != nil {
 		summary.Origin = changes.Origin
 	}
-	if changes.WorkingDirectory != nil {
-		summary.WorkingDirectory = changes.WorkingDirectory
+	if changes.WorkingDirectories != nil {
+		summary.WorkingDirectories = changes.WorkingDirectories
 	}
 }
 

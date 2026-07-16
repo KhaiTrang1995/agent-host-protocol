@@ -1,6 +1,5 @@
 /**
- * Chat Channel Commands — `createChat`, `disposeChat`,
- * `addChatWorkspaceFolder`, and `removeChatWorkspaceFolder`.
+ * Chat Channel Commands — `createChat` and `disposeChat`.
  *
  * @module channels-chat/commands
  */
@@ -64,67 +63,3 @@ export interface CreateChatParams extends BaseParams {
  * @version 1
  */
 export interface DisposeChatParams extends BaseParams {}
-
-// ─── addChatWorkspaceFolder ──────────────────────────────────────────────────
-
-/**
- * Grants this chat's agent tool access to a working directory, adding it to
- * the chat's {@link ChatState.workingDirectories | `workingDirectories`} subset.
- * The directory MUST already be present in the owning session's
- * `workingDirectories`; servers MUST reject with `InvalidParams` otherwise.
- *
- * Only valid when the agent advertises `multipleWorkspaceFolders`. Adding a
- * directory already in the chat's set is a no-op that still returns the current
- * full set.
- *
- * @category Commands
- * @method addChatWorkspaceFolder
- * @direction Client → Server
- * @messageType Request
- * @version 1
- */
-export interface AddChatWorkspaceFolderParams extends BaseParams {
-  /** Directory to grant tool access to. Must be in the session's `workingDirectories`. */
-  folder: URI;
-}
-
-// ─── removeChatWorkspaceFolder ───────────────────────────────────────────────
-
-/**
- * Revokes this chat's agent tool access to one of its working directories.
- * Analogous to the session-level `removeWorkspaceFolder`: the server
- * reconfigures the chat to the reduced subset and returns it. Removing a
- * directory not in the chat's set is a no-op that still returns the current
- * full set.
- *
- * Only valid when the agent advertises `multipleWorkspaceFolders`.
- *
- * @category Commands
- * @method removeChatWorkspaceFolder
- * @direction Client → Server
- * @messageType Request
- * @version 1
- */
-export interface RemoveChatWorkspaceFolderParams extends BaseParams {
-  /** Directory to revoke tool access to. */
-  folder: URI;
-}
-
-/**
- * Result shared by `addChatWorkspaceFolder` and `removeChatWorkspaceFolder`:
- * the chat's full working-directory subset after the mutation.
- */
-export interface ChatWorkspaceFolderResult {
-  /** The chat's working directories after the mutation. */
-  directories: URI[];
-}
-
-/**
- * Result of the `addChatWorkspaceFolder` command. See {@link ChatWorkspaceFolderResult}.
- */
-export interface AddChatWorkspaceFolderResult extends ChatWorkspaceFolderResult {}
-
-/**
- * Result of the `removeChatWorkspaceFolder` command. See {@link ChatWorkspaceFolderResult}.
- */
-export interface RemoveChatWorkspaceFolderResult extends ChatWorkspaceFolderResult {}

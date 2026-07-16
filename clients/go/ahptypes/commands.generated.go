@@ -306,19 +306,21 @@ type CreateSessionParams struct {
 	// Agent provider ID
 	Provider *string `json:"provider,omitempty"`
 	// The working directories the session's agent is granted tool access to.
-	// A session may span multiple directories, all of which are equal peers —
-	// there is no privileged "primary" directory.
+	// A session may span multiple directories; they are equal peers except when
+	// the agent advertises
+	// {@link MultipleWorkspaceFoldersCapability.immutablePrimary} (in which case
+	// the first entry is a fixed process root).
 	//
 	// A client MUST NOT supply more than one entry unless the agent advertises
 	// {@link AgentCapabilities.multipleWorkspaceFolders}; a server without that
 	// capability treats only the first entry as the session's working directory
-	// and ignores the rest. Use `addWorkspaceFolder` / `removeWorkspaceFolder`
-	// to change the set after the session has started.
+	// and ignores the rest. Dispatch `session/workingDirectorySet` /
+	// `session/workingDirectoryRemoved` to change the set after the session has
+	// started.
 	//
 	// Ignored for forked sessions — a fork inherits its working directories
 	// from the source session identified by `fork`.
 	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
-	WorkingDirectory   *URI  `json:"workingDirectory,omitempty"`
 	// Fork from an existing session. The new session is populated with content
 	// from the source session up to and including the specified turn's response.
 	Fork *SessionForkSource `json:"fork,omitempty"`
@@ -351,59 +353,6 @@ type CreateSessionParams struct {
 type DisposeSessionParams struct {
 	// Channel URI this command targets.
 	Channel URI `json:"channel"`
-}
-
-// Grants the session's agent tool access to a working directory, adding it to
-// the session's set of {@link CreateSessionParams.workingDirectories | working
-// directories}. Only valid when the agent advertises
-// `multipleWorkspaceFolders`; servers MUST reject this command otherwise.
-//
-// All directories in the set are equal peers — there is no privileged
-// "primary". Adding a directory that is already in the set is a no-op that
-// still returns the current full set.
-type AddWorkspaceFolderParams struct {
-	// Channel URI this command targets.
-	Channel URI `json:"channel"`
-	// Directory to grant tool access to.
-	Folder URI `json:"folder"`
-}
-
-// Revokes the session's agent tool access to one of its working directories.
-// There is no server-side primitive to "remove" a single directory mid-session
-// — the server instead reconfigures the agent with the reduced directory set
-// and returns it, so this command is safe to model as idempotent: removing a
-// directory that is not in the set is a no-op that still returns the current
-// full set.
-//
-// A server MAY refuse to remove a directory it cannot relinquish while the
-// session is live (for example one bound to the running agent process),
-// returning an error rather than a result. The protocol itself designates no
-// directory as special.
-type RemoveWorkspaceFolderParams struct {
-	// Channel URI this command targets.
-	Channel URI `json:"channel"`
-	// Directory to revoke tool access to.
-	Folder URI `json:"folder"`
-}
-
-// Result shared by the `addWorkspaceFolder` and `removeWorkspaceFolder`
-// commands: the session's full set of working directories after the mutation.
-// All entries are equal peers; the order carries no meaning.
-type WorkspaceFolderResult struct {
-	// The session's working directories after the mutation.
-	Directories []URI `json:"directories"`
-}
-
-// Result of the `addWorkspaceFolder` command. See {@link WorkspaceFolderResult}.
-type AddWorkspaceFolderResult struct {
-	// The session's working directories after the mutation.
-	Directories []URI `json:"directories"`
-}
-
-// Result of the `removeWorkspaceFolder` command. See {@link WorkspaceFolderResult}.
-type RemoveWorkspaceFolderResult struct {
-	// The session's working directories after the mutation.
-	Directories []URI `json:"directories"`
 }
 
 // Identifies a source chat and turn to fork from.
@@ -439,54 +388,6 @@ type CreateChatParams struct {
 type DisposeChatParams struct {
 	// Channel URI this command targets.
 	Channel URI `json:"channel"`
-}
-
-// Grants this chat's agent tool access to a working directory, adding it to
-// the chat's {@link ChatState.workingDirectories | `workingDirectories`} subset.
-// The directory MUST already be present in the owning session's
-// `workingDirectories`; servers MUST reject with `InvalidParams` otherwise.
-//
-// Only valid when the agent advertises `multipleWorkspaceFolders`. Adding a
-// directory already in the chat's set is a no-op that still returns the current
-// full set.
-type AddChatWorkspaceFolderParams struct {
-	// Channel URI this command targets.
-	Channel URI `json:"channel"`
-	// Directory to grant tool access to. Must be in the session's `workingDirectories`.
-	Folder URI `json:"folder"`
-}
-
-// Revokes this chat's agent tool access to one of its working directories.
-// Analogous to the session-level `removeWorkspaceFolder`: the server
-// reconfigures the chat to the reduced subset and returns it. Removing a
-// directory not in the chat's set is a no-op that still returns the current
-// full set.
-//
-// Only valid when the agent advertises `multipleWorkspaceFolders`.
-type RemoveChatWorkspaceFolderParams struct {
-	// Channel URI this command targets.
-	Channel URI `json:"channel"`
-	// Directory to revoke tool access to.
-	Folder URI `json:"folder"`
-}
-
-// Result shared by `addChatWorkspaceFolder` and `removeChatWorkspaceFolder`:
-// the chat's full working-directory subset after the mutation.
-type ChatWorkspaceFolderResult struct {
-	// The chat's working directories after the mutation.
-	Directories []URI `json:"directories"`
-}
-
-// Result of the `addChatWorkspaceFolder` command. See {@link ChatWorkspaceFolderResult}.
-type AddChatWorkspaceFolderResult struct {
-	// The chat's working directories after the mutation.
-	Directories []URI `json:"directories"`
-}
-
-// Result of the `removeChatWorkspaceFolder` command. See {@link ChatWorkspaceFolderResult}.
-type RemoveChatWorkspaceFolderResult struct {
-	// The chat's working directories after the mutation.
-	Directories []URI `json:"directories"`
 }
 
 // Returns a list of session summaries. Used to populate session lists and sidebars.

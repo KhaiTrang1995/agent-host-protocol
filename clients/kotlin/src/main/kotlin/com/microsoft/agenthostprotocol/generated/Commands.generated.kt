@@ -370,20 +370,22 @@ data class CreateSessionParams(
     val provider: String? = null,
     /**
      * The working directories the session's agent is granted tool access to.
-     * A session may span multiple directories, all of which are equal peers —
-     * there is no privileged "primary" directory.
+     * A session may span multiple directories; they are equal peers except when
+     * the agent advertises
+     * {@link MultipleWorkspaceFoldersCapability.immutablePrimary} (in which case
+     * the first entry is a fixed process root).
      *
      * A client MUST NOT supply more than one entry unless the agent advertises
      * {@link AgentCapabilities.multipleWorkspaceFolders}; a server without that
      * capability treats only the first entry as the session's working directory
-     * and ignores the rest. Use `addWorkspaceFolder` / `removeWorkspaceFolder`
-     * to change the set after the session has started.
+     * and ignores the rest. Dispatch `session/workingDirectorySet` /
+     * `session/workingDirectoryRemoved` to change the set after the session has
+     * started.
      *
      * Ignored for forked sessions — a fork inherits its working directories
      * from the source session identified by `fork`.
      */
     val workingDirectories: List<String>? = null,
-    val workingDirectory: String? = null,
     /**
      * Fork from an existing session. The new session is populated with content
      * from the source session up to and including the specified turn's response.
@@ -424,54 +426,6 @@ data class DisposeSessionParams(
      * Channel URI this command targets.
      */
     val channel: String
-)
-
-@Serializable
-data class AddWorkspaceFolderParams(
-    /**
-     * Channel URI this command targets.
-     */
-    val channel: String,
-    /**
-     * Directory to grant tool access to.
-     */
-    val folder: String
-)
-
-@Serializable
-data class RemoveWorkspaceFolderParams(
-    /**
-     * Channel URI this command targets.
-     */
-    val channel: String,
-    /**
-     * Directory to revoke tool access to.
-     */
-    val folder: String
-)
-
-@Serializable
-data class WorkspaceFolderResult(
-    /**
-     * The session's working directories after the mutation.
-     */
-    val directories: List<String>
-)
-
-@Serializable
-data class AddWorkspaceFolderResult(
-    /**
-     * The session's working directories after the mutation.
-     */
-    val directories: List<String>
-)
-
-@Serializable
-data class RemoveWorkspaceFolderResult(
-    /**
-     * The session's working directories after the mutation.
-     */
-    val directories: List<String>
 )
 
 @Serializable
@@ -523,54 +477,6 @@ data class DisposeChatParams(
      * Channel URI this command targets.
      */
     val channel: String
-)
-
-@Serializable
-data class AddChatWorkspaceFolderParams(
-    /**
-     * Channel URI this command targets.
-     */
-    val channel: String,
-    /**
-     * Directory to grant tool access to. Must be in the session's `workingDirectories`.
-     */
-    val folder: String
-)
-
-@Serializable
-data class RemoveChatWorkspaceFolderParams(
-    /**
-     * Channel URI this command targets.
-     */
-    val channel: String,
-    /**
-     * Directory to revoke tool access to.
-     */
-    val folder: String
-)
-
-@Serializable
-data class ChatWorkspaceFolderResult(
-    /**
-     * The chat's working directories after the mutation.
-     */
-    val directories: List<String>
-)
-
-@Serializable
-data class AddChatWorkspaceFolderResult(
-    /**
-     * The chat's working directories after the mutation.
-     */
-    val directories: List<String>
-)
-
-@Serializable
-data class RemoveChatWorkspaceFolderResult(
-    /**
-     * The chat's working directories after the mutation.
-     */
-    val directories: List<String>
 )
 
 @Serializable

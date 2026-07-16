@@ -829,6 +829,6 @@ private func applySummaryChanges(
     if let v = changes.modifiedAt { existing.modifiedAt = v }
     if let v = changes.project { existing.project = v }
     if let v = changes.annotations { existing.annotations = v }
-    if let v = changes.workingDirectory { existing.workingDirectory = v }
+    if let v = changes.workingDirectories { existing.workingDirectories = v }
 }
 

@@ -217,19 +217,15 @@ type PartialSessionSummary struct {
 	Activity *string `json:"activity,omitempty"`
 	// Server-owned project for this session
 	Project *ProjectInfo `json:"project,omitempty"`
-	// The default working directory URI for this session. Individual chats
-	// MAY override via {@link ChatSummary.workingDirectory | their own
-	// `workingDirectory`}; this field acts as the fallback for any chat that
-	// does not.
-	WorkingDirectory *URI `json:"workingDirectory,omitempty"`
-	// The full set of working directories the session's agent has tool access
-	// to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
-	// entries are equal peers — there is no privileged "primary". Individual
-	// chats MAY restrict to a subset via
-	// {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
-	//
-	// When absent, fall back to {@link workingDirectory} (if set) as a
-	// single-entry set.
+	// The working directories the session's agent has tool access to, as
+	// maintained by the `session/workingDirectorySet` /
+	// `session/workingDirectoryRemoved` actions. Directories are equal peers
+	// except when the agent advertises
+	// {@link MultipleWorkspaceFoldersCapability.immutablePrimary} (the first
+	// entry is then a fixed process root). Individual chats MAY restrict to a
+	// subset via {@link ChatSummary.workingDirectories | their own
+	// `workingDirectories`}; a chat that sets none operates against this full
+	// set.
 	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
 	// Lightweight summary of this session's inline annotations channel
 	// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render

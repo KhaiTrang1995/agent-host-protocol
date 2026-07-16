@@ -70,6 +70,10 @@ enum class ActionType {
     CHAT_ERROR,
     @SerialName("chat/activityChanged")
     CHAT_ACTIVITY_CHANGED,
+    @SerialName("chat/workingDirectorySet")
+    CHAT_WORKING_DIRECTORY_SET,
+    @SerialName("chat/workingDirectoryRemoved")
+    CHAT_WORKING_DIRECTORY_REMOVED,
     @SerialName("session/titleChanged")
     SESSION_TITLE_CHANGED,
     @SerialName("chat/usage")
@@ -82,6 +86,10 @@ enum class ActionType {
     SESSION_ACTIVE_CLIENT_SET,
     @SerialName("session/activeClientRemoved")
     SESSION_ACTIVE_CLIENT_REMOVED,
+    @SerialName("session/workingDirectorySet")
+    SESSION_WORKING_DIRECTORY_SET,
+    @SerialName("session/workingDirectoryRemoved")
+    SESSION_WORKING_DIRECTORY_REMOVED,
     @SerialName("session/inputNeededSet")
     SESSION_INPUT_NEEDED_SET,
     @SerialName("session/inputNeededRemoved")
@@ -825,6 +833,42 @@ data class SessionActiveClientRemovedAction(
 )
 
 @Serializable
+data class SessionWorkingDirectorySetAction(
+    val type: ActionType,
+    /**
+     * The working directory to grant the session's agent tool access to.
+     */
+    val directory: String
+)
+
+@Serializable
+data class SessionWorkingDirectoryRemovedAction(
+    val type: ActionType,
+    /**
+     * The working directory to revoke the session's agent tool access to.
+     */
+    val directory: String
+)
+
+@Serializable
+data class ChatWorkingDirectorySetAction(
+    val type: ActionType,
+    /**
+     * The working directory to add to this chat's subset.
+     */
+    val directory: String
+)
+
+@Serializable
+data class ChatWorkingDirectoryRemovedAction(
+    val type: ActionType,
+    /**
+     * The working directory to remove from this chat's subset.
+     */
+    val directory: String
+)
+
+@Serializable
 data class SessionInputNeededSetAction(
     val type: ActionType,
     /**
@@ -1405,10 +1449,6 @@ data class PartialChatSummary(
      */
     val interactivity: ChatInteractivity? = null,
     /**
-     * Optional per-chat working directory.
-     */
-    val workingDirectory: String? = null,
-    /**
      * The subset of the session's working directories this chat uses.
      * See {@link ChatState.workingDirectories} for the full semantics.
      */
@@ -1461,6 +1501,10 @@ sealed interface StateAction
 @JvmInline value class StateActionSessionServerToolsChanged(val value: SessionServerToolsChangedAction) : StateAction
 @JvmInline value class StateActionSessionActiveClientSet(val value: SessionActiveClientSetAction) : StateAction
 @JvmInline value class StateActionSessionActiveClientRemoved(val value: SessionActiveClientRemovedAction) : StateAction
+@JvmInline value class StateActionSessionWorkingDirectorySet(val value: SessionWorkingDirectorySetAction) : StateAction
+@JvmInline value class StateActionSessionWorkingDirectoryRemoved(val value: SessionWorkingDirectoryRemovedAction) : StateAction
+@JvmInline value class StateActionChatWorkingDirectorySet(val value: ChatWorkingDirectorySetAction) : StateAction
+@JvmInline value class StateActionChatWorkingDirectoryRemoved(val value: ChatWorkingDirectoryRemovedAction) : StateAction
 @JvmInline value class StateActionSessionInputNeededSet(val value: SessionInputNeededSetAction) : StateAction
 @JvmInline value class StateActionSessionInputNeededRemoved(val value: SessionInputNeededRemovedAction) : StateAction
 @JvmInline value class StateActionChatPendingMessageSet(val value: ChatPendingMessageSetAction) : StateAction
@@ -1555,6 +1599,10 @@ internal object StateActionSerializer : KSerializer<StateAction> {
             "session/serverToolsChanged" -> StateActionSessionServerToolsChanged(input.json.decodeFromJsonElement(SessionServerToolsChangedAction.serializer(), element))
             "session/activeClientSet" -> StateActionSessionActiveClientSet(input.json.decodeFromJsonElement(SessionActiveClientSetAction.serializer(), element))
             "session/activeClientRemoved" -> StateActionSessionActiveClientRemoved(input.json.decodeFromJsonElement(SessionActiveClientRemovedAction.serializer(), element))
+            "session/workingDirectorySet" -> StateActionSessionWorkingDirectorySet(input.json.decodeFromJsonElement(SessionWorkingDirectorySetAction.serializer(), element))
+            "session/workingDirectoryRemoved" -> StateActionSessionWorkingDirectoryRemoved(input.json.decodeFromJsonElement(SessionWorkingDirectoryRemovedAction.serializer(), element))
+            "chat/workingDirectorySet" -> StateActionChatWorkingDirectorySet(input.json.decodeFromJsonElement(ChatWorkingDirectorySetAction.serializer(), element))
+            "chat/workingDirectoryRemoved" -> StateActionChatWorkingDirectoryRemoved(input.json.decodeFromJsonElement(ChatWorkingDirectoryRemovedAction.serializer(), element))
             "session/inputNeededSet" -> StateActionSessionInputNeededSet(input.json.decodeFromJsonElement(SessionInputNeededSetAction.serializer(), element))
             "session/inputNeededRemoved" -> StateActionSessionInputNeededRemoved(input.json.decodeFromJsonElement(SessionInputNeededRemovedAction.serializer(), element))
             "chat/pendingMessageSet" -> StateActionChatPendingMessageSet(input.json.decodeFromJsonElement(ChatPendingMessageSetAction.serializer(), element))
@@ -1642,6 +1690,10 @@ internal object StateActionSerializer : KSerializer<StateAction> {
             is StateActionSessionServerToolsChanged -> output.json.encodeToJsonElement(SessionServerToolsChangedAction.serializer(), value.value)
             is StateActionSessionActiveClientSet -> output.json.encodeToJsonElement(SessionActiveClientSetAction.serializer(), value.value)
             is StateActionSessionActiveClientRemoved -> output.json.encodeToJsonElement(SessionActiveClientRemovedAction.serializer(), value.value)
+            is StateActionSessionWorkingDirectorySet -> output.json.encodeToJsonElement(SessionWorkingDirectorySetAction.serializer(), value.value)
+            is StateActionSessionWorkingDirectoryRemoved -> output.json.encodeToJsonElement(SessionWorkingDirectoryRemovedAction.serializer(), value.value)
+            is StateActionChatWorkingDirectorySet -> output.json.encodeToJsonElement(ChatWorkingDirectorySetAction.serializer(), value.value)
+            is StateActionChatWorkingDirectoryRemoved -> output.json.encodeToJsonElement(ChatWorkingDirectoryRemovedAction.serializer(), value.value)
             is StateActionSessionInputNeededSet -> output.json.encodeToJsonElement(SessionInputNeededSetAction.serializer(), value.value)
             is StateActionSessionInputNeededRemoved -> output.json.encodeToJsonElement(SessionInputNeededRemovedAction.serializer(), value.value)
             is StateActionChatPendingMessageSet -> output.json.encodeToJsonElement(ChatPendingMessageSetAction.serializer(), value.value)

@@ -83,8 +83,8 @@ type PartialChatSummary struct {
 	ModifiedAt *string `json:"modifiedAt,omitempty"`
 	// How this chat came into existence
 	Origin *ChatOrigin `json:"origin,omitempty"`
-	// Optional per-chat working directory.
-	WorkingDirectory *URI `json:"workingDirectory,omitempty"`
+	// The subset of the session's working directories this chat uses.
+	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
 }
 
 // ─── StringOrMarkdown ────────────────────────────────────────────────────

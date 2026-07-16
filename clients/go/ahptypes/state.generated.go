@@ -564,9 +564,12 @@ type AgentCapabilities struct {
 	// forking; set {@link MultipleChatsCapability.fork} to also allow forking.
 	MultipleChats *MultipleChatsCapability `json:"multipleChats,omitempty"`
 	// The session's agent can be granted tool access to more than one working
-	// directory, with all directories treated as equal peers (no primary). When
-	// absent, clients MUST NOT call `addWorkspaceFolder` / `removeWorkspaceFolder`
-	// and MUST NOT set more than one entry in
+	// directory. The directories are treated as equal peers except where the
+	// agent advertises {@link MultipleWorkspaceFoldersCapability.immutablePrimary}
+	// (some backends pin their first directory as a fixed process root).
+	//
+	// When absent, clients MUST NOT mutate a session's or chat's working-directory
+	// set and MUST NOT set more than one entry in
 	// {@link CreateSessionParams.workingDirectories}.
 	MultipleWorkspaceFolders *MultipleWorkspaceFoldersCapability `json:"multipleWorkspaceFolders,omitempty"`
 }
@@ -580,9 +583,18 @@ type MultipleChatsCapability struct {
 }
 
 // Options for the {@link AgentCapabilities.multipleWorkspaceFolders} capability.
-// Currently carries no sub-options; presence of an empty object `{}` is the
-// entire signal.
 type MultipleWorkspaceFoldersCapability struct {
+	// The agent's **first** working directory (index `0` of
+	// {@link CreateSessionParams.workingDirectories}) is an immutable primary:
+	// it is fixed for the lifetime of the session — clients MUST NOT remove or
+	// reorder it. Additional directories after it remain equal peers that can be
+	// added and removed freely.
+	//
+	// Advertised by backends whose agent process is rooted at a single directory
+	// that cannot change once the session has started (e.g. the SDK's primary
+	// `workingDirectory`). When absent or `false`, all directories are equal
+	// peers and any of them may be removed.
+	ImmutablePrimary *bool `json:"immutablePrimary,omitempty"`
 }
 
 type SessionModelInfo struct {
@@ -705,19 +717,15 @@ type SessionState struct {
 	Activity *string `json:"activity,omitempty"`
 	// Server-owned project for this session
 	Project *ProjectInfo `json:"project,omitempty"`
-	// The default working directory URI for this session. Individual chats
-	// MAY override via {@link ChatSummary.workingDirectory | their own
-	// `workingDirectory`}; this field acts as the fallback for any chat that
-	// does not.
-	WorkingDirectory *URI `json:"workingDirectory,omitempty"`
-	// The full set of working directories the session's agent has tool access
-	// to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
-	// entries are equal peers — there is no privileged "primary". Individual
-	// chats MAY restrict to a subset via
-	// {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
-	//
-	// When absent, fall back to {@link workingDirectory} (if set) as a
-	// single-entry set.
+	// The working directories the session's agent has tool access to, as
+	// maintained by the `session/workingDirectorySet` /
+	// `session/workingDirectoryRemoved` actions. Directories are equal peers
+	// except when the agent advertises
+	// {@link MultipleWorkspaceFoldersCapability.immutablePrimary} (the first
+	// entry is then a fixed process root). Individual chats MAY restrict to a
+	// subset via {@link ChatSummary.workingDirectories | their own
+	// `workingDirectories`}; a chat that sets none operates against this full
+	// set.
 	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
 	// Lightweight summary of this session's inline annotations channel
 	// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
@@ -794,7 +802,7 @@ type SessionState struct {
 	//
 	// Clients MAY look for well-known keys here to provide enhanced UI.
 	// For example, a `git` key may provide extra git metadata about the session's
-	// workingDirectory.
+	// working directories.
 	Meta map[string]json.RawMessage `json:"_meta,omitempty"`
 }
 
@@ -923,9 +931,9 @@ type SessionToolClientExecutionRequest struct {
 //     chat currently driving the promoted status bits when a non-default chat
 //     wins (e.g. the chat that raised `InputNeeded`).
 //   - `modifiedAt`: the max of all chats' `modifiedAt`.
-//   - `workingDirectory` / `workingDirectories`: the session-level set. Individual
-//     chats MAY restrict to a subset via {@link ChatSummary.workingDirectories};
-//     aggregating these up is meaningless and SHOULD NOT be attempted.
+//   - `workingDirectories`: the session-level set. Individual chats MAY restrict
+//     to a subset via {@link ChatSummary.workingDirectories}; aggregating these
+//     up is meaningless and SHOULD NOT be attempted.
 //   - `changes`: optional roll-up across all chats. Producers MAY sum the
 //     per-chat changeset stats or report the most expensive chat's stats —
 //     whichever is cheaper for the host to compute.
@@ -944,19 +952,15 @@ type SessionSummary struct {
 	Activity *string `json:"activity,omitempty"`
 	// Server-owned project for this session
 	Project *ProjectInfo `json:"project,omitempty"`
-	// The default working directory URI for this session. Individual chats
-	// MAY override via {@link ChatSummary.workingDirectory | their own
-	// `workingDirectory`}; this field acts as the fallback for any chat that
-	// does not.
-	WorkingDirectory *URI `json:"workingDirectory,omitempty"`
-	// The full set of working directories the session's agent has tool access
-	// to, as maintained by `addWorkspaceFolder` / `removeWorkspaceFolder`. All
-	// entries are equal peers — there is no privileged "primary". Individual
-	// chats MAY restrict to a subset via
-	// {@link ChatSummary.workingDirectories | their own `workingDirectories`}.
-	//
-	// When absent, fall back to {@link workingDirectory} (if set) as a
-	// single-entry set.
+	// The working directories the session's agent has tool access to, as
+	// maintained by the `session/workingDirectorySet` /
+	// `session/workingDirectoryRemoved` actions. Directories are equal peers
+	// except when the agent advertises
+	// {@link MultipleWorkspaceFoldersCapability.immutablePrimary} (the first
+	// entry is then a fixed process root). Individual chats MAY restrict to a
+	// subset via {@link ChatSummary.workingDirectories | their own
+	// `workingDirectories`}; a chat that sets none operates against this full
+	// set.
 	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
 	// Lightweight summary of this session's inline annotations channel
 	// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
@@ -1024,19 +1028,17 @@ type ChatState struct {
 	// Absence defaults to {@link ChatInteractivity.Full} for backward
 	// compatibility.
 	Interactivity *ChatInteractivity `json:"interactivity,omitempty"`
-	// Optional per-chat working directory.
-	WorkingDirectory *URI `json:"workingDirectory,omitempty"`
 	// The subset of the session's
 	// {@link SessionState.workingDirectories | `workingDirectories`} that this
 	// chat's agent has tool access to. Every entry MUST be present in the owning
-	// session's `workingDirectories`; servers MUST reject `addChatWorkspaceFolder`
-	// calls that violate this constraint.
+	// session's `workingDirectories`; servers MUST reject a
+	// `chat/workingDirectorySet` action that violates this constraint.
 	//
 	// When absent, the chat inherits the full session set. When present but empty
 	// (not recommended), the chat has no working-directory tool access at all.
 	//
-	// Use `addChatWorkspaceFolder` / `removeChatWorkspaceFolder` to update the
-	// set on a running chat.
+	// Dispatch `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` to
+	// update the subset on a running chat.
 	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
 	// Completed turns
 	Turns []Turn `json:"turns"`
@@ -1093,8 +1095,6 @@ type ChatSummary struct {
 	// Absence defaults to {@link ChatInteractivity.Full} for backward
 	// compatibility.
 	Interactivity *ChatInteractivity `json:"interactivity,omitempty"`
-	// Optional per-chat working directory.
-	WorkingDirectory *URI `json:"workingDirectory,omitempty"`
 	// The subset of the session's working directories this chat uses.
 	// See {@link ChatState.workingDirectories} for the full semantics.
 	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
@@ -2987,15 +2987,24 @@ type Changeset struct {
 	// Implementations MAY provide additional values; clients SHOULD fall back
 	// to a reasonable default when an unknown value is encountered.
 	ChangeKind string `json:"changeKind"`
-	// The working directory this changeset is scoped to, when it covers changes
-	// within a single directory of a multiroot session. MUST be one of the
-	// session's {@link SessionState.workingDirectories}.
+	// The working directory this changeset is scoped to. When set, it MUST be one
+	// of the owning session's {@link SessionState.workingDirectories}, and every
+	// file in the changeset belongs to that directory.
 	//
-	// A host with multiple working directories groups changes by directory by
-	// advertising one changeset per directory, each carrying its
-	// `workingDirectory` — rather than nesting changes as arrays-of-arrays.
-	// Omit for changesets that are not directory-scoped (e.g. a single-directory
-	// session, or a session-wide roll-up spanning every directory).
+	// **Grouping is the host's responsibility, not the client's.** A host whose
+	// session has multiple working directories MUST group changes by directory —
+	// emitting one changeset per working directory, each carrying its
+	// `workingDirectory` — so that a client never has to derive a file's owning
+	// directory itself (e.g. by prefix-matching URIs, which the client cannot do
+	// correctly across nested repositories, symlinks, or submodules). This keeps
+	// AHP a display-ready presentation model (see the
+	// {@link /guide/doctrine | doctrine}): the host owns the filesystem/VCS
+	// knowledge and hands clients pre-grouped changesets.
+	//
+	// Omit only for changesets that are genuinely not scoped to a single working
+	// directory — e.g. a single-directory session (nothing to group), or an
+	// aggregate roll-up / out-of-tree changeset that intentionally spans (or sits
+	// outside) the working directories.
 	WorkingDirectory *URI `json:"workingDirectory,omitempty"`
 	// Optional capability declarations for this changeset. Absent (or an empty
 	// object) means the changeset advertises no optional capabilities.

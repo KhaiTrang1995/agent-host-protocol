@@ -98,12 +98,6 @@ object AhpCommands {
     fun disposeSession(id: Long, params: DisposeSessionParams): JsonRpcRequest<DisposeSessionParams> =
         JsonRpcRequest(id = id, method = "disposeSession", params = params)
 
-    fun addWorkspaceFolder(id: Long, params: AddWorkspaceFolderParams): JsonRpcRequest<AddWorkspaceFolderParams> =
-        JsonRpcRequest(id = id, method = "addWorkspaceFolder", params = params)
-
-    fun removeWorkspaceFolder(id: Long, params: RemoveWorkspaceFolderParams): JsonRpcRequest<RemoveWorkspaceFolderParams> =
-        JsonRpcRequest(id = id, method = "removeWorkspaceFolder", params = params)
-
     fun listSessions(id: Long, params: ListSessionsParams): JsonRpcRequest<ListSessionsParams> =
         JsonRpcRequest(id = id, method = "listSessions", params = params)
 

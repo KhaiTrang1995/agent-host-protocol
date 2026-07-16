@@ -15,10 +15,6 @@ versions (`*-SNAPSHOT`) are explicitly rejected by the publish pipeline; bump
 
 ## [Unreleased]
 
-### Added
-
-- `multipleWorkspaceFolders` capability on `AgentCapabilities`, `CreateSessionParams.workingDirectories`, and `addWorkspaceFolder` / `removeWorkspaceFolder` (session-level) and `addChatWorkspaceFolder` / `removeChatWorkspaceFolder` (chat-level subset) commands, plus `workingDirectories` fields on `SessionMetadata`, `ChatState`, and `ChatSummary` for multiroot session support (AHP 0.6.0). Changes are grouped by directory via `Changeset.workingDirectory`.
-
 ## [0.5.2] — 2026-07-09
 
 Implements AHP 0.5.2.

@@ -1,0 +1,5 @@
+{
+  "type": "added",
+  "message": "Multiroot session support: `AgentCapabilities.multipleWorkspaceFolders` capability (with `immutablePrimary`), `CreateSessionParams.workingDirectories` and `SessionMetadata.workingDirectories` (equal-peer set, mirrored onto `SessionState`/`SessionSummary`), `CreateChatParams.workingDirectories` and `ChatState`/`ChatSummary.workingDirectories` (a subset of the session's set), the client-dispatchable `session/workingDirectorySet` / `session/workingDirectoryRemoved` and `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` actions for mutating those sets, and `Changeset.workingDirectory` (with a `'directory'` `changeKind`) so a multiroot host groups changes by directory.",
+  "issues": [337]
+}

@@ -1199,6 +1199,10 @@ const ACTION_VARIANTS: { type: string; caseName: string; tsInterface: string }[]
   { type: 'session/serverToolsChanged', caseName: 'SessionServerToolsChanged', tsInterface: 'SessionServerToolsChangedAction' },
   { type: 'session/activeClientSet', caseName: 'SessionActiveClientSet', tsInterface: 'SessionActiveClientSetAction' },
   { type: 'session/activeClientRemoved', caseName: 'SessionActiveClientRemoved', tsInterface: 'SessionActiveClientRemovedAction' },
+  { type: 'session/workingDirectorySet', caseName: 'SessionWorkingDirectorySet', tsInterface: 'SessionWorkingDirectorySetAction' },
+  { type: 'session/workingDirectoryRemoved', caseName: 'SessionWorkingDirectoryRemoved', tsInterface: 'SessionWorkingDirectoryRemovedAction' },
+  { type: 'chat/workingDirectorySet', caseName: 'ChatWorkingDirectorySet', tsInterface: 'ChatWorkingDirectorySetAction' },
+  { type: 'chat/workingDirectoryRemoved', caseName: 'ChatWorkingDirectoryRemoved', tsInterface: 'ChatWorkingDirectoryRemovedAction' },
   { type: 'session/inputNeededSet', caseName: 'SessionInputNeededSet', tsInterface: 'SessionInputNeededSetAction' },
   { type: 'session/inputNeededRemoved', caseName: 'SessionInputNeededRemoved', tsInterface: 'SessionInputNeededRemovedAction' },
   { type: 'chat/pendingMessageSet', caseName: 'ChatPendingMessageSet', tsInterface: 'ChatPendingMessageSetAction' },
@@ -1410,11 +1414,7 @@ const COMMAND_STRUCTS = [
   'ReconnectParams', 'ReconnectReplayResult', 'ReconnectSnapshotResult',
   'SubscribeParams', 'SubscribeView', 'SubscriptionDeliveryOptions', 'SubscribeResult',
   'SessionForkSource', 'CreateSessionParams', 'DisposeSessionParams',
-  'AddWorkspaceFolderParams', 'RemoveWorkspaceFolderParams',
-  'WorkspaceFolderResult', 'AddWorkspaceFolderResult', 'RemoveWorkspaceFolderResult',
   'ChatForkSource', 'CreateChatParams', 'DisposeChatParams',
-  'AddChatWorkspaceFolderParams', 'RemoveChatWorkspaceFolderParams',
-  'ChatWorkspaceFolderResult', 'AddChatWorkspaceFolderResult', 'RemoveChatWorkspaceFolderResult',
   'ListSessionsParams', 'ListSessionsResult',
   'ResourceReadParams', 'ResourceReadResult',
   'ResourceWriteParams', 'ResourceWriteResult',
@@ -1773,12 +1773,6 @@ object AhpCommands {
 
     fun disposeSession(id: Long, params: DisposeSessionParams): JsonRpcRequest<DisposeSessionParams> =
         JsonRpcRequest(id = id, method = "disposeSession", params = params)
-
-    fun addWorkspaceFolder(id: Long, params: AddWorkspaceFolderParams): JsonRpcRequest<AddWorkspaceFolderParams> =
-        JsonRpcRequest(id = id, method = "addWorkspaceFolder", params = params)
-
-    fun removeWorkspaceFolder(id: Long, params: RemoveWorkspaceFolderParams): JsonRpcRequest<RemoveWorkspaceFolderParams> =
-        JsonRpcRequest(id = id, method = "removeWorkspaceFolder", params = params)
 
     fun listSessions(id: Long, params: ListSessionsParams): JsonRpcRequest<ListSessionsParams> =
         JsonRpcRequest(id = id, method = "listSessions", params = params)

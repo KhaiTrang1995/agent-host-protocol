@@ -724,8 +724,8 @@ fn apply_summary_changes(
     if let Some(v) = &changes.project {
         existing.project = Some(v.clone());
     }
-    if let Some(v) = &changes.working_directory {
-        existing.working_directory = Some(v.clone());
+    if let Some(v) = &changes.working_directories {
+        existing.working_directories = Some(v.clone());
     }
     if let Some(v) = &changes.annotations {
         existing.annotations = Some(v.clone());

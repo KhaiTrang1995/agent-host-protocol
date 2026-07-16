@@ -71,6 +71,10 @@ pub enum ActionType {
     ChatError,
     #[serde(rename = "chat/activityChanged")]
     ChatActivityChanged,
+    #[serde(rename = "chat/workingDirectorySet")]
+    ChatWorkingDirectorySet,
+    #[serde(rename = "chat/workingDirectoryRemoved")]
+    ChatWorkingDirectoryRemoved,
     #[serde(rename = "session/titleChanged")]
     SessionTitleChanged,
     #[serde(rename = "chat/usage")]
@@ -83,6 +87,10 @@ pub enum ActionType {
     SessionActiveClientSet,
     #[serde(rename = "session/activeClientRemoved")]
     SessionActiveClientRemoved,
+    #[serde(rename = "session/workingDirectorySet")]
+    SessionWorkingDirectorySet,
+    #[serde(rename = "session/workingDirectoryRemoved")]
+    SessionWorkingDirectoryRemoved,
     #[serde(rename = "session/inputNeededSet")]
     SessionInputNeededSet,
     #[serde(rename = "session/inputNeededRemoved")]
@@ -844,6 +852,65 @@ pub struct SessionActiveClientSetAction {
 pub struct SessionActiveClientRemovedAction {
     /// The `clientId` of the active client to remove.
     pub client_id: String,
+}
+
+/// A working directory was added to the session's
+/// {@link SessionState.workingDirectories} set.
+///
+/// Membership semantics keyed by the directory URI: the reducer appends
+/// `directory` when the set does not already contain it (creating the set if
+/// absent) and is a no-op when it is already present. Only valid when the agent
+/// advertises {@link AgentCapabilities.multipleWorkspaceFolders}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionWorkingDirectorySetAction {
+    /// The working directory to grant the session's agent tool access to.
+    pub directory: Uri,
+}
+
+/// A working directory was removed from the session's
+/// {@link SessionState.workingDirectories} set.
+///
+/// Removes `directory` from the set; a no-op when it is not present. There is no
+/// atomic backend "remove one" primitive — a host reconfigures its agent to the
+/// reduced set — so this action is safe to model as idempotent. A host MAY
+/// decline to apply the removal (e.g. an immutable primary directory, see
+/// {@link MultipleWorkspaceFoldersCapability.immutablePrimary}); it then leaves
+/// the set unchanged.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionWorkingDirectoryRemovedAction {
+    /// The working directory to revoke the session's agent tool access to.
+    pub directory: Uri,
+}
+
+/// A working directory was added to this chat's
+/// {@link ChatState.workingDirectories} subset.
+///
+/// Membership semantics keyed by the directory URI: the reducer appends
+/// `directory` when the chat's subset does not already contain it (creating the
+/// subset if absent) and is a no-op when it is already present. `directory` MUST
+/// be one of the owning session's {@link SessionState.workingDirectories}; a host
+/// MUST reject a directory that is not. Only valid when the agent advertises
+/// {@link AgentCapabilities.multipleWorkspaceFolders}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatWorkingDirectorySetAction {
+    /// The working directory to add to this chat's subset.
+    pub directory: Uri,
+}
+
+/// A working directory was removed from this chat's
+/// {@link ChatState.workingDirectories} subset.
+///
+/// Removes `directory` from the chat's subset; a no-op when it is not present.
+/// Idempotent, mirroring `session/workingDirectoryRemoved`. Only affects the
+/// chat's subset — the directory remains in the session's set.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatWorkingDirectoryRemovedAction {
+    /// The working directory to remove from this chat's subset.
+    pub directory: Uri,
 }
 
 /// A session-level input request was added or updated.
@@ -1610,9 +1677,6 @@ pub struct PartialChatSummary {
     /// compatibility.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interactivity: Option<ChatInteractivity>,
-    /// Optional per-chat working directory.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub working_directory: Option<Uri>,
     /// The subset of the session's working directories this chat uses.
     /// See {@link ChatState.workingDirectories} for the full semantics.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1691,6 +1755,14 @@ pub enum StateAction {
     SessionActiveClientSet(SessionActiveClientSetAction),
     #[serde(rename = "session/activeClientRemoved")]
     SessionActiveClientRemoved(SessionActiveClientRemovedAction),
+    #[serde(rename = "session/workingDirectorySet")]
+    SessionWorkingDirectorySet(SessionWorkingDirectorySetAction),
+    #[serde(rename = "session/workingDirectoryRemoved")]
+    SessionWorkingDirectoryRemoved(SessionWorkingDirectoryRemovedAction),
+    #[serde(rename = "chat/workingDirectorySet")]
+    ChatWorkingDirectorySet(ChatWorkingDirectorySetAction),
+    #[serde(rename = "chat/workingDirectoryRemoved")]
+    ChatWorkingDirectoryRemoved(ChatWorkingDirectoryRemovedAction),
     #[serde(rename = "session/inputNeededSet")]
     SessionInputNeededSet(Box<SessionInputNeededSetAction>),
     #[serde(rename = "session/inputNeededRemoved")]
