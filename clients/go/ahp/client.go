@@ -974,6 +974,31 @@ func (c *Client) CreateResourceWatch(ctx context.Context, params ahptypes.Create
 	return &out, nil
 }
 
+// Completions requests inline completion items for a partially-typed input
+// (`completions`), e.g. to power `@`-mention pickers. Unlike the resource
+// wrappers, the caller-supplied Channel (the chat URI the completion is scoped
+// to) is preserved. Debounce calls to avoid flooding the server on every
+// keystroke.
+func (c *Client) Completions(ctx context.Context, params ahptypes.CompletionsParams) (*ahptypes.CompletionsResult, error) {
+	var out ahptypes.CompletionsResult
+	if err := c.Request(ctx, "completions", params, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SessionConfigCompletions queries the server for allowed values of a dynamic
+// session config property (`sessionConfigCompletions`). It targets the root
+// channel; any Channel set on params is overwritten.
+func (c *Client) SessionConfigCompletions(ctx context.Context, params ahptypes.SessionConfigCompletionsParams) (*ahptypes.SessionConfigCompletionsResult, error) {
+	params.Channel = ahptypes.RootResourceURI
+	var out ahptypes.SessionConfigCompletionsResult
+	if err := c.Request(ctx, "sessionConfigCompletions", params, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // Events returns a new top-level [EventStream] that receives every
 // inbound event from this client, tagged with the channel URI it was
 // scoped to. Multiple streams may exist concurrently.

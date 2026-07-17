@@ -133,6 +133,14 @@ public enum AHPCommands {
     public static func authenticate(id: Int, params: AuthenticateParams) -> JsonRpcRequest<AuthenticateParams> {
         JsonRpcRequest(id: id, method: "authenticate", params: params)
     }
+
+    public static func sessionConfigCompletions(id: Int, params: SessionConfigCompletionsParams) -> JsonRpcRequest<SessionConfigCompletionsParams> {
+        JsonRpcRequest(id: id, method: "sessionConfigCompletions", params: params)
+    }
+
+    public static func completions(id: Int, params: CompletionsParams) -> JsonRpcRequest<CompletionsParams> {
+        JsonRpcRequest(id: id, method: "completions", params: params)
+    }
 }
 
 /// Typed helper for constructing client → server notifications.

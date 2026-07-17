@@ -48,6 +48,14 @@ import type {
   CreateResourceWatchResult,
 } from '../types/channels-resource-watch/commands.js';
 import type {
+  CompletionsParams,
+  CompletionsResult,
+} from '../types/channels-session/commands.js';
+import type {
+  SessionConfigCompletionsParams,
+  SessionConfigCompletionsResult,
+} from '../types/channels-root/commands.js';
+import type {
   CommandMap,
   ClientNotificationMap,
   JsonRpcErrorResponse,
@@ -547,6 +555,33 @@ export class AhpClient {
     params: Omit<CreateResourceWatchParams, 'channel'>,
   ): Promise<CreateResourceWatchResult> {
     return this.request('createResourceWatch', {
+      ...params,
+      channel: 'ahp-root://',
+    });
+  }
+
+  // ─── Completions commands ──────────────────────────────────────────────────
+
+  /**
+   * Request inline completion items for a partially-typed input
+   * (`completions`), e.g. to power `@`-mention pickers. Unlike the `resource*`
+   * wrappers, the caller-supplied `channel` (the chat URI the completion is
+   * scoped to) is preserved. Debounce calls to avoid flooding the server on
+   * every keystroke.
+   */
+  async completions(params: CompletionsParams): Promise<CompletionsResult> {
+    return this.request('completions', params);
+  }
+
+  /**
+   * Query the server for allowed values of a dynamic session config property
+   * (`sessionConfigCompletions`). Targets the root channel, so callers omit
+   * `channel`.
+   */
+  async sessionConfigCompletions(
+    params: Omit<SessionConfigCompletionsParams, 'channel'>,
+  ): Promise<SessionConfigCompletionsResult> {
+    return this.request('sessionConfigCompletions', {
       ...params,
       channel: 'ahp-root://',
     });
