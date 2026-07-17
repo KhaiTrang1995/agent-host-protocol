@@ -221,7 +221,7 @@ type PartialSessionSummary struct {
 	// maintained by the `session/workingDirectorySet` /
 	// `session/workingDirectoryRemoved` actions. Directories are equal peers
 	// except when the agent advertises
-	// {@link MultipleWorkspaceFoldersCapability.immutablePrimary} (the first
+	// {@link MultipleWorkingDirectoriesCapability.immutablePrimary} (the first
 	// entry is then a fixed process root). Individual chats MAY restrict to a
 	// subset via {@link ChatSummary.workingDirectories | their own
 	// `workingDirectories`}; a chat that sets none operates against this full

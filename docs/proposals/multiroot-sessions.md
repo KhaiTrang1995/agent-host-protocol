@@ -51,12 +51,14 @@ Three roles, nested:
   one directory (or a few); when it pins nothing, it sees the session's whole
   set.
 
-- **Changes are grouped *by directory*.** The file changes an agent produces are
-  surfaced as one changeset per directory, each carrying which directory it
-  belongs to — a flat list per root, not a nested tangle.
+- **Changes are not locked to a directory.** A changeset (e.g. "last turn") may
+  span several working directories. Clients that want a per-directory view group
+  a changeset's files themselves against the session's directory list; a host
+  MAY additionally expose dedicated per-directory changesets as extra catalogue
+  entries.
 
 > One session, many equal directories. Each chat narrows to a subset. Changes
-> group by directory.
+> can span directories; grouping is optional.
 
 ```mermaid
 flowchart TB
@@ -123,20 +125,18 @@ capabilities:
    directories (every entry must be one of the session's). A chat that narrows
    nothing operates against the whole set.
 
-5. **Changes grouped by directory.** The session surfaces one changeset per
-   working directory, each tagged with the directory it covers — so a UI can show
-   "changes in repo-a / repo-b" without inventing arrays-of-arrays.
-
-6. **Server-owned change grouping.** A multiroot host MUST group changes by
-   directory — one changeset per working directory, each tagged with it — so
-   clients never re-derive a file's owning directory themselves.
+5. **Optional per-directory change views.** Changesets are cross-cutting (a
+   per-turn changeset spans every directory the agent touched). A client that
+   wants a per-directory view groups a changeset's files itself against the
+   session's directory list; a host MAY also expose dedicated per-directory
+   changesets as extra catalogue entries. Nothing forces a one-directory scope.
 
 ```mermaid
 flowchart LR
-    Cap["capability:<br/>multipleWorkspaceFolders?"] --> Create["createSession<br/>workingDirectories[]"]
+    Cap["capability:<br/>multipleWorkingDirectories?"] --> Create["createSession<br/>workingDirectories[]"]
     Create --> Add["session/workingDirectorySet /<br/>Removed actions"]
     Create --> Chat["chat subset<br/>workingDirectories ⊆ session"]
-    Create --> CS["changesets<br/>grouped by workingDirectory"]
+    Create --> CS["changesets<br/>(optional per-dir entries)"]
 ```
 
 ---
@@ -152,7 +152,7 @@ kept as two separate checkouts.
 | Agent edits both repos | The agent has tool access to both directories, equal peers. |
 | User opens a focused thread on just the client | A chat pinned to `workingDirectories: [client]`. |
 | Agent later needs the shared `protos/` repo too | dispatch `session/workingDirectorySet(protos)` → set becomes `[api, client, protos]`. |
-| User reviews the diff | Three changesets, one per directory, each tagged with its `workingDirectory`. |
+| User reviews the diff | The session's changeset lists every changed file across the dirs; the client groups them by directory for display if it wants. |
 | The `protos/` work turns out unnecessary | dispatch `session/workingDirectoryRemoved(protos)` → set reconfigures back to `[api, client]`. |
 
 The session stays one coherent conversation and one shared configuration
@@ -195,10 +195,11 @@ layer on without breaking this shape.
   (the session); a chat only ever *narrows*, never widens. This keeps the
   invariant simple: a chat's directories are always ⊆ the session's.
 
-- **Changes group by directory, not arrays-of-arrays.** Reusing the existing
-  changeset catalogue — one entry per directory, tagged with its
-  `workingDirectory` — keeps each changeset a flat file list and avoids a new
-  nested shape.
+- **Changesets stay cross-cutting.** A changeset isn't tied to one directory —
+  a per-turn diff can span several — so no directory field is forced onto it.
+  Per-directory presentation is optional: the client groups a changeset's files
+  against the known directory list, or the host advertises extra per-directory
+  catalogue entries. Both reuse existing shapes; neither needs arrays-of-arrays.
 
 - **Additive and capability-gated.** Every new field is optional; the commands
   are gated behind a capability plus a version handshake. A single-directory
@@ -228,15 +229,14 @@ as today.
 
 | Symbol | File | Kind |
 | --- | --- | --- |
-| `AgentCapabilities.multipleWorkspaceFolders?` | `channels-root/state.ts` | added (capability) |
-| `MultipleWorkspaceFoldersCapability` (`immutablePrimary?`) | `channels-root/state.ts` | added (type) |
+| `AgentCapabilities.multipleWorkingDirectories?` | `channels-root/state.ts` | added (capability) |
+| `MultipleWorkingDirectoriesCapability` (`immutablePrimary?`) | `channels-root/state.ts` | added (type) |
 | `CreateSessionParams.workingDirectories?` | `channels-session/commands.ts` | added |
 | `SessionMetadata.workingDirectories?` (→ `SessionState`, `SessionSummary`) | `channels-session/state.ts` | added |
 | `session/workingDirectorySet` / `session/workingDirectoryRemoved` actions | `channels-session/actions.ts` | added (action) |
 | `ChatState.workingDirectories?` / `ChatSummary.workingDirectories?` | `channels-chat/state.ts` | added |
 | `CreateChatParams.workingDirectories?` | `channels-chat/commands.ts` | added |
 | `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` actions | `channels-chat/actions.ts` | added (action) |
-| `Changeset.workingDirectory?` + `'directory'` `changeKind` | `channels-changeset/state.ts` | added |
 | 4 `ActionType` entries + `ACTION_INTRODUCED_IN` (`0.6.0`) | `common/actions.ts`, `version/registry.ts` | added |
 
 > **Revised after review.** The directory-mutation surface started as four
@@ -245,7 +245,12 @@ as today.
 > following the keyed-collection convention — the set lives in state, so clients
 > mutate it by dispatching actions and observe the result on
 > `workingDirectories`. The deprecated singular `workingDirectory` fields were
-> **hard-removed** (0.6.0 is a breaking release), not kept as a shorthand.
+> **hard-removed** (0.6.0 is a breaking release), not kept as a shorthand. An
+> earlier revision also added a `Changeset.workingDirectory` field to group
+> changes per directory; that was **dropped** — a changeset can span
+> directories (e.g. a per-turn diff), so a single-directory scalar is the wrong
+> model. Per-directory presentation is instead handled by optional client-side
+> grouping or extra per-directory catalogue entries (see §6/§7).
 
 ### 8.2 Type signatures
 
@@ -254,9 +259,9 @@ as today.
 interface AgentCapabilities {
   // …existing…
   /** Presence ({}) = the agent supports >1 working directory per session. */
-  multipleWorkspaceFolders?: MultipleWorkspaceFoldersCapability;
+  multipleWorkingDirectories?: MultipleWorkingDirectoriesCapability;
 }
-interface MultipleWorkspaceFoldersCapability {
+interface MultipleWorkingDirectoriesCapability {
   /** First directory is a fixed process root; clients MUST NOT remove/reorder it. */
   immutablePrimary?: boolean;
 }
@@ -275,7 +280,7 @@ interface SessionMetadata {
 }
 
 // ── Session runtime mutation — channels-session/actions.ts ────────────────
-// channel = session URI. Gated by multipleWorkspaceFolders. @clientDispatchable.
+// channel = session URI. Gated by multipleWorkingDirectories. @clientDispatchable.
 interface SessionWorkingDirectorySetAction {
   type: ActionType.SessionWorkingDirectorySet;     // 'session/workingDirectorySet'
   directory: URI;                                   // appended; no-op if present
@@ -295,7 +300,7 @@ interface CreateChatParams extends BaseParams {
   // …existing…
   workingDirectories?: URI[]; // subset ⊆ session; absent → whole session set
 }
-// channel = chat URI. Gated by multipleWorkspaceFolders. @clientDispatchable.
+// channel = chat URI. Gated by multipleWorkingDirectories. @clientDispatchable.
 interface ChatWorkingDirectorySetAction {
   type: ActionType.ChatWorkingDirectorySet;     // 'chat/workingDirectorySet'
   directory: URI;                                // MUST be in the session set
@@ -306,16 +311,10 @@ interface ChatWorkingDirectoryRemovedAction {
 }
 
 // ── Changes — channels-changeset/state.ts ────────────────────────────────
-interface Changeset {
-  // …existing…
-  changeKind: string; // now also accepts 'directory'
-  /**
-   * Directory this changeset is scoped to (one of the session's dirs).
-   * A multiroot host MUST group changes by directory (one changeset per dir);
-   * omitted only for single-dir sessions or out-of-tree/aggregate changesets.
-   */
-  workingDirectory?: URI;
-}
+// No changes. A changeset can span working directories, so it carries no
+// directory field. Per-directory views are optional: clients group a
+// changeset's files against the session's workingDirectories, or a host
+// advertises extra per-directory catalogue entries.
 ```
 
 ### 8.3 Versioning & gating
@@ -325,9 +324,9 @@ interface Changeset {
   = `[0.6.0, 0.5.2, 0.5.1]`.
 - The four directory mutations are **state actions**, so they carry
   `ACTION_INTRODUCED_IN` entries at `0.6.0` (and are `@clientDispatchable`).
-  Everything else — the capability, the create-time fields, and the
-  `Changeset.workingDirectory` field — is gated by the `multipleWorkspaceFolders`
-  capability plus the `initialize` version handshake.
+  Everything else — the capability and the create-time / state fields — is gated
+  by the `multipleWorkingDirectories` capability plus the `initialize` version
+  handshake.
 - Removal actions are idempotent and modelled as
   *reconfigure-to-the-reduced-set*; a host MAY decline to apply a removal (e.g.
   an `immutablePrimary` directory), leaving the set unchanged.
@@ -340,7 +339,7 @@ interface Changeset {
   "primary + additional" split because it re-introduces the confusion the user
   called out ("what's the relation between primary and secondary?"). Backends
   that genuinely pin a fixed process root opt in via
-  `MultipleWorkspaceFoldersCapability.immutablePrimary` (index `0` fixed).
+  `MultipleWorkingDirectoriesCapability.immutablePrimary` (index `0` fixed).
 
 - **Hard-remove the singular `workingDirectory`.** *Resolved (per review):* 0.6.0
   is a breaking release, so the deprecated singular fields on
@@ -359,13 +358,17 @@ interface Changeset {
   the session's set," with absent meaning the whole set. Gated by the same
   capability.
 
-- **Changes grouped by directory — server's job.** *Resolved (per review
-  pushback):* a multiroot host MUST group changes by directory
-  (`Changeset.workingDirectory`, one changeset per dir). Grouping is a host
-  responsibility per AHP's doctrine (display-ready state; host owns the
-  filesystem/VCS model) — clients must not re-derive it from file URIs, which
-  they cannot do correctly across nested repos/symlinks. The field stays
-  optional only for single-dir sessions and out-of-tree/aggregate changesets.
+- **No directory field on changesets.** *Resolved (per review):* an earlier
+  revision put a `Changeset.workingDirectory` scalar on the changeset and made
+  a multiroot host MUST group by directory. Dropped — a changeset can span
+  directories (a per-turn diff touches several), so a single-directory scalar
+  can't model the common case, and reviewers noted matching a file to a
+  directory is a simple client-side operation against the known directory list
+  (not a VCS-boundary problem). Per-directory presentation is therefore
+  optional: clients group a changeset's files themselves, and a host MAY expose
+  extra per-directory catalogue entries (already possible — the `changesets`
+  list is unbounded). A machine-readable per-directory association (e.g. a
+  `{workingDirectory}` template variable) is deferred to a follow-up if needed.
 
 - **Removal semantics.** *Resolved:* no single-remove primitive is assumed; the
   `*/workingDirectoryRemoved` action reduces to the reduced set, so it is
@@ -395,7 +398,7 @@ interface Changeset {
 
 - **Before:** a session is scoped to one `workingDirectory`.
 - **After:** a session owns a **set of equal-peer directories**; a **chat** works
-  in a **subset**; **changes group by directory** (server-side).
+  in a **subset**; **changesets can span directories** (grouping is optional).
 - **Why:** cross-directory / multi-repo / multi-root-workspace tasks are one
   coherent piece of work, not N disconnected sessions.
 - **How it stays safe:** capability-gated, additive fields; directory mutations

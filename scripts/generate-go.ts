@@ -659,7 +659,7 @@ const STATE_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: strin
   { name: 'AgentInfo' },
   { name: 'AgentCapabilities' },
   { name: 'MultipleChatsCapability' },
-  { name: 'MultipleWorkspaceFoldersCapability' },
+  { name: 'MultipleWorkingDirectoriesCapability' },
   { name: 'SessionModelInfo' },
   { name: 'ModelSelection' },
   { name: 'AgentSelection' },

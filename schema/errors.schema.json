@@ -628,9 +628,9 @@
           "$ref": "#/$defs/MultipleChatsCapability",
           "description": "The agent can host more than one concurrent chat per session. When absent,\nclients MUST NOT call `createChat` to open chats beyond the default one the\nsession starts with. An empty object `{}` advertises multi-chat without\nforking; set {@link MultipleChatsCapability.fork} to also allow forking."
         },
-        "multipleWorkspaceFolders": {
-          "$ref": "#/$defs/MultipleWorkspaceFoldersCapability",
-          "description": "The session's agent can be granted tool access to more than one working\ndirectory. The directories are treated as equal peers except where the\nagent advertises {@link MultipleWorkspaceFoldersCapability.immutablePrimary}\n(some backends pin their first directory as a fixed process root).\n\nWhen absent, clients MUST NOT mutate a session's or chat's working-directory\nset and MUST NOT set more than one entry in\n{@link CreateSessionParams.workingDirectories}."
+        "multipleWorkingDirectories": {
+          "$ref": "#/$defs/MultipleWorkingDirectoriesCapability",
+          "description": "The session's agent can be granted tool access to more than one working\ndirectory. The directories are treated as equal peers except where the\nagent advertises {@link MultipleWorkingDirectoriesCapability.immutablePrimary}\n(some backends pin their first directory as a fixed process root).\n\nWhen absent, clients MUST NOT mutate a session's or chat's working-directory\nset and MUST NOT set more than one entry in\n{@link CreateSessionParams.workingDirectories}."
         }
       }
     },
@@ -644,9 +644,9 @@
         }
       }
     },
-    "MultipleWorkspaceFoldersCapability": {
+    "MultipleWorkingDirectoriesCapability": {
       "type": "object",
-      "description": "Options for the {@link AgentCapabilities.multipleWorkspaceFolders} capability.",
+      "description": "Options for the {@link AgentCapabilities.multipleWorkingDirectories} capability.",
       "properties": {
         "immutablePrimary": {
           "type": "boolean",
@@ -773,7 +773,7 @@
           "items": {
             "$ref": "#/$defs/URI"
           },
-          "description": "The working directories the session's agent has tool access to, as\nmaintained by the `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` actions. Directories are equal peers\nexcept when the agent advertises\n{@link MultipleWorkspaceFoldersCapability.immutablePrimary} (the first\nentry is then a fixed process root). Individual chats MAY restrict to a\nsubset via {@link ChatSummary.workingDirectories | their own\n`workingDirectories`}; a chat that sets none operates against this full\nset."
+          "description": "The working directories the session's agent has tool access to, as\nmaintained by the `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` actions. Directories are equal peers\nexcept when the agent advertises\n{@link MultipleWorkingDirectoriesCapability.immutablePrimary} (the first\nentry is then a fixed process root). Individual chats MAY restrict to a\nsubset via {@link ChatSummary.workingDirectories | their own\n`workingDirectories`}; a chat that sets none operates against this full\nset."
         },
         "annotations": {
           "$ref": "#/$defs/AnnotationsSummary",
@@ -815,7 +815,7 @@
           "items": {
             "$ref": "#/$defs/URI"
           },
-          "description": "The working directories the session's agent has tool access to, as\nmaintained by the `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` actions. Directories are equal peers\nexcept when the agent advertises\n{@link MultipleWorkspaceFoldersCapability.immutablePrimary} (the first\nentry is then a fixed process root). Individual chats MAY restrict to a\nsubset via {@link ChatSummary.workingDirectories | their own\n`workingDirectories`}; a chat that sets none operates against this full\nset."
+          "description": "The working directories the session's agent has tool access to, as\nmaintained by the `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` actions. Directories are equal peers\nexcept when the agent advertises\n{@link MultipleWorkingDirectoriesCapability.immutablePrimary} (the first\nentry is then a fixed process root). Individual chats MAY restrict to a\nsubset via {@link ChatSummary.workingDirectories | their own\n`workingDirectories`}; a chat that sets none operates against this full\nset."
         },
         "annotations": {
           "$ref": "#/$defs/AnnotationsSummary",
@@ -1087,7 +1087,7 @@
           "items": {
             "$ref": "#/$defs/URI"
           },
-          "description": "The working directories the session's agent has tool access to, as\nmaintained by the `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` actions. Directories are equal peers\nexcept when the agent advertises\n{@link MultipleWorkspaceFoldersCapability.immutablePrimary} (the first\nentry is then a fixed process root). Individual chats MAY restrict to a\nsubset via {@link ChatSummary.workingDirectories | their own\n`workingDirectories`}; a chat that sets none operates against this full\nset."
+          "description": "The working directories the session's agent has tool access to, as\nmaintained by the `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` actions. Directories are equal peers\nexcept when the agent advertises\n{@link MultipleWorkingDirectoriesCapability.immutablePrimary} (the first\nentry is then a fixed process root). Individual chats MAY restrict to a\nsubset via {@link ChatSummary.workingDirectories | their own\n`workingDirectories`}; a chat that sets none operates against this full\nset."
         },
         "annotations": {
           "$ref": "#/$defs/AnnotationsSummary",
@@ -4367,11 +4367,7 @@
         },
         "changeKind": {
           "type": "string",
-          "description": "Advisory hint describing what kind of changeset this is, so clients can\ngroup, sort, or render an appropriate icon without parsing\n{@link uriTemplate}. Recognized values include:\n\n- `'session'`: a static, session-wide changeset covering all changes the\n  agent has produced in this session.\n- `'directory'`: all changes the agent has produced within a single\n  {@link workingDirectory | working directory} of a multiroot session.\n  Paired with {@link workingDirectory}.\n- `'branch'`: changes relative to a base branch (e.g. a feature branch\n  diffed against `main`).\n- `'uncommitted'`: the workspace's current uncommitted changes.\n- `'turn'`: changes produced by a single turn. Typically paired with a\n  `{turnId}` variable in {@link uriTemplate}.\n- `'compare-turns'`: a diff between two turns. Typically paired with\n  `{originalTurnId}` and `{modifiedTurnId}` variables in\n  {@link uriTemplate}.\n\nImplementations MAY provide additional values; clients SHOULD fall back\nto a reasonable default when an unknown value is encountered."
-        },
-        "workingDirectory": {
-          "$ref": "#/$defs/URI",
-          "description": "The working directory this changeset is scoped to. When set, it MUST be one\nof the owning session's {@link SessionState.workingDirectories}, and every\nfile in the changeset belongs to that directory.\n\n**Grouping is the host's responsibility, not the client's.** A host whose\nsession has multiple working directories MUST group changes by directory —\nemitting one changeset per working directory, each carrying its\n`workingDirectory` — so that a client never has to derive a file's owning\ndirectory itself (e.g. by prefix-matching URIs, which the client cannot do\ncorrectly across nested repositories, symlinks, or submodules). This keeps\nAHP a display-ready presentation model (see the\n{@link /guide/doctrine | doctrine}): the host owns the filesystem/VCS\nknowledge and hands clients pre-grouped changesets.\n\nOmit only for changesets that are genuinely not scoped to a single working\ndirectory — e.g. a single-directory session (nothing to group), or an\naggregate roll-up / out-of-tree changeset that intentionally spans (or sits\noutside) the working directories."
+          "description": "Advisory hint describing what kind of changeset this is, so clients can\ngroup, sort, or render an appropriate icon without parsing\n{@link uriTemplate}. Recognized values include:\n\n- `'session'`: a static, session-wide changeset covering all changes the\n  agent has produced in this session.\n- `'branch'`: changes relative to a base branch (e.g. a feature branch\n  diffed against `main`).\n- `'uncommitted'`: the workspace's current uncommitted changes.\n- `'turn'`: changes produced by a single turn. Typically paired with a\n  `{turnId}` variable in {@link uriTemplate}.\n- `'compare-turns'`: a diff between two turns. Typically paired with\n  `{originalTurnId}` and `{modifiedTurnId}` variables in\n  {@link uriTemplate}.\n\nImplementations MAY provide additional values; clients SHOULD fall back\nto a reasonable default when an unknown value is encountered."
         },
         "capabilities": {
           "$ref": "#/$defs/ChangesetCapabilities",
@@ -5645,7 +5641,7 @@
           "items": {
             "$ref": "#/$defs/URI"
           },
-          "description": "The working directories the session's agent is granted tool access to.\nA session may span multiple directories; they are equal peers except when\nthe agent advertises\n{@link MultipleWorkspaceFoldersCapability.immutablePrimary} (in which case\nthe first entry is a fixed process root).\n\nA client MUST NOT supply more than one entry unless the agent advertises\n{@link AgentCapabilities.multipleWorkspaceFolders}; a server without that\ncapability treats only the first entry as the session's working directory\nand ignores the rest. Dispatch `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` to change the set after the session has\nstarted.\n\nIgnored for forked sessions — a fork inherits its working directories\nfrom the source session identified by `fork`."
+          "description": "The working directories the session's agent is granted tool access to.\nA session may span multiple directories; they are equal peers except when\nthe agent advertises\n{@link MultipleWorkingDirectoriesCapability.immutablePrimary} (in which case\nthe first entry is a fixed process root).\n\nA client MUST NOT supply more than one entry unless the agent advertises\n{@link AgentCapabilities.multipleWorkingDirectories}; a server without that\ncapability treats only the first entry as the session's working directory\nand ignores the rest. Dispatch `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` to change the set after the session has\nstarted.\n\nIgnored for forked sessions — a fork inherits its working directories\nfrom the source session identified by `fork`."
         },
         "fork": {
           "$ref": "#/$defs/SessionForkSource",
@@ -5817,7 +5813,7 @@
           "items": {
             "$ref": "#/$defs/URI"
           },
-          "description": "Initial working-directory subset for this chat. Every entry MUST be\npresent in the owning session's `workingDirectories`; the server MUST\nreject any entry that is not. When absent, the chat inherits the full\nsession set. Forked chats (`source`) inherit the source chat's\n`workingDirectories`; this field is ignored for forked chats.\n\nA client MUST NOT supply this field unless the agent advertises\n{@link AgentCapabilities.multipleWorkspaceFolders}."
+          "description": "Initial working-directory subset for this chat. Every entry MUST be\npresent in the owning session's `workingDirectories`; the server MUST\nreject any entry that is not. When absent, the chat inherits the full\nsession set. Forked chats (`source`) inherit the source chat's\n`workingDirectories`; this field is ignored for forked chats.\n\nA client MUST NOT supply this field unless the agent advertises\n{@link AgentCapabilities.multipleWorkingDirectories}."
         }
       },
       "required": [
@@ -7189,7 +7185,7 @@
     },
     "SessionWorkingDirectorySetAction": {
       "type": "object",
-      "description": "A working directory was added to the session's\n{@link SessionState.workingDirectories} set.\n\nMembership semantics keyed by the directory URI: the reducer appends\n`directory` when the set does not already contain it (creating the set if\nabsent) and is a no-op when it is already present. Only valid when the agent\nadvertises {@link AgentCapabilities.multipleWorkspaceFolders}.",
+      "description": "A working directory was added to the session's\n{@link SessionState.workingDirectories} set.\n\nMembership semantics keyed by the directory URI: the reducer appends\n`directory` when the set does not already contain it (creating the set if\nabsent) and is a no-op when it is already present. Only valid when the agent\nadvertises {@link AgentCapabilities.multipleWorkingDirectories}.",
       "properties": {
         "type": {
           "const": "session/workingDirectorySet"
@@ -7206,7 +7202,7 @@
     },
     "SessionWorkingDirectoryRemovedAction": {
       "type": "object",
-      "description": "A working directory was removed from the session's\n{@link SessionState.workingDirectories} set.\n\nRemoves `directory` from the set; a no-op when it is not present. There is no\natomic backend \"remove one\" primitive — a host reconfigures its agent to the\nreduced set — so this action is safe to model as idempotent. A host MAY\ndecline to apply the removal (e.g. an immutable primary directory, see\n{@link MultipleWorkspaceFoldersCapability.immutablePrimary}); it then leaves\nthe set unchanged.",
+      "description": "A working directory was removed from the session's\n{@link SessionState.workingDirectories} set.\n\nRemoves `directory` from the set; a no-op when it is not present. There is no\natomic backend \"remove one\" primitive — a host reconfigures its agent to the\nreduced set — so this action is safe to model as idempotent. A host MAY\ndecline to apply the removal (e.g. an immutable primary directory, see\n{@link MultipleWorkingDirectoriesCapability.immutablePrimary}); it then leaves\nthe set unchanged.",
       "properties": {
         "type": {
           "const": "session/workingDirectoryRemoved"
@@ -7963,7 +7959,7 @@
     },
     "ChatWorkingDirectorySetAction": {
       "type": "object",
-      "description": "A working directory was added to this chat's\n{@link ChatState.workingDirectories} subset.\n\nMembership semantics keyed by the directory URI: the reducer appends\n`directory` when the chat's subset does not already contain it (creating the\nsubset if absent) and is a no-op when it is already present. `directory` MUST\nbe one of the owning session's {@link SessionState.workingDirectories}; a host\nMUST reject a directory that is not. Only valid when the agent advertises\n{@link AgentCapabilities.multipleWorkspaceFolders}.",
+      "description": "A working directory was added to this chat's\n{@link ChatState.workingDirectories} subset.\n\nMembership semantics keyed by the directory URI: the reducer appends\n`directory` when the chat's subset does not already contain it (creating the\nsubset if absent) and is a no-op when it is already present. `directory` MUST\nbe one of the owning session's {@link SessionState.workingDirectories}; a host\nMUST reject a directory that is not. Only valid when the agent advertises\n{@link AgentCapabilities.multipleWorkingDirectories}.",
       "properties": {
         "type": {
           "const": "chat/workingDirectorySet"

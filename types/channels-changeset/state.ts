@@ -5,7 +5,7 @@
  * @module channels-changeset/state
  */
 
-import type { URI, StringOrMarkdown, FileEdit, ErrorInfo } from '../common/state.js';
+import type { StringOrMarkdown, FileEdit, ErrorInfo } from '../common/state.js';
 
 // ─── Changesets ──────────────────────────────────────────────────────────────
 
@@ -50,9 +50,6 @@ export interface Changeset {
    *
    * - `'session'`: a static, session-wide changeset covering all changes the
    *   agent has produced in this session.
-   * - `'directory'`: all changes the agent has produced within a single
-   *   {@link workingDirectory | working directory} of a multiroot session.
-   *   Paired with {@link workingDirectory}.
    * - `'branch'`: changes relative to a base branch (e.g. a feature branch
    *   diffed against `main`).
    * - `'uncommitted'`: the workspace's current uncommitted changes.
@@ -66,27 +63,6 @@ export interface Changeset {
    * to a reasonable default when an unknown value is encountered.
    */
   changeKind: string;
-  /**
-   * The working directory this changeset is scoped to. When set, it MUST be one
-   * of the owning session's {@link SessionState.workingDirectories}, and every
-   * file in the changeset belongs to that directory.
-   *
-   * **Grouping is the host's responsibility, not the client's.** A host whose
-   * session has multiple working directories MUST group changes by directory —
-   * emitting one changeset per working directory, each carrying its
-   * `workingDirectory` — so that a client never has to derive a file's owning
-   * directory itself (e.g. by prefix-matching URIs, which the client cannot do
-   * correctly across nested repositories, symlinks, or submodules). This keeps
-   * AHP a display-ready presentation model (see the
-   * {@link /guide/doctrine | doctrine}): the host owns the filesystem/VCS
-   * knowledge and hands clients pre-grouped changesets.
-   *
-   * Omit only for changesets that are genuinely not scoped to a single working
-   * directory — e.g. a single-directory session (nothing to group), or an
-   * aggregate roll-up / out-of-tree changeset that intentionally spans (or sits
-   * outside) the working directories.
-   */
-  workingDirectory?: URI;
   /**
    * Optional capability declarations for this changeset. Absent (or an empty
    * object) means the changeset advertises no optional capabilities.

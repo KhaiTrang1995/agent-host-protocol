@@ -452,7 +452,7 @@ export interface ChatActivityChangedAction {
  * subset if absent) and is a no-op when it is already present. `directory` MUST
  * be one of the owning session's {@link SessionState.workingDirectories}; a host
  * MUST reject a directory that is not. Only valid when the agent advertises
- * {@link AgentCapabilities.multipleWorkspaceFolders}.
+ * {@link AgentCapabilities.multipleWorkingDirectories}.
  *
  * @category Chat Actions
  * @version 1

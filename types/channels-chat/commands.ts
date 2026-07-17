@@ -46,7 +46,7 @@ export interface CreateChatParams extends BaseParams {
    * `workingDirectories`; this field is ignored for forked chats.
    *
    * A client MUST NOT supply this field unless the agent advertises
-   * {@link AgentCapabilities.multipleWorkspaceFolders}.
+   * {@link AgentCapabilities.multipleWorkingDirectories}.
    */
   workingDirectories?: URI[];
 }

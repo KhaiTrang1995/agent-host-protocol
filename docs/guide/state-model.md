@@ -554,7 +554,7 @@ The forked session is an independent copy — subsequent changes to either sessi
 ## Multiroot Sessions
 
 A session can be granted tool access to more than one working directory when the
-agent advertises the `multipleWorkspaceFolders` capability. All directories are
+agent advertises the `multipleWorkingDirectories` capability. All directories are
 **equal peers** — there is no privileged "primary".
 
 ### Creating a multiroot session
@@ -573,11 +573,11 @@ createSession({
 ```
 
 A client MUST NOT pass more than one entry unless the agent advertises
-`multipleWorkspaceFolders`. Servers without that capability treat only the
+`multipleWorkingDirectories`. Servers without that capability treat only the
 first entry as the session's working directory and ignore the rest.
 
 The directories are equal peers unless the agent advertises
-`multipleWorkspaceFolders.immutablePrimary`, in which case the first entry is a
+`multipleWorkingDirectories.immutablePrimary`, in which case the first entry is a
 fixed process root that clients MUST NOT remove or reorder.
 
 Forked sessions ignore `workingDirectories` — they inherit the working
@@ -598,7 +598,7 @@ Both are `@clientDispatchable`. The resulting set is observed on
 result payload.
 
 Before dispatching either action, a client MUST verify that the agent advertises
-`multipleWorkspaceFolders`.
+`multipleWorkingDirectories`.
 
 ### Per-chat working-directory subsets
 
@@ -640,7 +640,7 @@ subset:
 The subset is observed on `ChatState.workingDirectories`.
 
 A client MUST NOT dispatch these actions unless the agent advertises
-`multipleWorkspaceFolders`.
+`multipleWorkingDirectories`.
 
 ## Next Steps
 

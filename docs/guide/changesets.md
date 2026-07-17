@@ -29,17 +29,10 @@ Changeset {
   uriTemplate: string
   description?: string
   /**
-   * Advisory hint: one of `'session'`, `'directory'`, `'branch'`,
-   * `'uncommitted'`, `'turn'`, or `'compare-turns'`. Other values allowed.
+   * Advisory hint: one of `'session'`, `'branch'`, `'uncommitted'`,
+   * `'turn'`, or `'compare-turns'`. Other values allowed.
    */
   changeKind: string
-  /**
-   * Working directory this changeset is scoped to, when it covers a single
-   * directory of a multiroot session. One of the session's
-   * `workingDirectories`. Omitted for single-directory or session-wide
-   * changesets.
-   */
-  workingDirectory?: URI
   /** Optional capability declarations (presence-flag objects). */
   capabilities?: {
     /** Present ⇒ this changeset supports the per-file review workflow. */
@@ -64,11 +57,17 @@ unknown variables.
 
 ### Multiroot Sessions
 
-Grouping changes by directory is the **host's** responsibility, not the client's. A host whose session has multiple [working directories](/guide/state-model#multiroot-sessions) **MUST** group its changes by directory — advertising one catalogue entry per working directory, each carrying a `workingDirectory` (one of the session's `workingDirectories`) and typically `changeKind: 'directory'`. Each such changeset is a flat list of files belonging to that one directory.
+A changeset is not scoped to a single working directory — a per-turn or
+session-wide changeset naturally spans every directory the agent touched. A
+client that wants to present changes grouped by directory does so itself, by
+matching each file's URI against the session's
+[`workingDirectories`](/guide/state-model#multiroot-sessions) (a list the
+client already has); a client that does not care simply renders one tree.
 
-This follows AHP's [doctrine](/guide/doctrine): the protocol is a display-ready presentation model in which the host owns the authoritative filesystem/VCS knowledge. A client MUST NOT be required to derive a file's owning directory itself (e.g. by prefix-matching URIs) — which it cannot do correctly across nested repositories, symlinks, or submodules. The host, which knows the real repository boundaries, hands clients pre-grouped changesets.
-
-`workingDirectory` is omitted only for changesets that are genuinely not scoped to one directory: a single-directory session, or an intentional aggregate roll-up / out-of-tree changeset.
+A host MAY *also* advertise dedicated per-directory changesets — one catalogue
+entry per working directory — for clients that prefer server-scoped views. This
+needs no extra field: the `changesets` catalogue is already a list, so a host
+lists one entry per directory alongside the spanning ones.
 
 ### Changeset State
 

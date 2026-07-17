@@ -113,14 +113,14 @@ export interface AgentCapabilities {
   /**
    * The session's agent can be granted tool access to more than one working
    * directory. The directories are treated as equal peers except where the
-   * agent advertises {@link MultipleWorkspaceFoldersCapability.immutablePrimary}
+   * agent advertises {@link MultipleWorkingDirectoriesCapability.immutablePrimary}
    * (some backends pin their first directory as a fixed process root).
    *
    * When absent, clients MUST NOT mutate a session's or chat's working-directory
    * set and MUST NOT set more than one entry in
    * {@link CreateSessionParams.workingDirectories}.
    */
-  multipleWorkspaceFolders?: MultipleWorkspaceFoldersCapability;
+  multipleWorkingDirectories?: MultipleWorkingDirectoriesCapability;
 }
 
 /**
@@ -138,11 +138,11 @@ export interface MultipleChatsCapability {
 }
 
 /**
- * Options for the {@link AgentCapabilities.multipleWorkspaceFolders} capability.
+ * Options for the {@link AgentCapabilities.multipleWorkingDirectories} capability.
  *
  * @category Root State
  */
-export interface MultipleWorkspaceFoldersCapability {
+export interface MultipleWorkingDirectoriesCapability {
   /**
    * The agent's **first** working directory (index `0` of
    * {@link CreateSessionParams.workingDirectories}) is an immutable primary:

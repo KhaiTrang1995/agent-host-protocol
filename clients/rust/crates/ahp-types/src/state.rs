@@ -781,14 +781,14 @@ pub struct AgentCapabilities {
     pub multiple_chats: Option<MultipleChatsCapability>,
     /// The session's agent can be granted tool access to more than one working
     /// directory. The directories are treated as equal peers except where the
-    /// agent advertises {@link MultipleWorkspaceFoldersCapability.immutablePrimary}
+    /// agent advertises {@link MultipleWorkingDirectoriesCapability.immutablePrimary}
     /// (some backends pin their first directory as a fixed process root).
     ///
     /// When absent, clients MUST NOT mutate a session's or chat's working-directory
     /// set and MUST NOT set more than one entry in
     /// {@link CreateSessionParams.workingDirectories}.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub multiple_workspace_folders: Option<MultipleWorkspaceFoldersCapability>,
+    pub multiple_working_directories: Option<MultipleWorkingDirectoriesCapability>,
 }
 
 /// Options for the {@link AgentCapabilities.multipleChats} capability.
@@ -802,10 +802,10 @@ pub struct MultipleChatsCapability {
     pub fork: Option<bool>,
 }
 
-/// Options for the {@link AgentCapabilities.multipleWorkspaceFolders} capability.
+/// Options for the {@link AgentCapabilities.multipleWorkingDirectories} capability.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct MultipleWorkspaceFoldersCapability {
+pub struct MultipleWorkingDirectoriesCapability {
     /// The agent's **first** working directory (index `0` of
     /// {@link CreateSessionParams.workingDirectories}) is an immutable primary:
     /// it is fixed for the lifetime of the session — clients MUST NOT remove or
@@ -1112,7 +1112,7 @@ pub struct SessionState {
     /// maintained by the `session/workingDirectorySet` /
     /// `session/workingDirectoryRemoved` actions. Directories are equal peers
     /// except when the agent advertises
-    /// {@link MultipleWorkspaceFoldersCapability.immutablePrimary} (the first
+    /// {@link MultipleWorkingDirectoriesCapability.immutablePrimary} (the first
     /// entry is then a fixed process root). Individual chats MAY restrict to a
     /// subset via {@link ChatSummary.workingDirectories | their own
     /// `workingDirectories`}; a chat that sets none operates against this full
@@ -1368,7 +1368,7 @@ pub struct SessionSummary {
     /// maintained by the `session/workingDirectorySet` /
     /// `session/workingDirectoryRemoved` actions. Directories are equal peers
     /// except when the agent advertises
-    /// {@link MultipleWorkspaceFoldersCapability.immutablePrimary} (the first
+    /// {@link MultipleWorkingDirectoriesCapability.immutablePrimary} (the first
     /// entry is then a fixed process root). Individual chats MAY restrict to a
     /// subset via {@link ChatSummary.workingDirectories | their own
     /// `workingDirectories`}; a chat that sets none operates against this full
@@ -3607,9 +3607,6 @@ pub struct Changeset {
     ///
     /// - `'session'`: a static, session-wide changeset covering all changes the
     ///   agent has produced in this session.
-    /// - `'directory'`: all changes the agent has produced within a single
-    ///   {@link workingDirectory | working directory} of a multiroot session.
-    ///   Paired with {@link workingDirectory}.
     /// - `'branch'`: changes relative to a base branch (e.g. a feature branch
     ///   diffed against `main`).
     /// - `'uncommitted'`: the workspace's current uncommitted changes.
@@ -3622,26 +3619,6 @@ pub struct Changeset {
     /// Implementations MAY provide additional values; clients SHOULD fall back
     /// to a reasonable default when an unknown value is encountered.
     pub change_kind: String,
-    /// The working directory this changeset is scoped to. When set, it MUST be one
-    /// of the owning session's {@link SessionState.workingDirectories}, and every
-    /// file in the changeset belongs to that directory.
-    ///
-    /// **Grouping is the host's responsibility, not the client's.** A host whose
-    /// session has multiple working directories MUST group changes by directory —
-    /// emitting one changeset per working directory, each carrying its
-    /// `workingDirectory` — so that a client never has to derive a file's owning
-    /// directory itself (e.g. by prefix-matching URIs, which the client cannot do
-    /// correctly across nested repositories, symlinks, or submodules). This keeps
-    /// AHP a display-ready presentation model (see the
-    /// {@link /guide/doctrine | doctrine}): the host owns the filesystem/VCS
-    /// knowledge and hands clients pre-grouped changesets.
-    ///
-    /// Omit only for changesets that are genuinely not scoped to a single working
-    /// directory — e.g. a single-directory session (nothing to group), or an
-    /// aggregate roll-up / out-of-tree changeset that intentionally spans (or sits
-    /// outside) the working directories.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub working_directory: Option<Uri>,
     /// Optional capability declarations for this changeset. Absent (or an empty
     /// object) means the changeset advertises no optional capabilities.
     ///

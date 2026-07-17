@@ -860,7 +860,7 @@ pub struct SessionActiveClientRemovedAction {
 /// Membership semantics keyed by the directory URI: the reducer appends
 /// `directory` when the set does not already contain it (creating the set if
 /// absent) and is a no-op when it is already present. Only valid when the agent
-/// advertises {@link AgentCapabilities.multipleWorkspaceFolders}.
+/// advertises {@link AgentCapabilities.multipleWorkingDirectories}.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionWorkingDirectorySetAction {
@@ -875,7 +875,7 @@ pub struct SessionWorkingDirectorySetAction {
 /// atomic backend "remove one" primitive — a host reconfigures its agent to the
 /// reduced set — so this action is safe to model as idempotent. A host MAY
 /// decline to apply the removal (e.g. an immutable primary directory, see
-/// {@link MultipleWorkspaceFoldersCapability.immutablePrimary}); it then leaves
+/// {@link MultipleWorkingDirectoriesCapability.immutablePrimary}); it then leaves
 /// the set unchanged.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -892,7 +892,7 @@ pub struct SessionWorkingDirectoryRemovedAction {
 /// subset if absent) and is a no-op when it is already present. `directory` MUST
 /// be one of the owning session's {@link SessionState.workingDirectories}; a host
 /// MUST reject a directory that is not. Only valid when the agent advertises
-/// {@link AgentCapabilities.multipleWorkspaceFolders}.
+/// {@link AgentCapabilities.multipleWorkingDirectories}.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatWorkingDirectorySetAction {

@@ -264,7 +264,7 @@ export interface SessionActiveClientRemovedAction {
  * Membership semantics keyed by the directory URI: the reducer appends
  * `directory` when the set does not already contain it (creating the set if
  * absent) and is a no-op when it is already present. Only valid when the agent
- * advertises {@link AgentCapabilities.multipleWorkspaceFolders}.
+ * advertises {@link AgentCapabilities.multipleWorkingDirectories}.
  *
  * @category Session Actions
  * @version 1
@@ -284,7 +284,7 @@ export interface SessionWorkingDirectorySetAction {
  * atomic backend "remove one" primitive — a host reconfigures its agent to the
  * reduced set — so this action is safe to model as idempotent. A host MAY
  * decline to apply the removal (e.g. an immutable primary directory, see
- * {@link MultipleWorkspaceFoldersCapability.immutablePrimary}); it then leaves
+ * {@link MultipleWorkingDirectoriesCapability.immutablePrimary}); it then leaves
  * the set unchanged.
  *
  * @category Session Actions

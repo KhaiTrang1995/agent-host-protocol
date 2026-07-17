@@ -308,11 +308,11 @@ type CreateSessionParams struct {
 	// The working directories the session's agent is granted tool access to.
 	// A session may span multiple directories; they are equal peers except when
 	// the agent advertises
-	// {@link MultipleWorkspaceFoldersCapability.immutablePrimary} (in which case
+	// {@link MultipleWorkingDirectoriesCapability.immutablePrimary} (in which case
 	// the first entry is a fixed process root).
 	//
 	// A client MUST NOT supply more than one entry unless the agent advertises
-	// {@link AgentCapabilities.multipleWorkspaceFolders}; a server without that
+	// {@link AgentCapabilities.multipleWorkingDirectories}; a server without that
 	// capability treats only the first entry as the session's working directory
 	// and ignores the rest. Dispatch `session/workingDirectorySet` /
 	// `session/workingDirectoryRemoved` to change the set after the session has
@@ -380,7 +380,7 @@ type CreateChatParams struct {
 	// `workingDirectories`; this field is ignored for forked chats.
 	//
 	// A client MUST NOT supply this field unless the agent advertises
-	// {@link AgentCapabilities.multipleWorkspaceFolders}.
+	// {@link AgentCapabilities.multipleWorkingDirectories}.
 	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
 }
 
