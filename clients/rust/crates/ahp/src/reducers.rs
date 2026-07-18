@@ -740,6 +740,24 @@ pub fn apply_action_to_session(state: &mut SessionState, action: &StateAction) -
             state.active_clients.remove(idx);
             ReduceOutcome::Applied
         }
+        StateAction::SessionWorkingDirectorySet(a) => {
+            let list = state.working_directories.get_or_insert_with(Vec::new);
+            if list.contains(&a.directory) {
+                return ReduceOutcome::NoOp;
+            }
+            list.push(a.directory.clone());
+            ReduceOutcome::Applied
+        }
+        StateAction::SessionWorkingDirectoryRemoved(a) => {
+            let Some(list) = state.working_directories.as_mut() else {
+                return ReduceOutcome::NoOp;
+            };
+            let Some(idx) = list.iter().position(|d| *d == a.directory) else {
+                return ReduceOutcome::NoOp;
+            };
+            list.remove(idx);
+            ReduceOutcome::Applied
+        }
         StateAction::SessionInputNeededSet(a) => {
             let Some(action_id) = session_input_request_id(&a.request) else {
                 return ReduceOutcome::NoOp;
@@ -945,6 +963,24 @@ pub fn apply_action_to_chat(state: &mut ChatState, action: &StateAction) -> Redu
         ),
         StateAction::ChatActivityChanged(a) => {
             state.activity = a.activity.clone();
+            ReduceOutcome::Applied
+        }
+        StateAction::ChatWorkingDirectorySet(a) => {
+            let list = state.working_directories.get_or_insert_with(Vec::new);
+            if list.contains(&a.directory) {
+                return ReduceOutcome::NoOp;
+            }
+            list.push(a.directory.clone());
+            ReduceOutcome::Applied
+        }
+        StateAction::ChatWorkingDirectoryRemoved(a) => {
+            let Some(list) = state.working_directories.as_mut() else {
+                return ReduceOutcome::NoOp;
+            };
+            let Some(idx) = list.iter().position(|d| *d == a.directory) else {
+                return ReduceOutcome::NoOp;
+            };
+            list.remove(idx);
             ReduceOutcome::Applied
         }
         StateAction::ChatToolCallStart(a) => {

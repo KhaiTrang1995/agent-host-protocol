@@ -514,6 +514,22 @@ func ApplyActionToChat(state *ahptypes.ChatState, action ahptypes.StateAction) R
 	case *ahptypes.ChatActivityChangedAction:
 		state.Activity = a.Activity
 		return ReduceOutcomeApplied
+	case *ahptypes.ChatWorkingDirectorySetAction:
+		for _, d := range state.WorkingDirectories {
+			if d == a.Directory {
+				return ReduceOutcomeNoOp
+			}
+		}
+		state.WorkingDirectories = append(state.WorkingDirectories, a.Directory)
+		return ReduceOutcomeApplied
+	case *ahptypes.ChatWorkingDirectoryRemovedAction:
+		for i := range state.WorkingDirectories {
+			if state.WorkingDirectories[i] == a.Directory {
+				state.WorkingDirectories = append(state.WorkingDirectories[:i], state.WorkingDirectories[i+1:]...)
+				return ReduceOutcomeApplied
+			}
+		}
+		return ReduceOutcomeNoOp
 	case *ahptypes.ChatToolCallStartAction:
 		if state.ActiveTurn == nil || state.ActiveTurn.Id != a.TurnId {
 			return ReduceOutcomeNoOp
@@ -854,6 +870,22 @@ func ApplyActionToSession(state *ahptypes.SessionState, action ahptypes.StateAct
 		for i := range state.ActiveClients {
 			if state.ActiveClients[i].ClientId == a.ClientId {
 				state.ActiveClients = append(state.ActiveClients[:i], state.ActiveClients[i+1:]...)
+				return ReduceOutcomeApplied
+			}
+		}
+		return ReduceOutcomeNoOp
+	case *ahptypes.SessionWorkingDirectorySetAction:
+		for _, d := range state.WorkingDirectories {
+			if d == a.Directory {
+				return ReduceOutcomeNoOp
+			}
+		}
+		state.WorkingDirectories = append(state.WorkingDirectories, a.Directory)
+		return ReduceOutcomeApplied
+	case *ahptypes.SessionWorkingDirectoryRemovedAction:
+		for i := range state.WorkingDirectories {
+			if state.WorkingDirectories[i] == a.Directory {
+				state.WorkingDirectories = append(state.WorkingDirectories[:i], state.WorkingDirectories[i+1:]...)
 				return ReduceOutcomeApplied
 			}
 		}

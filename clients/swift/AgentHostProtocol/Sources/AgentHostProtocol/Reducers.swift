@@ -153,6 +153,18 @@ public func chatReducer(state: ChatState, action: StateAction) -> ChatState {
         next.activity = a.activity
         return next
 
+    case .chatWorkingDirectorySet(let a):
+        if (state.workingDirectories ?? []).contains(a.directory) { return state }
+        var next = state
+        next.workingDirectories = (next.workingDirectories ?? []) + [a.directory]
+        return next
+
+    case .chatWorkingDirectoryRemoved(let a):
+        guard let idx = state.workingDirectories?.firstIndex(of: a.directory) else { return state }
+        var next = state
+        next.workingDirectories?.remove(at: idx)
+        return next
+
     // ── Tool Call State Machine ───────────────────────────────────────────
 
     case .chatToolCallStart(let a):
@@ -721,6 +733,18 @@ public func sessionReducer(state: SessionState, action: StateAction) -> SessionS
         guard let idx = state.activeClients.firstIndex(where: { $0.clientId == a.clientId }) else { return state }
         var next = state
         next.activeClients.remove(at: idx)
+        return next
+
+    case .sessionWorkingDirectorySet(let a):
+        if (state.workingDirectories ?? []).contains(a.directory) { return state }
+        var next = state
+        next.workingDirectories = (next.workingDirectories ?? []) + [a.directory]
+        return next
+
+    case .sessionWorkingDirectoryRemoved(let a):
+        guard let idx = state.workingDirectories?.firstIndex(of: a.directory) else { return state }
+        var next = state
+        next.workingDirectories?.remove(at: idx)
         return next
 
     case .sessionInputNeededSet(let a):
