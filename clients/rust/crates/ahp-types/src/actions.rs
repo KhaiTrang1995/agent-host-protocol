@@ -16,10 +16,11 @@ use crate::state::{
     AgentInfo, AgentSelection, Annotation, AnnotationEntry, Changeset, ChangesetFile,
     ChangesetOperation, ChangesetOperationStatus, ChangesetStatus, ChatInputAnswer,
     ChatInputRequest, ChatInputResponseKind, ChatInteractivity, ChatOrigin, ChatSummary,
-    ConfirmationOption, Customization, ErrorInfo, McpServerState, Message, ModelSelection,
-    PendingMessageKind, ResponsePart, SessionActiveClient, SessionInputRequest, TerminalClaim,
-    TerminalInfo, TextRange, ToolCallCancellationReason, ToolCallConfirmationReason,
-    ToolCallContributor, ToolCallResult, ToolDefinition, ToolResultContent, Turn, UsageInfo,
+    ConfirmationOption, Customization, ErrorInfo, McpAuthRequirement, McpServerState, Message,
+    ModelSelection, PendingMessageKind, ResponsePart, SessionActiveClient, SessionInputRequest,
+    TerminalClaim, TerminalInfo, TextRange, ToolCallCancellationReason, ToolCallConfirmationReason,
+    ToolCallContributor, ToolCallResult, ToolCallRiskAssessment, ToolDefinition, ToolResultContent,
+    Turn, UsageInfo,
 };
 
 // ─── ActionType ──────────────────────────────────────────────────────
@@ -63,6 +64,10 @@ pub enum ActionType {
     ChatToolCallResultConfirmed,
     #[serde(rename = "chat/toolCallContentChanged")]
     ChatToolCallContentChanged,
+    #[serde(rename = "chat/toolCallAuthRequired")]
+    ChatToolCallAuthRequired,
+    #[serde(rename = "chat/toolCallAuthResolved")]
+    ChatToolCallAuthResolved,
     #[serde(rename = "chat/turnComplete")]
     ChatTurnComplete,
     #[serde(rename = "chat/turnCancelled")]
@@ -484,6 +489,9 @@ pub struct ChatToolCallReadyAction {
     /// Short title for the confirmation prompt (e.g. `"Run in terminal"`, `"Write file"`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confirmation_title: Option<StringOrMarkdown>,
+    /// Risk assessment that informed the confirmation requirement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub risk_assessment: Option<ToolCallRiskAssessment>,
     /// File edits that this tool call will perform, for preview before confirmation
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edits: Option<AnyValue>,
@@ -543,6 +551,22 @@ pub struct ChatToolCallConfirmedAction {
 /// Servers waiting on a client tool call MAY time out after a reasonable duration
 /// if the implementing client disconnects or becomes unresponsive, and dispatch
 /// this action with `result.success = false` and an appropriate error.
+///
+/// A client MAY also dispatch this action with a **failed** result (
+/// `result.success: false`) for a tool call currently in `auth-required`
+/// status, to cancel that invocation without completing the pending MCP
+/// authentication challenge. This always transitions the tool call straight
+/// to `completed`, preserving the fields it had before pausing for auth;
+/// `requiresResultConfirmation` is ignored for this transition; the
+/// cancellation can never enter `pending-result-confirmation`, since there is
+/// no real result to review.
+///
+/// A **successful** result (`result.success: true`) is invalid for a tool
+/// call in `auth-required` status — execution never resumed after the
+/// challenge, so there's nothing that could have produced it. The reducer
+/// MUST reject/ignore it as a no-op, leaving the tool call in
+/// `auth-required`. The client must resolve the auth challenge
+/// (`chat/toolCallAuthResolved`) before completing successfully.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatToolCallCompleteAction {
@@ -615,6 +639,62 @@ pub struct ChatToolCallContentChangedAction {
     pub meta: Option<JsonObject>,
     /// The current partial content for the running tool call
     pub content: Vec<ToolResultContent>,
+}
+
+/// A running tool call is paused pending MCP authentication. Transitions the
+/// tool call from `running` to `auth-required`.
+///
+/// The server dispatches this when the MCP server backing the call responds
+/// with a 401/403 challenge mid-execution (see
+/// {@link McpAuthRequirement.reason | `insufficientScope`}). The host SHOULD
+/// pair this with `session/inputNeededSet` (kind `toolAuthentication`) so the
+/// block is visible at the session-summary level, mirroring
+/// {@link McpServerAuthRequiredState}'s own `InputNeeded` guidance.
+///
+/// Only valid for tool calls contributed by an MCP server — the reducer is a
+/// no-op if the tool call's `contributor` is not
+/// {@link ToolCallContributorKind.MCP | MCP-kind}.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatToolCallAuthRequiredAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Tool call identifier
+    pub tool_call_id: String,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI.
+    /// For example, a `ptyTerminal` key with `{ input: string; output: string }`
+    /// indicates the tool operated on a terminal (both `input` and `output` may
+    /// contain escape sequences).
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// The authentication challenge blocking this invocation.
+    pub auth: McpAuthRequirement,
+}
+
+/// The authentication challenge blocking a tool call has been resolved (the
+/// client pushed a token via `authenticate` and the host validated it).
+/// Transitions the tool call from `auth-required` back to `running`,
+/// preserving the fields it had before pausing.
+///
+/// The host SHOULD remove the corresponding `session/inputNeededSet` entry
+/// (kind `toolAuthentication`) once this is dispatched.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatToolCallAuthResolvedAction {
+    /// Turn identifier
+    pub turn_id: String,
+    /// Tool call identifier
+    pub tool_call_id: String,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI.
+    /// For example, a `ptyTerminal` key with `{ input: string; output: string }`
+    /// indicates the tool operated on a terminal (both `input` and `output` may
+    /// contain escape sequences).
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
 }
 
 /// Turn finished — the assistant is idle.
@@ -1016,9 +1096,9 @@ pub struct ChatDraftChangedAction {
 
 /// A session requested input from the user.
 ///
-/// Full-request upsert semantics: the `request` replaces any existing request
-/// with the same `id`, or is appended if it is new. Answer drafts are preserved
-/// unless `request.answers` is provided.
+/// Creates an unresolved {@link InputRequestResponsePart} in the active turn,
+/// or replaces the unresolved part with the same request `id`. Answer drafts
+/// are preserved unless `request.answers` is provided.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatInputRequestedAction {
@@ -1041,10 +1121,11 @@ pub struct ChatInputAnswerChangedAction {
     pub answer: Option<ChatInputAnswer>,
 }
 
-/// A client accepted, declined, or cancelled a session input request.
+/// A client submitted an accept, decline, or cancel response to an input request.
 ///
 /// If accepted, the server uses `answers` (when provided) plus the request's
-/// synced answer state to resume the blocked operation.
+/// synced answer state to resume the blocked operation. The reducer records the
+/// response and final answers on the existing {@link InputRequestResponsePart}.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatInputCompletedAction {
@@ -1727,6 +1808,10 @@ pub enum StateAction {
     ChatToolCallResultConfirmed(ChatToolCallResultConfirmedAction),
     #[serde(rename = "chat/toolCallContentChanged")]
     ChatToolCallContentChanged(ChatToolCallContentChangedAction),
+    #[serde(rename = "chat/toolCallAuthRequired")]
+    ChatToolCallAuthRequired(ChatToolCallAuthRequiredAction),
+    #[serde(rename = "chat/toolCallAuthResolved")]
+    ChatToolCallAuthResolved(ChatToolCallAuthResolvedAction),
     #[serde(rename = "chat/turnComplete")]
     ChatTurnComplete(ChatTurnCompleteAction),
     #[serde(rename = "chat/turnCancelled")]

@@ -24,6 +24,8 @@ public enum ActionType: String, Codable, Sendable {
     case chatToolCallComplete = "chat/toolCallComplete"
     case chatToolCallResultConfirmed = "chat/toolCallResultConfirmed"
     case chatToolCallContentChanged = "chat/toolCallContentChanged"
+    case chatToolCallAuthRequired = "chat/toolCallAuthRequired"
+    case chatToolCallAuthResolved = "chat/toolCallAuthResolved"
     case chatTurnComplete = "chat/turnComplete"
     case chatTurnCancelled = "chat/turnCancelled"
     case chatError = "chat/error"
@@ -484,6 +486,8 @@ public struct ChatToolCallReadyAction: Codable, Sendable {
     public var toolInput: String?
     /// Short title for the confirmation prompt (e.g. `"Run in terminal"`, `"Write file"`)
     public var confirmationTitle: StringOrMarkdown?
+    /// Risk assessment that informed the confirmation requirement.
+    public var riskAssessment: ToolCallRiskAssessment?
     /// File edits that this tool call will perform, for preview before confirmation
     public var edits: AnyCodable?
     /// Whether the agent host allows the client to edit the tool's input parameters before confirming
@@ -504,6 +508,7 @@ public struct ChatToolCallReadyAction: Codable, Sendable {
         case invocationMessage
         case toolInput
         case confirmationTitle
+        case riskAssessment
         case edits
         case editable
         case confirmed
@@ -518,6 +523,7 @@ public struct ChatToolCallReadyAction: Codable, Sendable {
         invocationMessage: StringOrMarkdown,
         toolInput: String? = nil,
         confirmationTitle: StringOrMarkdown? = nil,
+        riskAssessment: ToolCallRiskAssessment? = nil,
         edits: AnyCodable? = nil,
         editable: Bool? = nil,
         confirmed: ToolCallConfirmationReason? = nil,
@@ -530,6 +536,7 @@ public struct ChatToolCallReadyAction: Codable, Sendable {
         self.invocationMessage = invocationMessage
         self.toolInput = toolInput
         self.confirmationTitle = confirmationTitle
+        self.riskAssessment = riskAssessment
         self.edits = edits
         self.editable = editable
         self.confirmed = confirmed
@@ -713,6 +720,79 @@ public struct ChatToolCallContentChangedAction: Codable, Sendable {
         self.meta = meta
         self.type = type
         self.content = content
+    }
+}
+
+public struct ChatToolCallAuthRequiredAction: Codable, Sendable {
+    /// Turn identifier
+    public var turnId: String
+    /// Tool call identifier
+    public var toolCallId: String
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI.
+    /// For example, a `ptyTerminal` key with `{ input: string; output: string }`
+    /// indicates the tool operated on a terminal (both `input` and `output` may
+    /// contain escape sequences).
+    public var meta: [String: AnyCodable]?
+    public var type: ActionType
+    /// The authentication challenge blocking this invocation.
+    public var auth: McpAuthRequirement
+
+    enum CodingKeys: String, CodingKey {
+        case turnId
+        case toolCallId
+        case meta = "_meta"
+        case type
+        case auth
+    }
+
+    public init(
+        turnId: String,
+        toolCallId: String,
+        meta: [String: AnyCodable]? = nil,
+        type: ActionType,
+        auth: McpAuthRequirement
+    ) {
+        self.turnId = turnId
+        self.toolCallId = toolCallId
+        self.meta = meta
+        self.type = type
+        self.auth = auth
+    }
+}
+
+public struct ChatToolCallAuthResolvedAction: Codable, Sendable {
+    /// Turn identifier
+    public var turnId: String
+    /// Tool call identifier
+    public var toolCallId: String
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// Clients MAY look for well-known keys here to provide enhanced UI.
+    /// For example, a `ptyTerminal` key with `{ input: string; output: string }`
+    /// indicates the tool operated on a terminal (both `input` and `output` may
+    /// contain escape sequences).
+    public var meta: [String: AnyCodable]?
+    public var type: ActionType
+
+    enum CodingKeys: String, CodingKey {
+        case turnId
+        case toolCallId
+        case meta = "_meta"
+        case type
+    }
+
+    public init(
+        turnId: String,
+        toolCallId: String,
+        meta: [String: AnyCodable]? = nil,
+        type: ActionType
+    ) {
+        self.turnId = turnId
+        self.toolCallId = toolCallId
+        self.meta = meta
+        self.type = type
     }
 }
 
@@ -1943,6 +2023,8 @@ public enum StateAction: Codable, Sendable {
     case chatToolCallComplete(ChatToolCallCompleteAction)
     case chatToolCallResultConfirmed(ChatToolCallResultConfirmedAction)
     case chatToolCallContentChanged(ChatToolCallContentChangedAction)
+    case chatToolCallAuthRequired(ChatToolCallAuthRequiredAction)
+    case chatToolCallAuthResolved(ChatToolCallAuthResolvedAction)
     case chatTurnComplete(ChatTurnCompleteAction)
     case chatTurnCancelled(ChatTurnCancelledAction)
     case chatError(ChatErrorAction)
@@ -2056,6 +2138,10 @@ public enum StateAction: Codable, Sendable {
             self = .chatToolCallResultConfirmed(try ChatToolCallResultConfirmedAction(from: decoder))
         case "chat/toolCallContentChanged":
             self = .chatToolCallContentChanged(try ChatToolCallContentChangedAction(from: decoder))
+        case "chat/toolCallAuthRequired":
+            self = .chatToolCallAuthRequired(try ChatToolCallAuthRequiredAction(from: decoder))
+        case "chat/toolCallAuthResolved":
+            self = .chatToolCallAuthResolved(try ChatToolCallAuthResolvedAction(from: decoder))
         case "chat/turnComplete":
             self = .chatTurnComplete(try ChatTurnCompleteAction(from: decoder))
         case "chat/turnCancelled":
@@ -2211,6 +2297,8 @@ public enum StateAction: Codable, Sendable {
         case .chatToolCallComplete(let v): try v.encode(to: encoder)
         case .chatToolCallResultConfirmed(let v): try v.encode(to: encoder)
         case .chatToolCallContentChanged(let v): try v.encode(to: encoder)
+        case .chatToolCallAuthRequired(let v): try v.encode(to: encoder)
+        case .chatToolCallAuthResolved(let v): try v.encode(to: encoder)
         case .chatTurnComplete(let v): try v.encode(to: encoder)
         case .chatTurnCancelled(let v): try v.encode(to: encoder)
         case .chatError(let v): try v.encode(to: encoder)

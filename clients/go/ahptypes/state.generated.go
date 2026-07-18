@@ -153,12 +153,14 @@ const (
 type SessionInputRequestKind string
 
 const (
-	// A user-facing elicitation mirrored from a chat's `inputRequests`.
+	// A user-facing elicitation mirrored from an unresolved chat response part.
 	SessionInputRequestKindChatInput SessionInputRequestKind = "chatInput"
 	// A tool call awaiting parameter- or result-confirmation.
 	SessionInputRequestKindToolConfirmation SessionInputRequestKind = "toolConfirmation"
 	// A running tool the session wants an active client to execute.
 	SessionInputRequestKindToolClientExecution SessionInputRequestKind = "toolClientExecution"
+	// A tool call blocked on MCP authentication mid-execution.
+	SessionInputRequestKindToolAuthentication SessionInputRequestKind = "toolAuthentication"
 )
 
 // How a turn ended.
@@ -216,9 +218,13 @@ const (
 type ToolCallStatus string
 
 const (
-	ToolCallStatusStreaming                 ToolCallStatus = "streaming"
-	ToolCallStatusPendingConfirmation       ToolCallStatus = "pending-confirmation"
-	ToolCallStatusRunning                   ToolCallStatus = "running"
+	ToolCallStatusStreaming           ToolCallStatus = "streaming"
+	ToolCallStatusPendingConfirmation ToolCallStatus = "pending-confirmation"
+	ToolCallStatusRunning             ToolCallStatus = "running"
+	// Running paused because the MCP server backing this call needs
+	// authentication (typically step-up auth for insufficient scope,
+	// surfacing mid-execution). See {@link ToolCallAuthRequiredState}.
+	ToolCallStatusAuthRequired              ToolCallStatus = "auth-required"
 	ToolCallStatusPendingResultConfirmation ToolCallStatus = "pending-result-confirmation"
 	ToolCallStatusCompleted                 ToolCallStatus = "completed"
 	ToolCallStatusCancelled                 ToolCallStatus = "cancelled"
@@ -235,6 +241,21 @@ const (
 	ToolCallConfirmationReasonNotNeeded  ToolCallConfirmationReason = "not-needed"
 	ToolCallConfirmationReasonUserAction ToolCallConfirmationReason = "user-action"
 	ToolCallConfirmationReasonSetting    ToolCallConfirmationReason = "setting"
+)
+
+// Identifies a model judge as the source of a confirmation requirement.
+type ToolCallRiskAssessmentKind string
+
+const (
+	ToolCallRiskAssessmentKindJudge ToolCallRiskAssessmentKind = "judge"
+)
+
+// Lifecycle status of an asynchronous model-judge confirmation decision.
+type ToolCallRiskAssessmentStatus string
+
+const (
+	ToolCallRiskAssessmentStatusLoading  ToolCallRiskAssessmentStatus = "loading"
+	ToolCallRiskAssessmentStatusComplete ToolCallRiskAssessmentStatus = "complete"
 )
 
 // Why a tool call was cancelled.
@@ -827,8 +848,8 @@ type SessionActiveClient struct {
 	Customizations []ClientPluginCustomization `json:"customizations,omitempty"`
 }
 
-// A user-input elicitation surfaced at the session level, mirroring one entry
-// of the owning chat's {@link ChatState.inputRequests}.
+// A user-input elicitation surfaced at the session level, mirroring the request
+// from an unresolved {@link InputRequestResponsePart} in the owning chat.
 //
 // Respond by dispatching `chat/inputCompleted` (or syncing drafts with
 // `chat/inputAnswerChanged`) to {@link SessionInputRequestBase.chat | `chat`},
@@ -908,6 +929,37 @@ type SessionToolClientExecutionRequest struct {
 	// host only ever populates this with a {@link ToolCallRunningState} (i.e. a
 	// {@link ToolCallState} in `running` status).
 	ToolCall ToolCallState `json:"toolCall"`
+}
+
+// A tool call blocked on MCP authentication mid-execution, surfaced at the
+// session level.
+//
+// The {@link toolCall} is always a {@link ToolCallAuthRequiredState} (a
+// {@link ToolCallState} in `auth-required` status). Unlike
+// {@link SessionToolConfirmationRequest}, this is **not** answered by
+// dispatching a `chat/*` action directly: the client obtains a token for
+// {@link ToolCallAuthRequiredState.auth | `toolCall.auth`}`.resource` and
+// pushes it via the existing `authenticate` command (see
+// {@link /specification/authentication | Authentication}). The host resumes
+// the tool call and dispatches `chat/toolCallAuthResolved` once the token is
+// accepted, at which point it also removes this entry with
+// `session/inputNeededRemoved`.
+type SessionToolAuthenticationRequest struct {
+	// Stable key for this entry, unique within the session's
+	// {@link SessionState.inputNeeded} list. The host derives it however it likes
+	// (for example from the chat URI plus the underlying request or tool-call
+	// id); consumers MUST treat it as opaque. It is the key for the
+	// `session/inputNeededSet` / `session/inputNeededRemoved` upsert convention.
+	Id string `json:"id"`
+	// The chat the underlying request lives in. This is the channel a client
+	// dispatches its response to — it does not need to have subscribed to that
+	// chat first.
+	Chat URI                     `json:"chat"`
+	Kind SessionInputRequestKind `json:"kind"`
+	// The turn the tool call belongs to.
+	TurnId string `json:"turnId"`
+	// The tool call awaiting authentication.
+	ToolCall ToolCallAuthRequiredState `json:"toolCall"`
 }
 
 // Lightweight catalog entry summarizing one session. Surfaced via
@@ -1055,8 +1107,6 @@ type ChatState struct {
 	SteeringMessage *PendingMessage `json:"steeringMessage,omitempty"`
 	// Messages to send automatically as new turns after the current turn finishes
 	QueuedMessages []PendingMessage `json:"queuedMessages,omitempty"`
-	// Requests for user input that are currently blocking or informing chat progress
-	InputRequests []ChatInputRequest `json:"inputRequests,omitempty"`
 	// The user's in-progress draft input for this chat — the message they are
 	// composing but have not sent yet, including its
 	// {@link Message.model | model} / {@link Message.agent | agent} selection
@@ -1411,11 +1461,11 @@ type ChatInputMultiSelectQuestion struct {
 	Max *int64 `json:"max,omitempty"`
 }
 
-// A live request for user input.
+// The request payload carried by an {@link InputRequestResponsePart}.
 //
-// The server creates or replaces requests with `chat/inputRequested`.
-// Clients sync drafts with `chat/inputAnswerChanged` and complete requests
-// with `chat/inputCompleted`.
+// The server creates or replaces the containing response part with
+// `chat/inputRequested`. Clients sync drafts with `chat/inputAnswerChanged`
+// and submit responses with `chat/inputCompleted`.
 type ChatInputRequest struct {
 	// Stable request identifier
 	Id string `json:"id"`
@@ -1696,27 +1746,25 @@ type SystemNotificationResponsePart struct {
 	Meta map[string]json.RawMessage `json:"_meta,omitempty"`
 }
 
-// A resolved input request (elicitation) recorded in the turn transcript.
+// A live or resolved input request (elicitation) in the turn response stream.
 //
-// While an input request is open it lives in {@link ChatState.inputRequests}
-// as live, interactive state (see {@link ChatInputRequest}). When the request
-// completes via `chat/inputCompleted`, the reducer removes it from
-// `inputRequests` and appends this part to the active turn so the decision
-// survives in history. This mirrors how a tool-call confirmation persists in
-// its {@link ToolCallResponsePart} (via `confirmed` / `selectedOption` on the
-// terminal {@link ToolCallState}): the live surface drives in-flight UX, the
-// terminal outcome is durable and backfillable via `fetchTurns`.
+// The server inserts the part with `chat/inputRequested`. While
+// {@link response} is absent, clients can update answer drafts with
+// `chat/inputAnswerChanged` and submit a response with `chat/inputCompleted`.
+// Completion updates this part in place so its stream position is stable and
+// the full interaction remains durable and backfillable via `fetchTurns`.
 //
-// No part is recorded when an outstanding request is *abandoned* (the turn
-// completes, is cancelled, errors, or is truncated) rather than *completed*.
+// If the turn ends without a submitted response, the unresolved part remains
+// in the completed turn transcript with {@link response} absent.
 type InputRequestResponsePart struct {
 	// Discriminant
 	Kind ResponsePartKind `json:"kind"`
-	// The resolved request, carrying its `id`, `message`, `url`, `questions`,
-	// and the final `answers` synced/submitted at completion.
+	// The request, carrying its `id`, `message`, `url`, `questions`, and current
+	// draft or submitted `answers`.
 	Request ChatInputRequest `json:"request"`
-	// How the request was resolved: `accept`, `decline`, or `cancel`.
-	Response ChatInputResponseKind `json:"response"`
+	// How the request was resolved. Absent until a client submits `accept`,
+	// `decline`, or `cancel` with `chat/inputCompleted`.
+	Response *ChatInputResponseKind `json:"response,omitempty"`
 }
 
 // Tool execution result details, available after execution completes.
@@ -1735,6 +1783,21 @@ type ToolCallResult struct {
 	StructuredContent map[string]json.RawMessage `json:"structuredContent,omitempty"`
 	// Error details if the tool failed
 	Error *json.RawMessage `json:"error,omitempty"`
+}
+
+// The model judge is still evaluating the tool call.
+type ToolCallRiskAssessmentLoadingState struct {
+	Kind   ToolCallRiskAssessmentKind   `json:"kind"`
+	Status ToolCallRiskAssessmentStatus `json:"status"`
+}
+
+// The model judge has completed its evaluation.
+type ToolCallRiskAssessmentCompleteState struct {
+	Kind   ToolCallRiskAssessmentKind   `json:"kind"`
+	Status ToolCallRiskAssessmentStatus `json:"status"`
+	Reason StringOrMarkdown             `json:"reason"`
+	// The judge's normalized safety score, where `0` is unsafe and `1` is safe.
+	Safety float64 `json:"safety"`
 }
 
 // A confirmation option that the server offers for a tool call awaiting
@@ -1806,6 +1869,8 @@ type ToolCallPendingConfirmationState struct {
 	Status    ToolCallStatus `json:"status"`
 	// Short title for the confirmation prompt (e.g. `"Run in terminal"`, `"Write file"`)
 	ConfirmationTitle *StringOrMarkdown `json:"confirmationTitle,omitempty"`
+	// Risk assessment that informed the confirmation requirement.
+	RiskAssessment *ToolCallRiskAssessment `json:"riskAssessment,omitempty"`
 	// File edits that this tool call will perform, for preview before confirmation
 	Edits *json.RawMessage `json:"edits,omitempty"`
 	// Whether the agent host allows the client to edit the tool's input parameters before confirming
@@ -1838,16 +1903,75 @@ type ToolCallRunningState struct {
 	// Message describing what the tool will do
 	InvocationMessage StringOrMarkdown `json:"invocationMessage"`
 	// Raw tool input
-	ToolInput *string        `json:"toolInput,omitempty"`
-	Status    ToolCallStatus `json:"status"`
+	ToolInput *string `json:"toolInput,omitempty"`
 	// How the tool was confirmed for execution
 	Confirmed ToolCallConfirmationReason `json:"confirmed"`
 	// The confirmation option the user selected, if confirmation options were provided
 	SelectedOption *ConfirmationOption `json:"selectedOption,omitempty"`
+	Status         ToolCallStatus      `json:"status"`
 	// Partial content produced while the tool is still executing.
 	//
 	// For example, a terminal content block lets clients subscribe to live
 	// output before the tool completes.
+	Content []ToolResultContent `json:"content,omitempty"`
+}
+
+// A running tool call is paused because the MCP server backing it needs
+// authentication — most commonly {@link McpAuthRequirement.reason |
+// `insufficientScope`} step-up auth triggered by the `tools/call` request
+// itself. Only ever reached from {@link ToolCallRunningState}, and normally
+// returns there once authenticated: `running` → `auth-required` → `running`
+// → …. A client MAY instead cancel the invocation without authenticating by
+// dispatching a `chat/toolCallComplete` with a **failed** result, always
+// moving straight to {@link ToolCallCompletedState} —
+// `requiresResultConfirmation` is ignored on this path, so it can never
+// enter {@link ToolCallPendingResultConfirmationState}. A **successful**
+// result dispatched from this state is invalid and MUST be rejected/ignored
+// as a no-op by the reducer, since execution never resumed after the
+// challenge.
+//
+// This is the tool-call-level counterpart to
+// {@link McpServerAuthRequiredState} — that state means the MCP *server*
+// cannot serve any request; this one means *this specific invocation* is
+// waiting on the same kind of challenge. The two are dispatched
+// independently and MAY be true at the same time, or not: an
+// `insufficientScope` challenge triggered by a single tool call, for
+// example, need not block the whole server.
+//
+// Because the challenge is always resolved by pushing a token via the
+// existing `authenticate` command, this state can only originate from a
+// tool call {@link ToolCallContributorKind.MCP | contributed by an MCP
+// server} — `contributor` is narrowed accordingly (unlike the optional,
+// multi-kind `contributor` on other tool call states).
+type ToolCallAuthRequiredState struct {
+	// Unique tool call identifier
+	ToolCallId string `json:"toolCallId"`
+	// Internal tool name (for debugging/logging)
+	ToolName string `json:"toolName"`
+	// Human-readable tool name
+	DisplayName string `json:"displayName"`
+	// Human-readable description of what the tool invocation intends to do
+	Intention *string `json:"intention,omitempty"`
+	// Reference to the contributor of the tool being called.
+	Contributor *ToolCallContributor `json:"contributor,omitempty"`
+	// Additional provider-specific metadata for this tool call.
+	//
+	// This MAY include a `ui` field corresponding to the MCP Apps (SEP-1865)
+	// `McpUiToolMeta` found in MCP tool calls, which may be used in combination
+	// with the {@link contributor} to serve MCP Apps.
+	Meta map[string]json.RawMessage `json:"_meta,omitempty"`
+	// Message describing what the tool will do
+	InvocationMessage StringOrMarkdown `json:"invocationMessage"`
+	// Raw tool input
+	ToolInput *string `json:"toolInput,omitempty"`
+	// How the tool was confirmed for execution
+	Confirmed ToolCallConfirmationReason `json:"confirmed"`
+	// The confirmation option the user selected, if confirmation options were provided
+	SelectedOption *ConfirmationOption `json:"selectedOption,omitempty"`
+	Status         ToolCallStatus      `json:"status"`
+	// The authentication challenge blocking this invocation.
+	Auth McpAuthRequirement `json:"auth"`
+	// Partial content produced before the call paused for authentication.
 	Content []ToolResultContent `json:"content,omitempty"`
 }
 
@@ -1886,12 +2010,12 @@ type ToolCallPendingResultConfirmationState struct {
 	// This mirrors the `structuredContent` field of MCP `CallToolResult`.
 	StructuredContent map[string]json.RawMessage `json:"structuredContent,omitempty"`
 	// Error details if the tool failed
-	Error  *json.RawMessage `json:"error,omitempty"`
-	Status ToolCallStatus   `json:"status"`
+	Error *json.RawMessage `json:"error,omitempty"`
 	// How the tool was confirmed for execution
 	Confirmed ToolCallConfirmationReason `json:"confirmed"`
 	// The confirmation option the user selected, if confirmation options were provided
 	SelectedOption *ConfirmationOption `json:"selectedOption,omitempty"`
+	Status         ToolCallStatus      `json:"status"`
 }
 
 // Tool completed successfully or with an error.
@@ -1929,12 +2053,12 @@ type ToolCallCompletedState struct {
 	// This mirrors the `structuredContent` field of MCP `CallToolResult`.
 	StructuredContent map[string]json.RawMessage `json:"structuredContent,omitempty"`
 	// Error details if the tool failed
-	Error  *json.RawMessage `json:"error,omitempty"`
-	Status ToolCallStatus   `json:"status"`
+	Error *json.RawMessage `json:"error,omitempty"`
 	// How the tool was confirmed for execution
 	Confirmed ToolCallConfirmationReason `json:"confirmed"`
 	// The confirmation option the user selected, if confirmation options were provided
 	SelectedOption *ConfirmationOption `json:"selectedOption,omitempty"`
+	Status         ToolCallStatus      `json:"status"`
 }
 
 // Tool call was cancelled before execution.
@@ -2743,22 +2867,25 @@ type McpServerReadyState struct {
 // tool call, rather than relying on the user to notice the
 // customization’s status badge.
 type McpServerAuthRequiredState struct {
-	Kind McpServerStatus `json:"kind"`
 	// Why authentication is required.
 	Reason McpAuthRequiredReason `json:"reason"`
+	// Pre-registered OAuth client to use for authorization. When present, clients
+	// MUST use these credentials instead of dynamic client registration.
+	OauthClient *McpOAuthClient `json:"oauthClient,omitempty"`
 	// RFC 9728 Protected Resource Metadata. The `resource` field is the
 	// canonical MCP server URI per RFC 8707, used as the OAuth `resource`
 	// indicator. `authorization_servers` is REQUIRED by the MCP
 	// authorization spec.
 	Resource ProtectedResourceMetadata `json:"resource"`
 	// Scopes required for the current challenge, parsed from the
-	// `WWW-Authenticate: Bearer scope="…"` header (or `scopes_supported`
+	// `WWW-Authenticate: ******"…"` header (or `scopes_supported`
 	// fallback). Authoritative for the next authorization request — clients
 	// MUST NOT assume any subset/superset relationship to
 	// `resource.scopes_supported`.
 	RequiredScopes []string `json:"requiredScopes,omitempty"`
 	// Human-readable hint, typically from the OAuth `error_description`.
-	Description *string `json:"description,omitempty"`
+	Description *string         `json:"description,omitempty"`
+	Kind        McpServerStatus `json:"kind"`
 }
 
 // Server failed to start, crashed, or otherwise transitioned to a
@@ -2774,6 +2901,54 @@ type McpServerErrorState struct {
 // session entirely shortly after this state.
 type McpServerStoppedState struct {
 	Kind McpServerStatus `json:"kind"`
+}
+
+// A pre-registered OAuth client that clients use instead of dynamic client
+// registration when resolving an MCP authentication challenge.
+type McpOAuthClient struct {
+	// OAuth client identifier registered with the authorization server.
+	ClientId string `json:"clientId"`
+	// OAuth client secret for a confidential client. Absence means the client is
+	// public and uses a secretless flow such as authorization code with PKCE.
+	ClientSecret *string `json:"clientSecret,omitempty"`
+}
+
+// Reusable MCP authentication challenge — the RFC 9728 discovery info a
+// client needs to obtain a token and push it via the `authenticate` command.
+// Deliberately carries **no token**: this describes what is being asked for,
+// never the ****** itself.
+//
+// Shared by two independent state machines that describe the same OAuth
+// challenge from different vantage points:
+//
+//   - {@link McpServerAuthRequiredState} — the MCP server itself cannot serve
+//     *any* request until the client authenticates.
+//   - {@link ToolCallAuthRequiredState} — a specific in-flight tool call is
+//     paused pending authentication (typically
+//     {@link McpAuthRequiredReason.InsufficientScope} step-up auth
+//     mid-execution). The server state and the tool-call state remain
+//     separate on purpose: the server saying "I need auth" and a tool
+//     invocation saying "I am waiting on that auth" are different facts that
+//     can be true independently.
+type McpAuthRequirement struct {
+	// Why authentication is required.
+	Reason McpAuthRequiredReason `json:"reason"`
+	// Pre-registered OAuth client to use for authorization. When present, clients
+	// MUST use these credentials instead of dynamic client registration.
+	OauthClient *McpOAuthClient `json:"oauthClient,omitempty"`
+	// RFC 9728 Protected Resource Metadata. The `resource` field is the
+	// canonical MCP server URI per RFC 8707, used as the OAuth `resource`
+	// indicator. `authorization_servers` is REQUIRED by the MCP
+	// authorization spec.
+	Resource ProtectedResourceMetadata `json:"resource"`
+	// Scopes required for the current challenge, parsed from the
+	// `WWW-Authenticate: ******"…"` header (or `scopes_supported`
+	// fallback). Authoritative for the next authorization request — clients
+	// MUST NOT assume any subset/superset relationship to
+	// `resource.scopes_supported`.
+	RequiredScopes []string `json:"requiredScopes,omitempty"`
+	// Human-readable hint, typically from the OAuth `error_description`.
+	Description *string `json:"description,omitempty"`
 }
 
 type ToolCallClientContributor struct {
@@ -3359,6 +3534,7 @@ type isToolCallState interface{ isToolCallState() }
 func (*ToolCallStreamingState) isToolCallState()                 {}
 func (*ToolCallPendingConfirmationState) isToolCallState()       {}
 func (*ToolCallRunningState) isToolCallState()                   {}
+func (*ToolCallAuthRequiredState) isToolCallState()              {}
 func (*ToolCallPendingResultConfirmationState) isToolCallState() {}
 func (*ToolCallCompletedState) isToolCallState()                 {}
 func (*ToolCallCancelledState) isToolCallState()                 {}
@@ -3391,6 +3567,12 @@ func (u *ToolCallState) UnmarshalJSON(data []byte) error {
 		u.Value = &value
 	case "running":
 		var value ToolCallRunningState
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	case "auth-required":
+		var value ToolCallAuthRequiredState
 		if err := json.Unmarshal(data, &value); err != nil {
 			return err
 		}
@@ -4388,6 +4570,66 @@ func (u ToolCallContributor) MarshalJSON() ([]byte, error) {
 	return json.Marshal(u.Value)
 }
 
+// ToolCallRiskAssessment is an asynchronous model-judge risk assessment.
+type ToolCallRiskAssessment struct {
+	Value isToolCallRiskAssessment
+}
+
+// isToolCallRiskAssessment is the marker interface implemented by every
+// concrete variant of ToolCallRiskAssessment.
+type isToolCallRiskAssessment interface{ isToolCallRiskAssessment() }
+
+func (*ToolCallRiskAssessmentLoadingState) isToolCallRiskAssessment()  {}
+func (*ToolCallRiskAssessmentCompleteState) isToolCallRiskAssessment() {}
+
+// ToolCallRiskAssessmentUnknown carries an unrecognized ToolCallRiskAssessment variant — typically a discriminator value introduced by a newer protocol version. The original JSON object is preserved verbatim so that re-encoding round-trips faithfully.
+type ToolCallRiskAssessmentUnknown struct {
+	Raw json.RawMessage
+}
+
+func (*ToolCallRiskAssessmentUnknown) isToolCallRiskAssessment() {}
+
+// UnmarshalJSON decodes the variant indicated by the "status" discriminator.
+func (u *ToolCallRiskAssessment) UnmarshalJSON(data []byte) error {
+	disc, _, err := readDiscriminator(data, "status")
+	if err != nil {
+		return err
+	}
+	switch disc {
+	case "loading":
+		var value ToolCallRiskAssessmentLoadingState
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	case "complete":
+		var value ToolCallRiskAssessmentCompleteState
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	default:
+		raw := make(json.RawMessage, len(data))
+		copy(raw, data)
+		u.Value = &ToolCallRiskAssessmentUnknown{Raw: raw}
+	}
+	return nil
+}
+
+// MarshalJSON encodes the active variant back to JSON.
+func (u ToolCallRiskAssessment) MarshalJSON() ([]byte, error) {
+	if unk, ok := u.Value.(*ToolCallRiskAssessmentUnknown); ok {
+		if len(unk.Raw) == 0 {
+			return []byte("null"), nil
+		}
+		return unk.Raw, nil
+	}
+	if u.Value == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(u.Value)
+}
+
 // SessionInputRequest is one outstanding piece of input a session is blocked on, aggregated across all chats.
 type SessionInputRequest struct {
 	Value isSessionInputRequest
@@ -4400,6 +4642,7 @@ type isSessionInputRequest interface{ isSessionInputRequest() }
 func (*SessionChatInputRequest) isSessionInputRequest()           {}
 func (*SessionToolConfirmationRequest) isSessionInputRequest()    {}
 func (*SessionToolClientExecutionRequest) isSessionInputRequest() {}
+func (*SessionToolAuthenticationRequest) isSessionInputRequest()  {}
 
 // SessionInputRequestUnknown carries an unrecognized SessionInputRequest variant — typically a discriminator value introduced by a newer protocol version. The original JSON object is preserved verbatim so that re-encoding round-trips faithfully.
 type SessionInputRequestUnknown struct {
@@ -4429,6 +4672,12 @@ func (u *SessionInputRequest) UnmarshalJSON(data []byte) error {
 		u.Value = &value
 	case "toolClientExecution":
 		var value SessionToolClientExecutionRequest
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	case "toolAuthentication":
+		var value SessionToolAuthenticationRequest
 		if err := json.Unmarshal(data, &value); err != nil {
 			return err
 		}

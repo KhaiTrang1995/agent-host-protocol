@@ -293,7 +293,7 @@ enum class ChatInputResponseKind {
 @Serializable
 enum class SessionInputRequestKind {
     /**
-     * A user-facing elicitation mirrored from a chat's `inputRequests`.
+     * A user-facing elicitation mirrored from an unresolved chat response part.
      */
     @SerialName("chatInput")
     CHAT_INPUT,
@@ -306,7 +306,12 @@ enum class SessionInputRequestKind {
      * A running tool the session wants an active client to execute.
      */
     @SerialName("toolClientExecution")
-    TOOL_CLIENT_EXECUTION
+    TOOL_CLIENT_EXECUTION,
+    /**
+     * A tool call blocked on MCP authentication mid-execution.
+     */
+    @SerialName("toolAuthentication")
+    TOOL_AUTHENTICATION
 }
 
 /**
@@ -408,6 +413,13 @@ enum class ToolCallStatus {
     PENDING_CONFIRMATION,
     @SerialName("running")
     RUNNING,
+    /**
+     * Running paused because the MCP server backing this call needs
+     * authentication (typically step-up auth for insufficient scope,
+     * surfacing mid-execution). See {@link ToolCallAuthRequiredState}.
+     */
+    @SerialName("auth-required")
+    AUTH_REQUIRED,
     @SerialName("pending-result-confirmation")
     PENDING_RESULT_CONFIRMATION,
     @SerialName("completed")
@@ -431,6 +443,26 @@ enum class ToolCallConfirmationReason {
     USER_ACTION,
     @SerialName("setting")
     SETTING
+}
+
+/**
+ * Identifies a model judge as the source of a confirmation requirement.
+ */
+@Serializable
+enum class ToolCallRiskAssessmentKind {
+    @SerialName("judge")
+    JUDGE
+}
+
+/**
+ * Lifecycle status of an asynchronous model-judge confirmation decision.
+ */
+@Serializable
+enum class ToolCallRiskAssessmentStatus {
+    @SerialName("loading")
+    LOADING,
+    @SerialName("complete")
+    COMPLETE
 }
 
 /**
@@ -1187,10 +1219,6 @@ data class ChatState(
      */
     val queuedMessages: List<PendingMessage>? = null,
     /**
-     * Requests for user input that are currently blocking or informing chat progress
-     */
-    val inputRequests: List<ChatInputRequest>? = null,
-    /**
      * The user's in-progress draft input for this chat — the message they are
      * composing but have not sent yet, including its
      * {@link Message.model | model} / {@link Message.agent | agent} selection
@@ -1497,6 +1525,33 @@ data class SessionToolClientExecutionRequest(
      * {@link ToolCallState} in `running` status).
      */
     val toolCall: ToolCallState
+)
+
+@Serializable
+data class SessionToolAuthenticationRequest(
+    /**
+     * Stable key for this entry, unique within the session's
+     * {@link SessionState.inputNeeded} list. The host derives it however it likes
+     * (for example from the chat URI plus the underlying request or tool-call
+     * id); consumers MUST treat it as opaque. It is the key for the
+     * `session/inputNeededSet` / `session/inputNeededRemoved` upsert convention.
+     */
+    val id: String,
+    /**
+     * The chat the underlying request lives in. This is the channel a client
+     * dispatches its response to — it does not need to have subscribed to that
+     * chat first.
+     */
+    val chat: String,
+    val kind: SessionInputRequestKind,
+    /**
+     * The turn the tool call belongs to.
+     */
+    val turnId: String,
+    /**
+     * The tool call awaiting authentication.
+     */
+    val toolCall: ToolCallAuthRequiredState
 )
 
 @Serializable
@@ -2361,14 +2416,15 @@ data class InputRequestResponsePart(
      */
     val kind: ResponsePartKind,
     /**
-     * The resolved request, carrying its `id`, `message`, `url`, `questions`,
-     * and the final `answers` synced/submitted at completion.
+     * The request, carrying its `id`, `message`, `url`, `questions`, and current
+     * draft or submitted `answers`.
      */
     val request: ChatInputRequest,
     /**
-     * How the request was resolved: `accept`, `decline`, or `cancel`.
+     * How the request was resolved. Absent until a client submits `accept`,
+     * `decline`, or `cancel` with `chat/inputCompleted`.
      */
-    val response: ChatInputResponseKind
+    val response: ChatInputResponseKind? = null
 )
 
 @Serializable
@@ -2486,6 +2542,10 @@ data class ToolCallPendingConfirmationState(
      */
     val confirmationTitle: StringOrMarkdown? = null,
     /**
+     * Risk assessment that informed the confirmation requirement.
+     */
+    val riskAssessment: ToolCallRiskAssessment? = null,
+    /**
      * File edits that this tool call will perform, for preview before confirmation
      */
     val edits: JsonElement? = null,
@@ -2541,7 +2601,6 @@ data class ToolCallRunningState(
      * Raw tool input
      */
     val toolInput: String? = null,
-    val status: ToolCallStatus,
     /**
      * How the tool was confirmed for execution
      */
@@ -2550,11 +2609,70 @@ data class ToolCallRunningState(
      * The confirmation option the user selected, if confirmation options were provided
      */
     val selectedOption: ConfirmationOption? = null,
+    val status: ToolCallStatus,
     /**
      * Partial content produced while the tool is still executing.
      *
      * For example, a terminal content block lets clients subscribe to live
      * output before the tool completes.
+     */
+    val content: List<ToolResultContent>? = null
+)
+
+@Serializable
+data class ToolCallAuthRequiredState(
+    /**
+     * Unique tool call identifier
+     */
+    val toolCallId: String,
+    /**
+     * Internal tool name (for debugging/logging)
+     */
+    val toolName: String,
+    /**
+     * Human-readable tool name
+     */
+    val displayName: String,
+    /**
+     * Human-readable description of what the tool invocation intends to do
+     */
+    val intention: String? = null,
+    /**
+     * Reference to the contributor of the tool being called.
+     */
+    val contributor: ToolCallContributor? = null,
+    /**
+     * Additional provider-specific metadata for this tool call.
+     *
+     * This MAY include a `ui` field corresponding to the MCP Apps (SEP-1865)
+     * `McpUiToolMeta` found in MCP tool calls, which may be used in combination
+     * with the {@link contributor} to serve MCP Apps.
+     */
+    @SerialName("_meta")
+    val meta: Map<String, JsonElement>? = null,
+    /**
+     * Message describing what the tool will do
+     */
+    val invocationMessage: StringOrMarkdown,
+    /**
+     * Raw tool input
+     */
+    val toolInput: String? = null,
+    /**
+     * How the tool was confirmed for execution
+     */
+    val confirmed: ToolCallConfirmationReason,
+    /**
+     * The confirmation option the user selected, if confirmation options were provided
+     */
+    val selectedOption: ConfirmationOption? = null,
+    val status: ToolCallStatus,
+    /**
+     * The authentication challenge blocking this invocation.
+     */
+    val auth: McpAuthRequirement,
+    /**
+     * Partial content produced before the call paused for authentication.
      */
     val content: List<ToolResultContent>? = null
 )
@@ -2622,7 +2740,6 @@ data class ToolCallPendingResultConfirmationState(
      * Error details if the tool failed
      */
     val error: JsonElement? = null,
-    val status: ToolCallStatus,
     /**
      * How the tool was confirmed for execution
      */
@@ -2630,7 +2747,8 @@ data class ToolCallPendingResultConfirmationState(
     /**
      * The confirmation option the user selected, if confirmation options were provided
      */
-    val selectedOption: ConfirmationOption? = null
+    val selectedOption: ConfirmationOption? = null,
+    val status: ToolCallStatus
 )
 
 @Serializable
@@ -2696,7 +2814,6 @@ data class ToolCallCompletedState(
      * Error details if the tool failed
      */
     val error: JsonElement? = null,
-    val status: ToolCallStatus,
     /**
      * How the tool was confirmed for execution
      */
@@ -2704,7 +2821,8 @@ data class ToolCallCompletedState(
     /**
      * The confirmation option the user selected, if confirmation options were provided
      */
-    val selectedOption: ConfirmationOption? = null
+    val selectedOption: ConfirmationOption? = null,
+    val status: ToolCallStatus
 )
 
 @Serializable
@@ -2763,6 +2881,23 @@ data class ToolCallCancelledState(
      * The confirmation option the user selected, if confirmation options were provided
      */
     val selectedOption: ConfirmationOption? = null
+)
+
+@Serializable
+data class ToolCallRiskAssessmentLoadingState(
+    val kind: ToolCallRiskAssessmentKind,
+    val status: ToolCallRiskAssessmentStatus
+)
+
+@Serializable
+data class ToolCallRiskAssessmentCompleteState(
+    val kind: ToolCallRiskAssessmentKind,
+    val status: ToolCallRiskAssessmentStatus,
+    val reason: StringOrMarkdown,
+    /**
+     * The judge's normalized safety score, where `0` is unsafe and `1` is safe.
+     */
+    val safety: Double
 )
 
 @Serializable
@@ -3716,11 +3851,15 @@ data class McpServerReadyState(
 
 @Serializable
 data class McpServerAuthRequiredState(
-    val kind: McpServerStatus,
     /**
      * Why authentication is required.
      */
     val reason: McpAuthRequiredReason,
+    /**
+     * Pre-registered OAuth client to use for authorization. When present, clients
+     * MUST use these credentials instead of dynamic client registration.
+     */
+    val oauthClient: McpOAuthClient? = null,
     /**
      * RFC 9728 Protected Resource Metadata. The `resource` field is the
      * canonical MCP server URI per RFC 8707, used as the OAuth `resource`
@@ -3730,7 +3869,7 @@ data class McpServerAuthRequiredState(
     val resource: ProtectedResourceMetadata,
     /**
      * Scopes required for the current challenge, parsed from the
-     * `WWW-Authenticate: Bearer scope="…"` header (or `scopes_supported`
+     * `WWW-Authenticate: ******"…"` header (or `scopes_supported`
      * fallback). Authoritative for the next authorization request — clients
      * MUST NOT assume any subset/superset relationship to
      * `resource.scopes_supported`.
@@ -3739,7 +3878,8 @@ data class McpServerAuthRequiredState(
     /**
      * Human-readable hint, typically from the OAuth `error_description`.
      */
-    val description: String? = null
+    val description: String? = null,
+    val kind: McpServerStatus
 )
 
 @Serializable
@@ -3754,6 +3894,51 @@ data class McpServerErrorState(
 @Serializable
 data class McpServerStoppedState(
     val kind: McpServerStatus
+)
+
+@Serializable
+data class McpOAuthClient(
+    /**
+     * OAuth client identifier registered with the authorization server.
+     */
+    val clientId: String,
+    /**
+     * OAuth client secret for a confidential client. Absence means the client is
+     * public and uses a secretless flow such as authorization code with PKCE.
+     */
+    val clientSecret: String? = null
+)
+
+@Serializable
+data class McpAuthRequirement(
+    /**
+     * Why authentication is required.
+     */
+    val reason: McpAuthRequiredReason,
+    /**
+     * Pre-registered OAuth client to use for authorization. When present, clients
+     * MUST use these credentials instead of dynamic client registration.
+     */
+    val oauthClient: McpOAuthClient? = null,
+    /**
+     * RFC 9728 Protected Resource Metadata. The `resource` field is the
+     * canonical MCP server URI per RFC 8707, used as the OAuth `resource`
+     * indicator. `authorization_servers` is REQUIRED by the MCP
+     * authorization spec.
+     */
+    val resource: ProtectedResourceMetadata,
+    /**
+     * Scopes required for the current challenge, parsed from the
+     * `WWW-Authenticate: ******"…"` header (or `scopes_supported`
+     * fallback). Authoritative for the next authorization request — clients
+     * MUST NOT assume any subset/superset relationship to
+     * `resource.scopes_supported`.
+     */
+    val requiredScopes: List<String>? = null,
+    /**
+     * Human-readable hint, typically from the OAuth `error_description`.
+     */
+    val description: String? = null
 )
 
 @Serializable
@@ -4485,6 +4670,8 @@ value class ToolCallStatePendingConfirmation(val value: ToolCallPendingConfirmat
 @JvmInline
 value class ToolCallStateRunning(val value: ToolCallRunningState) : ToolCallState
 @JvmInline
+value class ToolCallStateAuthRequired(val value: ToolCallAuthRequiredState) : ToolCallState
+@JvmInline
 value class ToolCallStatePendingResultConfirmation(val value: ToolCallPendingResultConfirmationState) : ToolCallState
 @JvmInline
 value class ToolCallStateCompleted(val value: ToolCallCompletedState) : ToolCallState
@@ -4517,6 +4704,7 @@ internal object ToolCallStateSerializer : KSerializer<ToolCallState> {
             "streaming" -> ToolCallStateStreaming(input.json.decodeFromJsonElement(ToolCallStreamingState.serializer(), element))
             "pending-confirmation" -> ToolCallStatePendingConfirmation(input.json.decodeFromJsonElement(ToolCallPendingConfirmationState.serializer(), element))
             "running" -> ToolCallStateRunning(input.json.decodeFromJsonElement(ToolCallRunningState.serializer(), element))
+            "auth-required" -> ToolCallStateAuthRequired(input.json.decodeFromJsonElement(ToolCallAuthRequiredState.serializer(), element))
             "pending-result-confirmation" -> ToolCallStatePendingResultConfirmation(input.json.decodeFromJsonElement(ToolCallPendingResultConfirmationState.serializer(), element))
             "completed" -> ToolCallStateCompleted(input.json.decodeFromJsonElement(ToolCallCompletedState.serializer(), element))
             "cancelled" -> ToolCallStateCancelled(input.json.decodeFromJsonElement(ToolCallCancelledState.serializer(), element))
@@ -4531,6 +4719,7 @@ internal object ToolCallStateSerializer : KSerializer<ToolCallState> {
             is ToolCallStateStreaming -> output.json.encodeToJsonElement(ToolCallStreamingState.serializer(), value.value)
             is ToolCallStatePendingConfirmation -> output.json.encodeToJsonElement(ToolCallPendingConfirmationState.serializer(), value.value)
             is ToolCallStateRunning -> output.json.encodeToJsonElement(ToolCallRunningState.serializer(), value.value)
+            is ToolCallStateAuthRequired -> output.json.encodeToJsonElement(ToolCallAuthRequiredState.serializer(), value.value)
             is ToolCallStatePendingResultConfirmation -> output.json.encodeToJsonElement(ToolCallPendingResultConfirmationState.serializer(), value.value)
             is ToolCallStateCompleted -> output.json.encodeToJsonElement(ToolCallCompletedState.serializer(), value.value)
             is ToolCallStateCancelled -> output.json.encodeToJsonElement(ToolCallCancelledState.serializer(), value.value)
@@ -5202,6 +5391,55 @@ internal object ToolCallContributorSerializer : KSerializer<ToolCallContributor>
     }
 }
 
+@Serializable(with = ToolCallRiskAssessmentSerializer::class)
+sealed interface ToolCallRiskAssessment
+
+@JvmInline
+value class ToolCallRiskAssessmentLoading(val value: ToolCallRiskAssessmentLoadingState) : ToolCallRiskAssessment
+@JvmInline
+value class ToolCallRiskAssessmentComplete(val value: ToolCallRiskAssessmentCompleteState) : ToolCallRiskAssessment
+/**
+ * Forward-compat catch-all for unknown ToolCallRiskAssessment discriminators.
+ *
+ * Older clients may receive newer wire variants they don't recognise; capturing
+ * the raw `JsonObject` lets such payloads round-trip through the client unchanged.
+ * Reducers handle this variant conservatively on a per-union basis (typically
+ * as a no-op, but see `Reducers.kt` for the exact treatment).
+ */
+@JvmInline
+value class ToolCallRiskAssessmentUnknown(val raw: JsonObject) : ToolCallRiskAssessment
+
+internal object ToolCallRiskAssessmentSerializer : KSerializer<ToolCallRiskAssessment> {
+    override val descriptor: SerialDescriptor =
+        buildClassSerialDescriptor("ToolCallRiskAssessment")
+
+    override fun deserialize(decoder: Decoder): ToolCallRiskAssessment {
+        val input = decoder as? JsonDecoder
+            ?: error("ToolCallRiskAssessment can only be deserialized from JSON")
+        val element = input.decodeJsonElement()
+        val obj = element as? JsonObject
+            ?: error("Expected JsonObject for ToolCallRiskAssessment")
+        val discriminant = (obj["status"] as? JsonPrimitive)?.content
+            ?: return ToolCallRiskAssessmentUnknown(obj)
+        return when (discriminant) {
+            "loading" -> ToolCallRiskAssessmentLoading(input.json.decodeFromJsonElement(ToolCallRiskAssessmentLoadingState.serializer(), element))
+            "complete" -> ToolCallRiskAssessmentComplete(input.json.decodeFromJsonElement(ToolCallRiskAssessmentCompleteState.serializer(), element))
+            else -> ToolCallRiskAssessmentUnknown(obj)
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: ToolCallRiskAssessment) {
+        val output = encoder as? JsonEncoder
+            ?: error("ToolCallRiskAssessment can only be serialized to JSON")
+        val element: JsonElement = when (value) {
+            is ToolCallRiskAssessmentLoading -> output.json.encodeToJsonElement(ToolCallRiskAssessmentLoadingState.serializer(), value.value)
+            is ToolCallRiskAssessmentComplete -> output.json.encodeToJsonElement(ToolCallRiskAssessmentCompleteState.serializer(), value.value)
+            is ToolCallRiskAssessmentUnknown -> value.raw
+        }
+        output.encodeJsonElement(element)
+    }
+}
+
 @Serializable(with = SessionInputRequestSerializer::class)
 sealed interface SessionInputRequest
 
@@ -5211,6 +5449,8 @@ value class SessionInputRequestChatInput(val value: SessionChatInputRequest) : S
 value class SessionInputRequestToolConfirmation(val value: SessionToolConfirmationRequest) : SessionInputRequest
 @JvmInline
 value class SessionInputRequestToolClientExecution(val value: SessionToolClientExecutionRequest) : SessionInputRequest
+@JvmInline
+value class SessionInputRequestToolAuthentication(val value: SessionToolAuthenticationRequest) : SessionInputRequest
 /**
  * Forward-compat catch-all for unknown SessionInputRequest discriminators.
  *
@@ -5238,6 +5478,7 @@ internal object SessionInputRequestSerializer : KSerializer<SessionInputRequest>
             "chatInput" -> SessionInputRequestChatInput(input.json.decodeFromJsonElement(SessionChatInputRequest.serializer(), element))
             "toolConfirmation" -> SessionInputRequestToolConfirmation(input.json.decodeFromJsonElement(SessionToolConfirmationRequest.serializer(), element))
             "toolClientExecution" -> SessionInputRequestToolClientExecution(input.json.decodeFromJsonElement(SessionToolClientExecutionRequest.serializer(), element))
+            "toolAuthentication" -> SessionInputRequestToolAuthentication(input.json.decodeFromJsonElement(SessionToolAuthenticationRequest.serializer(), element))
             else -> SessionInputRequestUnknown(obj)
         }
     }
@@ -5249,6 +5490,7 @@ internal object SessionInputRequestSerializer : KSerializer<SessionInputRequest>
             is SessionInputRequestChatInput -> output.json.encodeToJsonElement(SessionChatInputRequest.serializer(), value.value)
             is SessionInputRequestToolConfirmation -> output.json.encodeToJsonElement(SessionToolConfirmationRequest.serializer(), value.value)
             is SessionInputRequestToolClientExecution -> output.json.encodeToJsonElement(SessionToolClientExecutionRequest.serializer(), value.value)
+            is SessionInputRequestToolAuthentication -> output.json.encodeToJsonElement(SessionToolAuthenticationRequest.serializer(), value.value)
             is SessionInputRequestUnknown -> value.raw
         }
         output.encodeJsonElement(element)

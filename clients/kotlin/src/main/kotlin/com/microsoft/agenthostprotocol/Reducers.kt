@@ -115,7 +115,7 @@ private fun withInputNeededStatus(status: SessionStatus, inputNeeded: List<Sessi
 private fun chatSummaryStatus(state: ChatState, terminalStatus: SessionStatus? = null): SessionStatus {
     val activity: SessionStatus = when {
         terminalStatus != null -> terminalStatus
-        (state.inputRequests?.size ?: 0) > 0 || hasPendingToolCallConfirmation(state) ->
+        hasOpenInputRequest(state) || hasBlockingToolCall(state) ->
             SessionStatus.INPUT_NEEDED
         state.activeTurn != null -> SessionStatus.IN_PROGRESS
         else -> SessionStatus.IDLE
@@ -124,10 +124,15 @@ private fun chatSummaryStatus(state: ChatState, terminalStatus: SessionStatus? =
     return SessionStatus(preserved or activity.rawValue)
 }
 
+private fun hasOpenInputRequest(state: ChatState): Boolean =
+    state.activeTurn?.responseParts?.any { part ->
+        part is ResponsePartInputRequest && part.value.response == null
+    } == true
+
 /**
  * Returns a state with chat [ChatState.status] recomputed. Use after reducers that
  * change data feeding into [chatSummaryStatus] (e.g. tool call lifecycle
- * transitions that may enter or leave a pending-confirmation state).
+ * transitions that may enter or leave a blocking state).
  */
 private fun refreshChatSummaryStatus(state: ChatState): ChatState {
     val status = chatSummaryStatus(state)
@@ -137,13 +142,18 @@ private fun refreshChatSummaryStatus(state: ChatState): ChatState {
     return state.copy(status = status)
 }
 
-/** Returns `true` if the active turn has any tool call awaiting user confirmation. */
-private fun hasPendingToolCallConfirmation(state: ChatState): Boolean {
+/**
+ * Returns `true` if the active turn has any tool call blocking on something
+ * external to the turn itself — a pending confirmation/result-confirmation,
+ * or a tool call paused on MCP authentication.
+ */
+private fun hasBlockingToolCall(state: ChatState): Boolean {
     val active = state.activeTurn ?: return false
     return active.responseParts.any { part ->
         part is ResponsePartToolCall &&
             (part.value.toolCall is ToolCallStatePendingConfirmation ||
-                part.value.toolCall is ToolCallStatePendingResultConfirmation)
+                part.value.toolCall is ToolCallStatePendingResultConfirmation ||
+                part.value.toolCall is ToolCallStateAuthRequired)
     }
 }
 
@@ -169,6 +179,9 @@ private fun toolCallBase(tc: ToolCallState): ToolCallBase = when (tc) {
         ToolCallBase(it.toolCallId, it.toolName, it.displayName, it.intention, it.contributor, it.meta)
     }
     is ToolCallStateRunning -> tc.value.let {
+        ToolCallBase(it.toolCallId, it.toolName, it.displayName, it.intention, it.contributor, it.meta)
+    }
+    is ToolCallStateAuthRequired -> tc.value.let {
         ToolCallBase(it.toolCallId, it.toolName, it.displayName, it.intention, it.contributor, it.meta)
     }
     is ToolCallStatePendingResultConfirmation -> tc.value.let {
@@ -209,6 +222,7 @@ private fun sessionInputRequestId(r: SessionInputRequest): String? = when (r) {
     is SessionInputRequestChatInput -> r.value.id
     is SessionInputRequestToolConfirmation -> r.value.id
     is SessionInputRequestToolClientExecution -> r.value.id
+    is SessionInputRequestToolAuthentication -> r.value.id
     // Unknown variants carry an opaque `raw` JSON object — no id to expose.
     is SessionInputRequestUnknown -> null
 }
@@ -352,6 +366,7 @@ private fun endTurn(
                 ?: com.microsoft.agenthostprotocol.generated.StringOrMarkdown.Plain("")
             is ToolCallStatePendingConfirmation -> tc.value.invocationMessage
             is ToolCallStateRunning -> tc.value.invocationMessage
+            is ToolCallStateAuthRequired -> tc.value.invocationMessage
             is ToolCallStatePendingResultConfirmation -> tc.value.invocationMessage
             is ToolCallStateCompleted, is ToolCallStateCancelled -> error("filtered above")
             // Mirrors Rust's catch-all (`_ => Default::default()`). An unknown tool
@@ -363,6 +378,7 @@ private fun endTurn(
             is ToolCallStateStreaming -> null
             is ToolCallStatePendingConfirmation -> tc.value.toolInput
             is ToolCallStateRunning -> tc.value.toolInput
+            is ToolCallStateAuthRequired -> tc.value.toolInput
             is ToolCallStatePendingResultConfirmation -> tc.value.toolInput
             is ToolCallStateCompleted, is ToolCallStateCancelled -> error("filtered above")
             is ToolCallStateUnknown -> null
@@ -403,22 +419,36 @@ private fun endTurn(
     val withoutTurn = state.copy(
         turns = state.turns + turn,
         activeTurn = null,
-        inputRequests = null,
         modifiedAt = nowIsoString(),
     )
     return withoutTurn.copy(status = chatSummaryStatus(withoutTurn, terminalStatus))
 }
 
 private fun upsertInputRequest(state: ChatState, request: ChatInputRequest): ChatState {
-    val existing = state.inputRequests ?: emptyList()
-    val idx = existing.indexOfFirst { it.id == request.id }
-    val updated: List<ChatInputRequest> = if (idx >= 0) {
-        val priorAnswers = existing[idx].answers
-        existing.toMutableList().also { it[idx] = request.copy(answers = request.answers ?: priorAnswers) }
-    } else {
-        existing + request
+    val activeTurn = state.activeTurn ?: return state
+    val idx = activeTurn.responseParts.indexOfFirst { part ->
+        part is ResponsePartInputRequest
+            && part.value.response == null
+            && part.value.request.id == request.id
     }
-    val next = state.copy(inputRequests = updated)
+    val updated = activeTurn.responseParts.toMutableList()
+    if (idx >= 0) {
+        val existing = (updated[idx] as ResponsePartInputRequest).value
+        updated[idx] = ResponsePartInputRequest(
+            InputRequestResponsePart(
+                kind = ResponsePartKind.INPUT_REQUEST,
+                request = request.copy(answers = request.answers ?: existing.request.answers),
+            ),
+        )
+    } else {
+        updated += ResponsePartInputRequest(
+            InputRequestResponsePart(
+                kind = ResponsePartKind.INPUT_REQUEST,
+                request = request,
+            ),
+        )
+    }
+    val next = state.copy(activeTurn = activeTurn.copy(responseParts = updated))
     return next.copy(
         status = withStatusFlag(chatSummaryStatus(next), SessionStatus.IS_READ, false),
         modifiedAt = nowIsoString(),
@@ -860,10 +890,15 @@ public fun chatReducer(state: ChatState, action: StateAction): ChatState = when 
         val a = action.value
         refreshChatSummaryStatus(
             updateToolCallInParts(state, a.turnId, a.toolCallId) { tc ->
-                if (tc !is ToolCallStateStreaming && tc !is ToolCallStateRunning) {
+                if (
+                    tc !is ToolCallStateStreaming
+                    && tc !is ToolCallStateRunning
+                    && tc !is ToolCallStatePendingConfirmation
+                ) {
                     tc
                 } else {
                     val base = toolCallBase(tc).withMeta(a.meta)
+                    val pending = (tc as? ToolCallStatePendingConfirmation)?.value
                     if (a.confirmed != null) {
                         ToolCallStateRunning(
                             ToolCallRunningState(
@@ -889,12 +924,13 @@ public fun chatReducer(state: ChatState, action: StateAction): ChatState = when 
                                 contributor = base.contributor,
                                 meta = base.meta,
                                 invocationMessage = a.invocationMessage,
-                                toolInput = a.toolInput,
+                                toolInput = a.toolInput ?: pending?.toolInput,
                                 status = ToolCallStatus.PENDING_CONFIRMATION,
-                                confirmationTitle = a.confirmationTitle,
-                                edits = a.edits,
-                                editable = a.editable,
-                                options = a.options,
+                                confirmationTitle = a.confirmationTitle ?: pending?.confirmationTitle,
+                                riskAssessment = a.riskAssessment ?: pending?.riskAssessment,
+                                edits = a.edits ?: pending?.edits,
+                                editable = a.editable ?: pending?.editable,
+                                options = a.options ?: pending?.options,
                             ),
                         )
                     }
@@ -956,23 +992,49 @@ public fun chatReducer(state: ChatState, action: StateAction): ChatState = when 
         val result = a.result
         refreshChatSummaryStatus(
             updateToolCallInParts(state, a.turnId, a.toolCallId) { tc ->
-                val (invocationMessage, toolInput, confirmed, selectedOption) = when (tc) {
+                val (invocationMessage, toolInput, confirmed, selectedOption, preAuthContent, fromAuthRequired) = when (tc) {
                     is ToolCallStateRunning -> CompleteCtx(
                         tc.value.invocationMessage,
                         tc.value.toolInput,
                         tc.value.confirmed,
                         tc.value.selectedOption,
+                        null,
                     )
                     is ToolCallStatePendingConfirmation -> CompleteCtx(
                         tc.value.invocationMessage,
                         tc.value.toolInput,
                         ToolCallConfirmationReason.NOT_NEEDED,
                         null,
+                        null,
                     )
+                    // A client MAY cancel an auth-required MCP tool call by dispatching a
+                    // failed completion instead of authenticating. A successful completion
+                    // is invalid here — execution never resumed after the auth challenge —
+                    // and is ignored, leaving the call in auth-required. Any partial content
+                    // produced before the call paused for auth is preserved unless the
+                    // dispatched result supplies its own content.
+                    is ToolCallStateAuthRequired -> {
+                        if (result.success) {
+                            return@updateToolCallInParts tc
+                        }
+                        CompleteCtx(
+                            tc.value.invocationMessage,
+                            tc.value.toolInput,
+                            tc.value.confirmed,
+                            tc.value.selectedOption,
+                            tc.value.content,
+                            fromAuthRequired = true,
+                        )
+                    }
                     else -> return@updateToolCallInParts tc
                 }
                 val base = toolCallBase(tc).withMeta(a.meta)
-                if (a.requiresResultConfirmation == true) {
+                val content = result.content ?: preAuthContent
+                // Cancelling from auth-required always completes terminally: the
+                // pending auth challenge isn't a "pending result" the client can
+                // review, so requiresResultConfirmation is ignored for this path —
+                // it must never enter pending-result-confirmation.
+                if (a.requiresResultConfirmation == true && !fromAuthRequired) {
                     ToolCallStatePendingResultConfirmation(
                         ToolCallPendingResultConfirmationState(
                             toolCallId = base.toolCallId,
@@ -985,7 +1047,7 @@ public fun chatReducer(state: ChatState, action: StateAction): ChatState = when 
                             toolInput = toolInput,
                             success = result.success,
                             pastTenseMessage = result.pastTenseMessage,
-                            content = result.content,
+                            content = content,
                             structuredContent = result.structuredContent,
                             error = result.error,
                             status = ToolCallStatus.PENDING_RESULT_CONFIRMATION,
@@ -1006,7 +1068,7 @@ public fun chatReducer(state: ChatState, action: StateAction): ChatState = when 
                             toolInput = toolInput,
                             success = result.success,
                             pastTenseMessage = result.pastTenseMessage,
-                            content = result.content,
+                            content = content,
                             structuredContent = result.structuredContent,
                             error = result.error,
                             status = ToolCallStatus.COMPLETED,
@@ -1077,6 +1139,70 @@ public fun chatReducer(state: ChatState, action: StateAction): ChatState = when 
         }
     }
 
+    is StateActionChatToolCallAuthRequired -> {
+        val a = action.value
+        refreshChatSummaryStatus(
+            updateToolCallInParts(state, a.turnId, a.toolCallId) { tc ->
+                if (tc !is ToolCallStateRunning) {
+                    tc
+                } else {
+                    val contributor = tc.value.contributor
+                    if (contributor !is ToolCallContributorMcp) {
+                        tc
+                    } else {
+                        val base = toolCallBase(tc).withMeta(a.meta)
+                        ToolCallStateAuthRequired(
+                            ToolCallAuthRequiredState(
+                                toolCallId = base.toolCallId,
+                                toolName = base.toolName,
+                                displayName = base.displayName,
+                                intention = base.intention,
+                                contributor = contributor,
+                                meta = base.meta,
+                                invocationMessage = tc.value.invocationMessage,
+                                toolInput = tc.value.toolInput,
+                                confirmed = tc.value.confirmed,
+                                selectedOption = tc.value.selectedOption,
+                                status = ToolCallStatus.AUTH_REQUIRED,
+                                auth = a.auth,
+                                content = tc.value.content,
+                            ),
+                        )
+                    }
+                }
+            },
+        )
+    }
+
+    is StateActionChatToolCallAuthResolved -> {
+        val a = action.value
+        refreshChatSummaryStatus(
+            updateToolCallInParts(state, a.turnId, a.toolCallId) { tc ->
+                if (tc !is ToolCallStateAuthRequired) {
+                    tc
+                } else {
+                    val base = toolCallBase(tc).withMeta(a.meta)
+                    ToolCallStateRunning(
+                        ToolCallRunningState(
+                            toolCallId = base.toolCallId,
+                            toolName = base.toolName,
+                            displayName = base.displayName,
+                            intention = base.intention,
+                            contributor = base.contributor,
+                            meta = base.meta,
+                            invocationMessage = tc.value.invocationMessage,
+                            toolInput = tc.value.toolInput,
+                            confirmed = tc.value.confirmed,
+                            selectedOption = tc.value.selectedOption,
+                            status = ToolCallStatus.RUNNING,
+                            content = tc.value.content,
+                        ),
+                    )
+                }
+            },
+        )
+    }
+
     // ── Metadata ──────────────────────────────────────────────────────────
     is StateActionChatUsage -> {
         val a = action.value
@@ -1113,7 +1239,6 @@ public fun chatReducer(state: ChatState, action: StateAction): ChatState = when 
             turns = turns,
             turnsNextCursor = if (a.turnId == null) null else state.turnsNextCursor,
             activeTurn = null,
-            inputRequests = null,
             modifiedAt = nowIsoString(),
         )
         next.copy(status = chatSummaryStatus(next))
@@ -1136,12 +1261,17 @@ public fun chatReducer(state: ChatState, action: StateAction): ChatState = when 
 
     is StateActionChatInputAnswerChanged -> {
         val a = action.value
-        val existing = state.inputRequests
-        val idx = existing?.indexOfFirst { it.id == a.requestId } ?: -1
-        if (existing == null || idx < 0) {
+        val activeTurn = state.activeTurn
+        val idx = activeTurn?.responseParts?.indexOfFirst { part ->
+            part is ResponsePartInputRequest
+                && part.value.response == null
+                && part.value.request.id == a.requestId
+        } ?: -1
+        if (activeTurn == null || idx < 0) {
             state
         } else {
-            val request = existing[idx]
+            val part = (activeTurn.responseParts[idx] as ResponsePartInputRequest).value
+            val request = part.request
             val answers = (request.answers ?: emptyMap()).toMutableMap()
             if (a.answer == null) {
                 answers.remove(a.questionId)
@@ -1149,9 +1279,11 @@ public fun chatReducer(state: ChatState, action: StateAction): ChatState = when 
                 answers[a.questionId] = a.answer
             }
             val newRequest = request.copy(answers = if (answers.isEmpty()) null else answers)
-            val updated = existing.toMutableList().also { it[idx] = newRequest }
+            val updated = activeTurn.responseParts.toMutableList().also {
+                it[idx] = ResponsePartInputRequest(part.copy(request = newRequest))
+            }
             state.copy(
-                inputRequests = updated,
+                activeTurn = activeTurn.copy(responseParts = updated),
                 modifiedAt = nowIsoString(),
             )
         }
@@ -1159,31 +1291,26 @@ public fun chatReducer(state: ChatState, action: StateAction): ChatState = when 
 
     is StateActionChatInputCompleted -> {
         val a = action.value
-        val existing = state.inputRequests
-        val completed = existing?.firstOrNull { it.id == a.requestId }
-        if (existing == null || completed == null) {
+        val activeTurn = state.activeTurn
+        val idx = activeTurn?.responseParts?.indexOfFirst { part ->
+            part is ResponsePartInputRequest
+                && part.value.response == null
+                && part.value.request.id == a.requestId
+        } ?: -1
+        if (activeTurn == null || idx < 0) {
             state
         } else {
-            val remaining = existing.filter { it.id != a.requestId }
-            var next = state.copy(inputRequests = remaining.ifEmpty { null })
-            // Project the resolved request into the active turn's transcript so
-            // the decision survives after the live request is gone. Abandoned
-            // requests (turn end/truncate) are removed without a part.
-            val activeTurn = next.activeTurn
-            if (activeTurn != null) {
-                val finalAnswers = (completed.answers ?: emptyMap()) + (a.answers ?: emptyMap())
-                val request = completed.copy(answers = finalAnswers.ifEmpty { null })
-                val newPart = ResponsePartInputRequest(
-                    InputRequestResponsePart(
-                        kind = ResponsePartKind.INPUT_REQUEST,
-                        request = request,
+            val part = (activeTurn.responseParts[idx] as ResponsePartInputRequest).value
+            val finalAnswers = (part.request.answers ?: emptyMap()) + (a.answers ?: emptyMap())
+            val updated = activeTurn.responseParts.toMutableList().also {
+                it[idx] = ResponsePartInputRequest(
+                    part.copy(
+                        request = part.request.copy(answers = finalAnswers.ifEmpty { null }),
                         response = a.response,
                     ),
                 )
-                next = next.copy(
-                    activeTurn = activeTurn.copy(responseParts = activeTurn.responseParts + newPart),
-                )
             }
+            val next = state.copy(activeTurn = activeTurn.copy(responseParts = updated))
             next.copy(
                 status = chatSummaryStatus(next),
                 modifiedAt = nowIsoString(),
@@ -1266,6 +1393,9 @@ private data class CompleteCtx(
     val toolInput: String?,
     val confirmed: ToolCallConfirmationReason,
     val selectedOption: ConfirmationOption?,
+    val preAuthContent: List<ToolResultContent>?,
+    /** Whether this context came from `auth-required` (a cancellation), which forces a terminal completion. */
+    val fromAuthRequired: Boolean = false,
 )
 
 

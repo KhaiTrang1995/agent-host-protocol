@@ -53,6 +53,7 @@ private func sessionInputRequestID(_ r: SessionInputRequest) -> String? {
     case .chatInput(let x): return x.id
     case .toolConfirmation(let x): return x.id
     case .toolClientExecution(let x): return x.id
+    case .toolAuthentication(let x): return x.id
     case .unknown: return nil
     }
 }
@@ -189,11 +190,17 @@ public func chatReducer(state: ChatState, action: StateAction) -> ChatState {
     case .chatToolCallReady(let a):
         return refreshChatSummaryStatus(updateToolCall(state: state, turnId: a.turnId, toolCallId: a.toolCallId) { tc in
             switch tc {
-            case .streaming, .running: break
+            case .streaming, .running, .pendingConfirmation: break
             default: return tc
             }
             let base = tc.baseFields
             let meta = a.meta ?? base.meta
+            let pending: ToolCallPendingConfirmationState?
+            if case .pendingConfirmation(let value) = tc {
+                pending = value
+            } else {
+                pending = nil
+            }
             if let confirmed = a.confirmed {
                 return .running(ToolCallRunningState(
                     toolCallId: base.toolCallId,
@@ -204,8 +211,8 @@ public func chatReducer(state: ChatState, action: StateAction) -> ChatState {
                     meta: meta,
                     invocationMessage: a.invocationMessage,
                     toolInput: a.toolInput,
-                    status: .running,
-                    confirmed: confirmed
+                    confirmed: confirmed,
+                    status: .running
                 ))
             }
             return .pendingConfirmation(ToolCallPendingConfirmationState(
@@ -216,12 +223,13 @@ public func chatReducer(state: ChatState, action: StateAction) -> ChatState {
                 contributor: base.contributor,
                 meta: meta,
                 invocationMessage: a.invocationMessage,
-                toolInput: a.toolInput,
+                toolInput: a.toolInput ?? pending?.toolInput,
                 status: .pendingConfirmation,
-                confirmationTitle: a.confirmationTitle,
-                edits: a.edits,
-                editable: a.editable,
-                options: a.options
+                confirmationTitle: a.confirmationTitle ?? pending?.confirmationTitle,
+                riskAssessment: a.riskAssessment ?? pending?.riskAssessment,
+                edits: a.edits ?? pending?.edits,
+                editable: a.editable ?? pending?.editable,
+                options: a.options ?? pending?.options
             ))
         })
 
@@ -241,9 +249,9 @@ public func chatReducer(state: ChatState, action: StateAction) -> ChatState {
                     meta: meta,
                     invocationMessage: pending.invocationMessage,
                     toolInput: a.editedToolInput ?? pending.toolInput,
-                    status: .running,
                     confirmed: a.confirmed ?? .notNeeded,
-                    selectedOption: selectedOption
+                    selectedOption: selectedOption,
+                    status: .running
                 ))
             }
             return .cancelled(ToolCallCancelledState(
@@ -271,22 +279,49 @@ public func chatReducer(state: ChatState, action: StateAction) -> ChatState {
             let invocationMessage: StringOrMarkdown
             let toolInput: String?
             let selectedOption: ConfirmationOption?
+            let preAuthContent: [ToolResultContent]?
+            let fromAuthRequired: Bool
             switch tc {
             case .running(let r):
                 confirmed = r.confirmed
                 invocationMessage = r.invocationMessage
                 toolInput = r.toolInput
                 selectedOption = r.selectedOption
+                preAuthContent = nil
+                fromAuthRequired = false
             case .pendingConfirmation(let p):
                 confirmed = .notNeeded
                 invocationMessage = p.invocationMessage
                 toolInput = p.toolInput
                 selectedOption = nil
+                preAuthContent = nil
+                fromAuthRequired = false
+            // A client MAY cancel an auth-required MCP tool call by dispatching a
+            // failed completion instead of authenticating. A successful completion
+            // is invalid here — execution never resumed after the auth challenge —
+            // and is ignored, leaving the call in auth-required. Any partial content
+            // produced before the call paused for auth is preserved unless the
+            // dispatched result supplies its own content.
+            case .authRequired(let ar):
+                if a.result.success {
+                    return tc
+                }
+                confirmed = ar.confirmed
+                invocationMessage = ar.invocationMessage
+                toolInput = ar.toolInput
+                selectedOption = ar.selectedOption
+                preAuthContent = ar.content
+                fromAuthRequired = true
             default:
                 return tc
             }
+            let content = a.result.content ?? preAuthContent
 
-            if a.requiresResultConfirmation == true {
+            // Cancelling from auth-required always completes terminally: the
+            // pending auth challenge isn't a "pending result" the client can
+            // review, so requiresResultConfirmation is ignored for this path —
+            // it must never enter pending-result-confirmation.
+            if a.requiresResultConfirmation == true && !fromAuthRequired {
                 return .pendingResultConfirmation(ToolCallPendingResultConfirmationState(
                     toolCallId: base.toolCallId,
                     toolName: base.toolName,
@@ -298,12 +333,12 @@ public func chatReducer(state: ChatState, action: StateAction) -> ChatState {
                     toolInput: toolInput,
                     success: a.result.success,
                     pastTenseMessage: a.result.pastTenseMessage,
-                    content: a.result.content,
+                    content: content,
                     structuredContent: a.result.structuredContent,
                     error: a.result.error,
-                    status: .pendingResultConfirmation,
                     confirmed: confirmed,
-                    selectedOption: selectedOption
+                    selectedOption: selectedOption,
+                    status: .pendingResultConfirmation
                 ))
             }
             return .completed(ToolCallCompletedState(
@@ -317,12 +352,12 @@ public func chatReducer(state: ChatState, action: StateAction) -> ChatState {
                 toolInput: toolInput,
                 success: a.result.success,
                 pastTenseMessage: a.result.pastTenseMessage,
-                content: a.result.content,
+                content: content,
                 structuredContent: a.result.structuredContent,
                 error: a.result.error,
-                status: .completed,
                 confirmed: confirmed,
-                selectedOption: selectedOption
+                selectedOption: selectedOption,
+                status: .completed
             ))
         })
 
@@ -346,9 +381,9 @@ public func chatReducer(state: ChatState, action: StateAction) -> ChatState {
                     content: prc.content,
                     structuredContent: prc.structuredContent,
                     error: prc.error,
-                    status: .completed,
                     confirmed: prc.confirmed,
-                    selectedOption: prc.selectedOption
+                    selectedOption: prc.selectedOption,
+                    status: .completed
                 ))
             }
             return .cancelled(ToolCallCancelledState(
@@ -373,6 +408,52 @@ public func chatReducer(state: ChatState, action: StateAction) -> ChatState {
             r.content = a.content
             return .running(r)
         }
+
+    case .chatToolCallAuthRequired(let a):
+        return refreshChatSummaryStatus(updateToolCall(state: state, turnId: a.turnId, toolCallId: a.toolCallId) { tc in
+            guard case .running(let running) = tc else { return tc }
+            guard let contributor = running.contributor, case .mcp = contributor else { return tc }
+
+            let base = tc.baseFields
+            let meta = a.meta ?? base.meta
+            return .authRequired(ToolCallAuthRequiredState(
+                toolCallId: base.toolCallId,
+                toolName: base.toolName,
+                displayName: base.displayName,
+                intention: base.intention,
+                contributor: contributor,
+                meta: meta,
+                invocationMessage: running.invocationMessage,
+                toolInput: running.toolInput,
+                confirmed: running.confirmed,
+                selectedOption: running.selectedOption,
+                status: .authRequired,
+                auth: a.auth,
+                content: running.content
+            ))
+        })
+
+    case .chatToolCallAuthResolved(let a):
+        return refreshChatSummaryStatus(updateToolCall(state: state, turnId: a.turnId, toolCallId: a.toolCallId) { tc in
+            guard case .authRequired(let authRequired) = tc else { return tc }
+
+            let base = tc.baseFields
+            let meta = a.meta ?? base.meta
+            return .running(ToolCallRunningState(
+                toolCallId: base.toolCallId,
+                toolName: base.toolName,
+                displayName: base.displayName,
+                intention: base.intention,
+                contributor: base.contributor,
+                meta: meta,
+                invocationMessage: authRequired.invocationMessage,
+                toolInput: authRequired.toolInput,
+                confirmed: authRequired.confirmed,
+                selectedOption: authRequired.selectedOption,
+                status: .running,
+                content: authRequired.content
+            ))
+        })
 
     case .chatUsage(let a):
         guard var activeTurn = state.activeTurn, activeTurn.id == a.turnId else {
@@ -408,7 +489,6 @@ public func chatReducer(state: ChatState, action: StateAction) -> ChatState {
             next.turnsNextCursor = nil
         }
         next.activeTurn = nil
-        next.inputRequests = nil
         next.status = chatSummaryStatus(next)
         next.modifiedAt = currentTimestamp()
         return next
@@ -427,11 +507,15 @@ public func chatReducer(state: ChatState, action: StateAction) -> ChatState {
         return upsertInputRequest(state: state, request: a.request)
 
     case .chatInputAnswerChanged(let a):
-        guard var existing = state.inputRequests,
-              let idx = existing.firstIndex(where: { $0.id == a.requestId }) else {
+        guard var activeTurn = state.activeTurn,
+              let idx = activeTurn.responseParts.firstIndex(where: { part in
+                  guard case .inputRequest(let input) = part else { return false }
+                  return input.response == nil && input.request.id == a.requestId
+              }),
+              case .inputRequest(var part) = activeTurn.responseParts[idx] else {
             return state
         }
-        var request = existing[idx]
+        var request = part.request
         var answers = request.answers ?? [:]
         if let answer = a.answer {
             answers[a.questionId] = answer
@@ -439,39 +523,33 @@ public func chatReducer(state: ChatState, action: StateAction) -> ChatState {
             answers.removeValue(forKey: a.questionId)
         }
         request.answers = answers.isEmpty ? nil : answers
-        existing[idx] = request
+        part.request = request
+        activeTurn.responseParts[idx] = .inputRequest(part)
         var next = state
-        next.inputRequests = existing
+        next.activeTurn = activeTurn
         next.modifiedAt = currentTimestamp()
         return next
 
     case .chatInputCompleted(let a):
-        guard var existing = state.inputRequests,
-              let completed = existing.first(where: { $0.id == a.requestId }) else {
+        guard var activeTurn = state.activeTurn,
+              let idx = activeTurn.responseParts.firstIndex(where: { part in
+                  guard case .inputRequest(let input) = part else { return false }
+                  return input.response == nil && input.request.id == a.requestId
+              }),
+              case .inputRequest(var part) = activeTurn.responseParts[idx] else {
             return state
         }
-        existing.removeAll { $0.id == a.requestId }
-        var next = state
-        next.inputRequests = existing.isEmpty ? nil : existing
-        // Project the resolved request into the active turn's transcript so the
-        // decision survives after the live request is gone. Abandoned requests
-        // (turn end/truncate) are removed without a part.
-        if var activeTurn = next.activeTurn {
-            var finalAnswers = completed.answers ?? [:]
-            if let answers = a.answers {
-                for (k, v) in answers {
-                    finalAnswers[k] = v
-                }
+        var finalAnswers = part.request.answers ?? [:]
+        if let answers = a.answers {
+            for (k, v) in answers {
+                finalAnswers[k] = v
             }
-            var request = completed
-            request.answers = finalAnswers.isEmpty ? nil : finalAnswers
-            activeTurn.responseParts.append(.inputRequest(InputRequestResponsePart(
-                kind: .inputRequest,
-                request: request,
-                response: a.response
-            )))
-            next.activeTurn = activeTurn
         }
+        part.request.answers = finalAnswers.isEmpty ? nil : finalAnswers
+        part.response = a.response
+        activeTurn.responseParts[idx] = .inputRequest(part)
+        var next = state
+        next.activeTurn = activeTurn
         next.status = chatSummaryStatus(next)
         next.modifiedAt = currentTimestamp()
         return next
@@ -834,7 +912,7 @@ private func chatSummaryStatus(_ state: ChatState, terminalStatus: SessionStatus
     let activity: SessionStatus
     if let terminalStatus {
         activity = terminalStatus
-    } else if state.inputRequests?.isEmpty == false || hasPendingToolCallConfirmation(state) {
+    } else if hasOpenInputRequest(state) || hasBlockingToolCall(state) {
         activity = .inputNeeded
     } else if state.activeTurn != nil {
         activity = .inProgress
@@ -844,13 +922,21 @@ private func chatSummaryStatus(_ state: ChatState, terminalStatus: SessionStatus
     return state.status.subtracting(statusActivityMask).union(activity)
 }
 
-/// Returns `true` if the active turn has any tool call awaiting user confirmation.
-private func hasPendingToolCallConfirmation(_ state: ChatState) -> Bool {
+private func hasOpenInputRequest(_ state: ChatState) -> Bool {
+    guard let activeTurn = state.activeTurn else { return false }
+    return activeTurn.responseParts.contains { part in
+        guard case .inputRequest(let input) = part else { return false }
+        return input.response == nil
+    }
+}
+
+/// Returns `true` if the active turn has any tool call blocked on external input.
+private func hasBlockingToolCall(_ state: ChatState) -> Bool {
     guard let activeTurn = state.activeTurn else { return false }
     for part in activeTurn.responseParts {
         guard case .toolCall(let tcPart) = part else { continue }
         switch tcPart.toolCall {
-        case .pendingConfirmation, .pendingResultConfirmation:
+        case .pendingConfirmation, .authRequired, .pendingResultConfirmation:
             return true
         default:
             continue
@@ -868,16 +954,25 @@ private func refreshChatSummaryStatus(_ state: ChatState) -> ChatState {
 }
 
 private func upsertInputRequest(state: ChatState, request: ChatInputRequest) -> ChatState {
-    var next = state
-    var existing = next.inputRequests ?? []
-    if let idx = existing.firstIndex(where: { $0.id == request.id }) {
+    guard var activeTurn = state.activeTurn else { return state }
+    if let idx = activeTurn.responseParts.firstIndex(where: { part in
+        guard case .inputRequest(let input) = part else { return false }
+        return input.response == nil && input.request.id == request.id
+    }), case .inputRequest(let existing) = activeTurn.responseParts[idx] {
         var replacement = request
-        replacement.answers = request.answers ?? existing[idx].answers
-        existing[idx] = replacement
+        replacement.answers = request.answers ?? existing.request.answers
+        activeTurn.responseParts[idx] = .inputRequest(InputRequestResponsePart(
+            kind: .inputRequest,
+            request: replacement
+        ))
     } else {
-        existing.append(request)
+        activeTurn.responseParts.append(.inputRequest(InputRequestResponsePart(
+            kind: .inputRequest,
+            request: request
+        )))
     }
-    next.inputRequests = existing
+    var next = state
+    next.activeTurn = activeTurn
     next.status = withStatusFlag(chatSummaryStatus(next), .isRead, false)
     next.modifiedAt = currentTimestamp()
     return next
@@ -917,6 +1012,9 @@ private func endTurn(
             case .running(let r):
                 invocationMessage = r.invocationMessage
                 toolInput = r.toolInput
+            case .authRequired(let a):
+                invocationMessage = a.invocationMessage
+                toolInput = a.toolInput
             case .pendingResultConfirmation(let r):
                 invocationMessage = r.invocationMessage
                 toolInput = r.toolInput
@@ -958,7 +1056,6 @@ private func endTurn(
     var next = state
     next.turns.append(turn)
     next.activeTurn = nil
-    next.inputRequests = nil
     next.status = chatSummaryStatus(next, terminalStatus: terminalStatus)
     next.modifiedAt = currentTimestamp()
     return next

@@ -52,9 +52,10 @@ use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ahp_types::actions::{
-    ChatInputAnswerChangedAction, ChatToolCallCompleteAction, ChatToolCallConfirmedAction,
-    ChatToolCallContentChangedAction, ChatToolCallDeltaAction, ChatToolCallReadyAction,
-    ChatToolCallResultConfirmedAction, ChatTurnStartedAction, StateAction,
+    ChatInputAnswerChangedAction, ChatToolCallAuthRequiredAction, ChatToolCallAuthResolvedAction,
+    ChatToolCallCompleteAction, ChatToolCallConfirmedAction, ChatToolCallContentChangedAction,
+    ChatToolCallDeltaAction, ChatToolCallReadyAction, ChatToolCallResultConfirmedAction,
+    ChatTurnStartedAction, StateAction,
 };
 use ahp_types::state::{
     ActiveTurn, AnnotationsState, ChangesetOperationStatus, ChangesetState, ChangesetStatus,
@@ -62,11 +63,11 @@ use ahp_types::state::{
     InputRequestResponsePart, McpServerStartingState, McpServerState, McpServerStoppedState,
     PendingMessage, PendingMessageKind, ResourceWatchState, ResponsePart, RootState,
     SessionInputRequest, SessionLifecycle, SessionState, SessionStatus, TerminalCommandPart,
-    TerminalContentPart, TerminalState, TerminalUnclassifiedPart, ToolCallCancellationReason,
-    ToolCallCancelledState, ToolCallCompletedState, ToolCallConfirmationReason,
-    ToolCallContributor, ToolCallPendingConfirmationState, ToolCallPendingResultConfirmationState,
-    ToolCallResponsePart, ToolCallRunningState, ToolCallState, ToolCallStreamingState, Turn,
-    TurnState,
+    TerminalContentPart, TerminalState, TerminalUnclassifiedPart, ToolCallAuthRequiredState,
+    ToolCallCancellationReason, ToolCallCancelledState, ToolCallCompletedState,
+    ToolCallConfirmationReason, ToolCallContributor, ToolCallPendingConfirmationState,
+    ToolCallPendingResultConfirmationState, ToolCallResponsePart, ToolCallRunningState,
+    ToolCallState, ToolCallStatus, ToolCallStreamingState, Turn, TurnState,
 };
 
 /// What happened when an action was applied.
@@ -162,6 +163,14 @@ fn tool_call_meta(tc: &ToolCallState) -> ToolCallBase {
             contributor: s.contributor.clone(),
             meta: s.meta.clone(),
         },
+        ToolCallState::AuthRequired(s) => ToolCallBase {
+            tool_call_id: s.tool_call_id.clone(),
+            tool_name: s.tool_name.clone(),
+            display_name: s.display_name.clone(),
+            intention: s.intention.clone(),
+            contributor: s.contributor.clone(),
+            meta: s.meta.clone(),
+        },
         ToolCallState::PendingResultConfirmation(s) => ToolCallBase {
             tool_call_id: s.tool_call_id.clone(),
             tool_name: s.tool_name.clone(),
@@ -202,6 +211,7 @@ fn tool_call_id(tc: &ToolCallState) -> &str {
         ToolCallState::Streaming(s) => &s.tool_call_id,
         ToolCallState::PendingConfirmation(s) => &s.tool_call_id,
         ToolCallState::Running(s) => &s.tool_call_id,
+        ToolCallState::AuthRequired(s) => &s.tool_call_id,
         ToolCallState::PendingResultConfirmation(s) => &s.tool_call_id,
         ToolCallState::Completed(s) => &s.tool_call_id,
         ToolCallState::Cancelled(s) => &s.tool_call_id,
@@ -209,14 +219,16 @@ fn tool_call_id(tc: &ToolCallState) -> &str {
     }
 }
 
-fn has_pending_tool_call_confirmation(state: &ChatState) -> bool {
+fn has_blocking_tool_call(state: &ChatState) -> bool {
     let Some(active) = &state.active_turn else {
         return false;
     };
     active.response_parts.iter().any(|part| match part {
         ResponsePart::ToolCall(tc) => matches!(
             tc.tool_call,
-            ToolCallState::PendingConfirmation(_) | ToolCallState::PendingResultConfirmation(_)
+            ToolCallState::PendingConfirmation(_)
+                | ToolCallState::PendingResultConfirmation(_)
+                | ToolCallState::AuthRequired(_)
         ),
         _ => false,
     })
@@ -251,13 +263,7 @@ fn with_input_needed_status(status: u32, input_needed: &[SessionInputRequest]) -
 fn summary_status(state: &ChatState, terminal: Option<SessionStatus>) -> u32 {
     let activity: u32 = if let Some(t) = terminal {
         t.bits()
-    } else if state
-        .input_requests
-        .as_ref()
-        .map(|r| !r.is_empty())
-        .unwrap_or(false)
-        || has_pending_tool_call_confirmation(state)
-    {
+    } else if has_open_input_request(state) || has_blocking_tool_call(state) {
         SessionStatus::InputNeeded.bits()
     } else if state.active_turn.is_some() {
         SessionStatus::InProgress.bits()
@@ -265,6 +271,18 @@ fn summary_status(state: &ChatState, terminal: Option<SessionStatus>) -> u32 {
         SessionStatus::Idle.bits()
     };
     (state.status & !STATUS_ACTIVITY_MASK) | activity
+}
+
+fn has_open_input_request(state: &ChatState) -> bool {
+    state
+        .active_turn
+        .as_ref()
+        .map(|turn| {
+            turn.response_parts.iter().any(|part| {
+                matches!(part, ResponsePart::InputRequest(input) if input.response.is_none())
+            })
+        })
+        .unwrap_or(false)
 }
 
 fn refresh_summary_status(state: &mut ChatState) {
@@ -309,6 +327,7 @@ fn end_turn(
                             }
                             ToolCallState::PendingConfirmation(s) => s.invocation_message.clone(),
                             ToolCallState::Running(s) => s.invocation_message.clone(),
+                            ToolCallState::AuthRequired(s) => s.invocation_message.clone(),
                             ToolCallState::PendingResultConfirmation(s) => {
                                 s.invocation_message.clone()
                             }
@@ -318,6 +337,7 @@ fn end_turn(
                             ToolCallState::Streaming(_) => None,
                             ToolCallState::PendingConfirmation(s) => s.tool_input.clone(),
                             ToolCallState::Running(s) => s.tool_input.clone(),
+                            ToolCallState::AuthRequired(s) => s.tool_input.clone(),
                             ToolCallState::PendingResultConfirmation(s) => s.tool_input.clone(),
                             _ => None,
                         };
@@ -359,28 +379,47 @@ fn end_turn(
     };
 
     state.turns.push(turn);
-    state.input_requests = None;
     state.modified_at = now_iso();
     state.status = summary_status(state, terminal_status);
     ReduceOutcome::Applied
 }
 
-fn upsert_input_request(state: &mut ChatState, request: ChatInputRequest) {
-    let existing = state.input_requests.get_or_insert_with(Vec::new);
-    if let Some(idx) = existing.iter().position(|r| r.id == request.id) {
+fn upsert_input_request(state: &mut ChatState, request: ChatInputRequest) -> ReduceOutcome {
+    let Some(active) = state.active_turn.as_mut() else {
+        return ReduceOutcome::NoOp;
+    };
+    if let Some(existing) = active
+        .response_parts
+        .iter_mut()
+        .find_map(|part| match part {
+            ResponsePart::InputRequest(input)
+                if input.response.is_none() && input.request.id == request.id =>
+            {
+                Some(input)
+            }
+            _ => None,
+        })
+    {
         let answers = request
             .answers
             .clone()
-            .or_else(|| existing[idx].answers.clone());
+            .or_else(|| existing.request.answers.clone());
         let mut next = request;
         next.answers = answers;
-        existing[idx] = next;
+        existing.request = next;
+        existing.response = None;
     } else {
-        existing.push(request);
+        active
+            .response_parts
+            .push(ResponsePart::InputRequest(InputRequestResponsePart {
+                request,
+                response: None,
+            }));
     }
     state.status = summary_status(state, None);
     touch_chat_modified(state);
     state.status = with_status_flag(state.status, SessionStatus::IsRead, false);
+    ReduceOutcome::Applied
 }
 
 // ─── Customization Helpers ───────────────────────────────────────────────────
@@ -399,7 +438,8 @@ fn session_input_request_id(r: &SessionInputRequest) -> Option<&str> {
         SessionInputRequest::ChatInput(x) => Some(x.id.as_str()),
         SessionInputRequest::ToolConfirmation(x) => Some(x.id.as_str()),
         SessionInputRequest::ToolClientExecution(x) => Some(x.id.as_str()),
-        SessionInputRequest::Unknown(_) => None,
+        SessionInputRequest::ToolAuthentication(x) => Some(x.id.as_str()),
+        SessionInputRequest::Unknown(v) => v.get("id").and_then(serde_json::Value::as_str),
     }
 }
 
@@ -960,6 +1000,20 @@ pub fn apply_action_to_chat(state: &mut ChatState, action: &StateAction) -> Redu
             res
         }
         StateAction::ChatToolCallContentChanged(a) => apply_tool_call_content_changed(state, a),
+        StateAction::ChatToolCallAuthRequired(a) => {
+            let res = apply_tool_call_auth_required(state, a);
+            if res == ReduceOutcome::Applied {
+                refresh_summary_status(state);
+            }
+            res
+        }
+        StateAction::ChatToolCallAuthResolved(a) => {
+            let res = apply_tool_call_auth_resolved(state, a);
+            if res == ReduceOutcome::Applied {
+                refresh_summary_status(state);
+            }
+            res
+        }
         StateAction::ChatUsage(a) => {
             let Some(active) = state.active_turn.as_mut() else {
                 return ReduceOutcome::NoOp;
@@ -990,49 +1044,38 @@ pub fn apply_action_to_chat(state: &mut ChatState, action: &StateAction) -> Redu
             state.turns_next_cursor = a.turns_next_cursor.clone();
             ReduceOutcome::Applied
         }
-        StateAction::ChatInputRequested(a) => {
-            upsert_input_request(state, a.request.clone());
-            ReduceOutcome::Applied
-        }
+        StateAction::ChatInputRequested(a) => upsert_input_request(state, a.request.clone()),
         StateAction::ChatInputAnswerChanged(a) => apply_input_answer_changed(state, a),
         StateAction::ChatInputCompleted(a) => {
-            let Some(list) = state.input_requests.as_ref() else {
+            let Some(active) = state.active_turn.as_mut() else {
                 return ReduceOutcome::NoOp;
             };
-            let Some(completed) = list.iter().find(|r| r.id == a.request_id).cloned() else {
-                return ReduceOutcome::NoOp;
-            };
-            if let Some(list) = state.input_requests.as_mut() {
-                list.retain(|r| r.id != a.request_id);
-                if list.is_empty() {
-                    state.input_requests = None;
-                }
-            }
-            // Project the resolved request into the active turn's transcript so
-            // the decision survives after the live request is gone. Abandoned
-            // requests (turn end/truncate) are removed without a part.
-            if let Some(active) = state.active_turn.as_mut() {
-                let mut final_answers = completed.answers.clone().unwrap_or_default();
-                if let Some(answers) = &a.answers {
-                    for (k, v) in answers {
-                        final_answers.insert(k.clone(), v.clone());
+            let Some(part) = active
+                .response_parts
+                .iter_mut()
+                .find_map(|part| match part {
+                    ResponsePart::InputRequest(input)
+                        if input.response.is_none() && input.request.id == a.request_id =>
+                    {
+                        Some(input)
                     }
+                    _ => None,
+                })
+            else {
+                return ReduceOutcome::NoOp;
+            };
+            let mut final_answers = part.request.answers.clone().unwrap_or_default();
+            if let Some(answers) = &a.answers {
+                for (k, v) in answers {
+                    final_answers.insert(k.clone(), v.clone());
                 }
-                let request = ChatInputRequest {
-                    answers: if final_answers.is_empty() {
-                        None
-                    } else {
-                        Some(final_answers)
-                    },
-                    ..completed
-                };
-                active
-                    .response_parts
-                    .push(ResponsePart::InputRequest(InputRequestResponsePart {
-                        request,
-                        response: a.response,
-                    }));
             }
+            part.request.answers = if final_answers.is_empty() {
+                None
+            } else {
+                Some(final_answers)
+            };
+            part.response = Some(a.response);
             refresh_summary_status(state);
             touch_chat_modified(state);
             ReduceOutcome::Applied
@@ -1157,8 +1200,14 @@ fn apply_tool_call_ready(state: &mut ChatState, a: &ChatToolCallReadyAction) -> 
     update_tool_call(state, &a.turn_id, &a.tool_call_id, |tc| {
         let base = tool_call_meta(&tc);
         let meta = a.meta.clone().or(base.meta);
+        let pending = match &tc {
+            ToolCallState::PendingConfirmation(value) => Some(value.clone()),
+            _ => None,
+        };
         match tc {
-            ToolCallState::Streaming(_) | ToolCallState::Running(_) => {
+            ToolCallState::Streaming(_)
+            | ToolCallState::Running(_)
+            | ToolCallState::PendingConfirmation(_) => {
                 if let Some(confirmed) = a.confirmed {
                     ToolCallState::Running(ToolCallRunningState {
                         tool_call_id: base.tool_call_id,
@@ -1182,11 +1231,28 @@ fn apply_tool_call_ready(state: &mut ChatState, a: &ChatToolCallReadyAction) -> 
                         contributor: base.contributor,
                         meta,
                         invocation_message: a.invocation_message.clone(),
-                        tool_input: a.tool_input.clone(),
-                        confirmation_title: a.confirmation_title.clone(),
-                        edits: a.edits.clone(),
-                        editable: a.editable,
-                        options: a.options.clone(),
+                        tool_input: a
+                            .tool_input
+                            .clone()
+                            .or_else(|| pending.as_ref().and_then(|p| p.tool_input.clone())),
+                        confirmation_title: a.confirmation_title.clone().or_else(|| {
+                            pending.as_ref().and_then(|p| p.confirmation_title.clone())
+                        }),
+                        risk_assessment: a
+                            .risk_assessment
+                            .clone()
+                            .or_else(|| pending.as_ref().and_then(|p| p.risk_assessment.clone())),
+                        edits: a
+                            .edits
+                            .clone()
+                            .or_else(|| pending.as_ref().and_then(|p| p.edits.clone())),
+                        editable: a
+                            .editable
+                            .or_else(|| pending.as_ref().and_then(|p| p.editable)),
+                        options: a
+                            .options
+                            .clone()
+                            .or_else(|| pending.as_ref().and_then(|p| p.options.clone())),
                     })
                 }
             }
@@ -1262,22 +1328,57 @@ fn apply_tool_call_complete(
     update_tool_call(state, &a.turn_id, &a.tool_call_id, |tc| {
         let base = tool_call_meta(&tc);
         let meta = a.meta.clone().or(base.meta);
-        let (invocation_message, tool_input, confirmed, selected_option) = match tc {
+        let (
+            invocation_message,
+            tool_input,
+            confirmed,
+            selected_option,
+            pre_auth_content,
+            from_auth_required,
+        ) = match tc {
             ToolCallState::Running(s) => (
                 s.invocation_message,
                 s.tool_input,
                 s.confirmed,
                 s.selected_option,
+                None,
+                false,
             ),
             ToolCallState::PendingConfirmation(s) => (
                 s.invocation_message,
                 s.tool_input,
                 ToolCallConfirmationReason::NotNeeded,
                 None,
+                None,
+                false,
             ),
+            // A client MAY cancel an auth-required MCP tool call by dispatching a
+            // failed completion instead of authenticating. A successful completion
+            // is invalid here — execution never resumed after the auth challenge —
+            // and is ignored, leaving the call in auth-required. Any partial content
+            // produced before the call paused for auth is preserved unless the
+            // dispatched result supplies its own content.
+            ToolCallState::AuthRequired(s) => {
+                if a.result.success {
+                    return ToolCallState::AuthRequired(s);
+                }
+                (
+                    s.invocation_message,
+                    s.tool_input,
+                    s.confirmed,
+                    s.selected_option,
+                    s.content,
+                    true,
+                )
+            }
             other => return other,
         };
-        if a.requires_result_confirmation.unwrap_or(false) {
+        let content = a.result.content.clone().or(pre_auth_content);
+        // Cancelling from auth-required always completes terminally: the pending
+        // auth challenge isn't a "pending result" the client can review, so
+        // requires_result_confirmation is ignored for this path — it must never
+        // enter pending-result-confirmation.
+        if a.requires_result_confirmation.unwrap_or(false) && !from_auth_required {
             ToolCallState::PendingResultConfirmation(ToolCallPendingResultConfirmationState {
                 tool_call_id: base.tool_call_id,
                 tool_name: base.tool_name,
@@ -1289,7 +1390,7 @@ fn apply_tool_call_complete(
                 tool_input,
                 success: a.result.success,
                 past_tense_message: a.result.past_tense_message.clone(),
-                content: a.result.content.clone(),
+                content,
                 structured_content: a.result.structured_content.clone(),
                 error: a.result.error.clone(),
                 confirmed,
@@ -1307,7 +1408,7 @@ fn apply_tool_call_complete(
                 tool_input,
                 success: a.result.success,
                 past_tense_message: a.result.past_tense_message.clone(),
-                content: a.result.content.clone(),
+                content,
                 structured_content: a.result.structured_content.clone(),
                 error: a.result.error.clone(),
                 confirmed,
@@ -1378,6 +1479,65 @@ fn apply_tool_call_content_changed(
     })
 }
 
+fn apply_tool_call_auth_required(
+    state: &mut ChatState,
+    a: &ChatToolCallAuthRequiredAction,
+) -> ReduceOutcome {
+    update_tool_call(state, &a.turn_id, &a.tool_call_id, |tc| {
+        let base = tool_call_meta(&tc);
+        let meta = a.meta.clone().or(base.meta);
+        match tc {
+            ToolCallState::Running(s) => {
+                if !matches!(s.contributor, Some(ToolCallContributor::Mcp(_))) {
+                    return ToolCallState::Running(s);
+                }
+                ToolCallState::AuthRequired(Box::new(ToolCallAuthRequiredState {
+                    tool_call_id: base.tool_call_id,
+                    tool_name: base.tool_name,
+                    display_name: base.display_name,
+                    intention: base.intention,
+                    contributor: s.contributor,
+                    meta,
+                    invocation_message: s.invocation_message,
+                    tool_input: s.tool_input,
+                    confirmed: s.confirmed,
+                    selected_option: s.selected_option,
+                    status: ToolCallStatus::AuthRequired,
+                    auth: a.auth.clone(),
+                    content: s.content,
+                }))
+            }
+            other => other,
+        }
+    })
+}
+
+fn apply_tool_call_auth_resolved(
+    state: &mut ChatState,
+    a: &ChatToolCallAuthResolvedAction,
+) -> ReduceOutcome {
+    update_tool_call(state, &a.turn_id, &a.tool_call_id, |tc| {
+        let base = tool_call_meta(&tc);
+        let meta = a.meta.clone().or(base.meta);
+        match tc {
+            ToolCallState::AuthRequired(s) => ToolCallState::Running(ToolCallRunningState {
+                tool_call_id: base.tool_call_id,
+                tool_name: base.tool_name,
+                display_name: base.display_name,
+                intention: base.intention,
+                contributor: s.contributor,
+                meta,
+                invocation_message: s.invocation_message,
+                tool_input: s.tool_input,
+                confirmed: s.confirmed,
+                selected_option: s.selected_option,
+                content: s.content,
+            }),
+            other => other,
+        }
+    })
+}
+
 fn apply_truncated(state: &mut ChatState, turn_id: Option<&str>) -> ReduceOutcome {
     match turn_id {
         None => {
@@ -1392,7 +1552,6 @@ fn apply_truncated(state: &mut ChatState, turn_id: Option<&str>) -> ReduceOutcom
         }
     }
     state.active_turn = None;
-    state.input_requests = None;
     touch_chat_modified(state);
     state.status = summary_status(state, None);
     ReduceOutcome::Applied
@@ -1402,13 +1561,24 @@ fn apply_input_answer_changed(
     state: &mut ChatState,
     a: &ChatInputAnswerChangedAction,
 ) -> ReduceOutcome {
-    let Some(list) = state.input_requests.as_mut() else {
+    let Some(active) = state.active_turn.as_mut() else {
         return ReduceOutcome::NoOp;
     };
-    let Some(idx) = list.iter().position(|r| r.id == a.request_id) else {
+    let Some(part) = active
+        .response_parts
+        .iter_mut()
+        .find_map(|part| match part {
+            ResponsePart::InputRequest(input)
+                if input.response.is_none() && input.request.id == a.request_id =>
+            {
+                Some(input)
+            }
+            _ => None,
+        })
+    else {
         return ReduceOutcome::NoOp;
     };
-    let req = &mut list[idx];
+    let req = &mut part.request;
     let answers = req.answers.get_or_insert_with(HashMap::new);
     match &a.answer {
         None => {
@@ -1773,7 +1943,6 @@ mod tests {
             active_turn: None,
             steering_message: None,
             queued_messages: None,
-            input_requests: None,
             draft: None,
             meta: None,
         }

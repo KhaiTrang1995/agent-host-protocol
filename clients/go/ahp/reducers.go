@@ -103,6 +103,8 @@ func toolCallMeta(tc ahptypes.ToolCallState) toolCallCommon {
 		return toolCallCommon{v.ToolCallId, v.ToolName, v.DisplayName, v.Intention, v.Contributor, v.Meta}
 	case *ahptypes.ToolCallRunningState:
 		return toolCallCommon{v.ToolCallId, v.ToolName, v.DisplayName, v.Intention, v.Contributor, v.Meta}
+	case *ahptypes.ToolCallAuthRequiredState:
+		return toolCallCommon{v.ToolCallId, v.ToolName, v.DisplayName, v.Intention, v.Contributor, v.Meta}
 	case *ahptypes.ToolCallPendingResultConfirmationState:
 		return toolCallCommon{v.ToolCallId, v.ToolName, v.DisplayName, v.Intention, v.Contributor, v.Meta}
 	case *ahptypes.ToolCallCompletedState:
@@ -128,6 +130,8 @@ func toolCallInvocationAndInput(tc ahptypes.ToolCallState) (ahptypes.StringOrMar
 		return v.InvocationMessage, v.ToolInput
 	case *ahptypes.ToolCallRunningState:
 		return v.InvocationMessage, v.ToolInput
+	case *ahptypes.ToolCallAuthRequiredState:
+		return v.InvocationMessage, v.ToolInput
 	case *ahptypes.ToolCallPendingResultConfirmationState:
 		return v.InvocationMessage, v.ToolInput
 	}
@@ -138,7 +142,9 @@ func toolCallID(tc ahptypes.ToolCallState) string {
 	return toolCallMeta(tc).id
 }
 
-func hasPendingToolCallConfirmation(state *ahptypes.ChatState) bool {
+// hasBlockingToolCall reports whether the active turn has any tool call blocked
+// on confirmation or MCP authentication.
+func hasBlockingToolCall(state *ahptypes.ChatState) bool {
 	if state.ActiveTurn == nil {
 		return false
 	}
@@ -149,7 +155,21 @@ func hasPendingToolCallConfirmation(state *ahptypes.ChatState) bool {
 		}
 		switch tc.ToolCall.Value.(type) {
 		case *ahptypes.ToolCallPendingConfirmationState,
+			*ahptypes.ToolCallAuthRequiredState,
 			*ahptypes.ToolCallPendingResultConfirmationState:
+			return true
+		}
+	}
+	return false
+}
+
+func hasOpenInputRequest(state *ahptypes.ChatState) bool {
+	if state.ActiveTurn == nil {
+		return false
+	}
+	for _, part := range state.ActiveTurn.ResponseParts {
+		input, ok := part.Value.(*ahptypes.InputRequestResponsePart)
+		if ok && input.Response == nil {
 			return true
 		}
 	}
@@ -161,7 +181,7 @@ func summaryStatus(state *ahptypes.ChatState, terminal *ahptypes.SessionStatus) 
 	switch {
 	case terminal != nil:
 		activity = *terminal
-	case len(state.InputRequests) > 0 || hasPendingToolCallConfirmation(state):
+	case hasOpenInputRequest(state) || hasBlockingToolCall(state):
 		activity = ahptypes.SessionStatusInputNeeded
 	case state.ActiveTurn != nil:
 		activity = ahptypes.SessionStatusInProgress
@@ -238,33 +258,43 @@ func endTurn(state *ahptypes.ChatState, turnID string, duration int64, turnState
 	}
 
 	state.Turns = append(state.Turns, turn)
-	state.InputRequests = nil
 	state.ModifiedAt = nowISOString()
 	state.Status = summaryStatus(state, terminalStatus)
 	return ReduceOutcomeApplied
 }
 
-func upsertInputRequest(state *ahptypes.ChatState, req ahptypes.ChatInputRequest) {
-	existing := state.InputRequests
-	found := -1
-	for i := range existing {
-		if existing[i].Id == req.Id {
-			found = i
-			break
+func upsertInputRequest(state *ahptypes.ChatState, req ahptypes.ChatInputRequest) ReduceOutcome {
+	if state.ActiveTurn == nil {
+		return ReduceOutcomeNoOp
+	}
+	parts := state.ActiveTurn.ResponseParts
+	for i := range parts {
+		input, ok := parts[i].Value.(*ahptypes.InputRequestResponsePart)
+		if ok && input.Response == nil && input.Request.Id == req.Id {
+			if req.Answers == nil {
+				req.Answers = input.Request.Answers
+			}
+			parts[i].Value = &ahptypes.InputRequestResponsePart{
+				Kind:    ahptypes.ResponsePartKindInputRequest,
+				Request: req,
+			}
+			state.ActiveTurn.ResponseParts = parts
+			state.Status = summaryStatus(state, nil)
+			touchChatModified(state)
+			state.Status = withStatusFlag(state.Status, ahptypes.SessionStatusIsRead, false)
+			return ReduceOutcomeApplied
 		}
 	}
-	if found >= 0 {
-		if req.Answers == nil {
-			req.Answers = existing[found].Answers
-		}
-		existing[found] = req
-	} else {
-		existing = append(existing, req)
-	}
-	state.InputRequests = existing
+	state.ActiveTurn.ResponseParts = append(parts, ahptypes.ResponsePart{
+		Value: &ahptypes.InputRequestResponsePart{
+			Kind:    ahptypes.ResponsePartKindInputRequest,
+			Request: req,
+		},
+	})
 	state.Status = summaryStatus(state, nil)
 	touchChatModified(state)
 	state.Status = withStatusFlag(state.Status, ahptypes.SessionStatusIsRead, false)
+	return ReduceOutcomeApplied
 }
 
 // ─── Customization helpers ─────────────────────────────────────────────
@@ -288,6 +318,8 @@ func sessionInputRequestID(r ahptypes.SessionInputRequest) (string, bool) {
 	case *ahptypes.SessionToolConfirmationRequest:
 		return v.Id, true
 	case *ahptypes.SessionToolClientExecutionRequest:
+		return v.Id, true
+	case *ahptypes.SessionToolAuthenticationRequest:
 		return v.Id, true
 	}
 	return "", false
@@ -535,6 +567,18 @@ func ApplyActionToChat(state *ahptypes.ChatState, action ahptypes.StateAction) R
 			}
 			return tc
 		})
+	case *ahptypes.ChatToolCallAuthRequiredAction:
+		res := applyToolCallAuthRequired(state, a)
+		if res == ReduceOutcomeApplied {
+			refreshSummaryStatus(state)
+		}
+		return res
+	case *ahptypes.ChatToolCallAuthResolvedAction:
+		res := applyToolCallAuthResolved(state, a)
+		if res == ReduceOutcomeApplied {
+			refreshSummaryStatus(state)
+		}
+		return res
 	case *ahptypes.ChatUsageAction:
 		if state.ActiveTurn == nil || state.ActiveTurn.Id != a.TurnId {
 			return ReduceOutcomeNoOp
@@ -565,61 +609,42 @@ func ApplyActionToChat(state *ahptypes.ChatState, action ahptypes.StateAction) R
 		state.TurnsNextCursor = a.TurnsNextCursor
 		return ReduceOutcomeApplied
 	case *ahptypes.ChatInputRequestedAction:
-		upsertInputRequest(state, a.Request)
-		return ReduceOutcomeApplied
+		return upsertInputRequest(state, a.Request)
 	case *ahptypes.ChatInputAnswerChangedAction:
 		return applyInputAnswerChanged(state, a)
 	case *ahptypes.ChatInputCompletedAction:
-		list := state.InputRequests
-		if list == nil {
+		if state.ActiveTurn == nil {
 			return ReduceOutcomeNoOp
 		}
-		var completed *ahptypes.ChatInputRequest
-		next := list[:0]
-		for i := range list {
-			if list[i].Id == a.RequestId {
-				c := list[i]
-				completed = &c
+		for i := range state.ActiveTurn.ResponseParts {
+			input, ok := state.ActiveTurn.ResponseParts[i].Value.(*ahptypes.InputRequestResponsePart)
+			if !ok || input.Response != nil || input.Request.Id != a.RequestId {
 				continue
 			}
-			next = append(next, list[i])
-		}
-		if completed == nil {
-			return ReduceOutcomeNoOp
-		}
-		if len(next) == 0 {
-			state.InputRequests = nil
-		} else {
-			state.InputRequests = next
-		}
-		// Project the resolved request into the active turn's transcript so the
-		// decision survives after the live request is gone. Abandoned requests
-		// (turn end/truncate) are removed without a part.
-		if state.ActiveTurn != nil {
 			finalAnswers := map[string]ahptypes.ChatInputAnswer{}
-			for k, v := range completed.Answers {
+			for k, v := range input.Request.Answers {
 				finalAnswers[k] = v
 			}
 			for k, v := range a.Answers {
 				finalAnswers[k] = v
 			}
-			request := *completed
+			request := input.Request
 			if len(finalAnswers) == 0 {
 				request.Answers = nil
 			} else {
 				request.Answers = finalAnswers
 			}
-			state.ActiveTurn.ResponseParts = append(state.ActiveTurn.ResponseParts, ahptypes.ResponsePart{
-				Value: &ahptypes.InputRequestResponsePart{
-					Kind:     ahptypes.ResponsePartKindInputRequest,
-					Request:  request,
-					Response: a.Response,
-				},
-			})
+			response := a.Response
+			state.ActiveTurn.ResponseParts[i].Value = &ahptypes.InputRequestResponsePart{
+				Kind:     ahptypes.ResponsePartKindInputRequest,
+				Request:  request,
+				Response: &response,
+			}
+			refreshSummaryStatus(state)
+			touchChatModified(state)
+			return ReduceOutcomeApplied
 		}
-		refreshSummaryStatus(state)
-		touchChatModified(state)
-		return ReduceOutcomeApplied
+		return ReduceOutcomeNoOp
 	case *ahptypes.ChatPendingMessageSetAction:
 		entry := ahptypes.PendingMessage{Id: a.Id, Message: a.Message}
 		switch a.Kind {
@@ -992,8 +1017,14 @@ func applyToolCallReady(state *ahptypes.ChatState, a *ahptypes.ChatToolCallReady
 		if a.Meta != nil {
 			common.meta = a.Meta
 		}
+		var pending *ahptypes.ToolCallPendingConfirmationState
+		if value, ok := tc.Value.(*ahptypes.ToolCallPendingConfirmationState); ok {
+			pending = value
+		}
 		switch tc.Value.(type) {
-		case *ahptypes.ToolCallStreamingState, *ahptypes.ToolCallRunningState:
+		case *ahptypes.ToolCallStreamingState,
+			*ahptypes.ToolCallRunningState,
+			*ahptypes.ToolCallPendingConfirmationState:
 			if a.Confirmed != nil {
 				return ahptypes.ToolCallState{Value: &ahptypes.ToolCallRunningState{
 					Status:            ahptypes.ToolCallStatusRunning,
@@ -1008,7 +1039,7 @@ func applyToolCallReady(state *ahptypes.ChatState, a *ahptypes.ChatToolCallReady
 					Confirmed:         *a.Confirmed,
 				}}
 			}
-			return ahptypes.ToolCallState{Value: &ahptypes.ToolCallPendingConfirmationState{
+			next := &ahptypes.ToolCallPendingConfirmationState{
 				Status:            ahptypes.ToolCallStatusPendingConfirmation,
 				ToolCallId:        common.id,
 				ToolName:          common.name,
@@ -1019,10 +1050,32 @@ func applyToolCallReady(state *ahptypes.ChatState, a *ahptypes.ChatToolCallReady
 				InvocationMessage: a.InvocationMessage,
 				ToolInput:         a.ToolInput,
 				ConfirmationTitle: a.ConfirmationTitle,
+				RiskAssessment:    a.RiskAssessment,
 				Edits:             a.Edits,
 				Editable:          a.Editable,
 				Options:           a.Options,
-			}}
+			}
+			if pending != nil {
+				if next.ToolInput == nil {
+					next.ToolInput = pending.ToolInput
+				}
+				if next.ConfirmationTitle == nil {
+					next.ConfirmationTitle = pending.ConfirmationTitle
+				}
+				if next.RiskAssessment == nil {
+					next.RiskAssessment = pending.RiskAssessment
+				}
+				if next.Edits == nil {
+					next.Edits = pending.Edits
+				}
+				if next.Editable == nil {
+					next.Editable = pending.Editable
+				}
+				if next.Options == nil {
+					next.Options = pending.Options
+				}
+			}
+			return ahptypes.ToolCallState{Value: next}
 		}
 		return tc
 	})
@@ -1108,10 +1161,12 @@ func applyToolCallComplete(state *ahptypes.ChatState, a *ahptypes.ChatToolCallCo
 			common.meta = a.Meta
 		}
 		var (
-			invocation     ahptypes.StringOrMarkdown
-			toolInput      *string
-			confirmed      = ahptypes.ToolCallConfirmationReasonNotNeeded
-			selectedOption *ahptypes.ConfirmationOption
+			invocation       ahptypes.StringOrMarkdown
+			toolInput        *string
+			confirmed        = ahptypes.ToolCallConfirmationReasonNotNeeded
+			selectedOption   *ahptypes.ConfirmationOption
+			preAuthContent   []ahptypes.ToolResultContent
+			fromAuthRequired bool
 		)
 		switch v := tc.Value.(type) {
 		case *ahptypes.ToolCallRunningState:
@@ -1122,10 +1177,34 @@ func applyToolCallComplete(state *ahptypes.ChatState, a *ahptypes.ChatToolCallCo
 		case *ahptypes.ToolCallPendingConfirmationState:
 			invocation = v.InvocationMessage
 			toolInput = v.ToolInput
+		case *ahptypes.ToolCallAuthRequiredState:
+			// A client MAY cancel an auth-required MCP tool call by dispatching a
+			// failed completion instead of authenticating. A successful completion
+			// is invalid from auth-required — execution never resumed after the
+			// challenge — and is ignored, leaving the call in auth-required. Any
+			// partial content produced before the call paused for auth is
+			// preserved unless the dispatched result supplies its own content.
+			if a.Result.Success {
+				return tc
+			}
+			invocation = v.InvocationMessage
+			toolInput = v.ToolInput
+			confirmed = v.Confirmed
+			selectedOption = v.SelectedOption
+			preAuthContent = v.Content
+			fromAuthRequired = true
 		default:
 			return tc
 		}
-		requiresResultConfirmation := a.RequiresResultConfirmation != nil && *a.RequiresResultConfirmation
+		content := a.Result.Content
+		if content == nil {
+			content = preAuthContent
+		}
+		// Cancelling from auth-required always completes terminally: the
+		// pending auth challenge isn't a "pending result" the client can
+		// review, so requiresResultConfirmation is ignored for this path —
+		// it must never enter pending-result-confirmation.
+		requiresResultConfirmation := a.RequiresResultConfirmation != nil && *a.RequiresResultConfirmation && !fromAuthRequired
 		if requiresResultConfirmation {
 			return ahptypes.ToolCallState{Value: &ahptypes.ToolCallPendingResultConfirmationState{
 				Status:            ahptypes.ToolCallStatusPendingResultConfirmation,
@@ -1139,7 +1218,7 @@ func applyToolCallComplete(state *ahptypes.ChatState, a *ahptypes.ChatToolCallCo
 				ToolInput:         toolInput,
 				Success:           a.Result.Success,
 				PastTenseMessage:  a.Result.PastTenseMessage,
-				Content:           append([]ahptypes.ToolResultContent(nil), a.Result.Content...),
+				Content:           append([]ahptypes.ToolResultContent(nil), content...),
 				StructuredContent: a.Result.StructuredContent,
 				Error:             a.Result.Error,
 				Confirmed:         confirmed,
@@ -1158,7 +1237,7 @@ func applyToolCallComplete(state *ahptypes.ChatState, a *ahptypes.ChatToolCallCo
 			ToolInput:         toolInput,
 			Success:           a.Result.Success,
 			PastTenseMessage:  a.Result.PastTenseMessage,
-			Content:           append([]ahptypes.ToolResultContent(nil), a.Result.Content...),
+			Content:           append([]ahptypes.ToolResultContent(nil), content...),
 			StructuredContent: a.Result.StructuredContent,
 			Error:             a.Result.Error,
 			Confirmed:         confirmed,
@@ -1213,6 +1292,67 @@ func applyToolCallResultConfirmed(state *ahptypes.ChatState, a *ahptypes.ChatToo
 			ToolInput:         s.ToolInput,
 			Reason:            ahptypes.ToolCallCancellationReasonResultDenied,
 			SelectedOption:    s.SelectedOption,
+		}}
+	})
+}
+
+func applyToolCallAuthRequired(state *ahptypes.ChatState, a *ahptypes.ChatToolCallAuthRequiredAction) ReduceOutcome {
+	return updateToolCall(state, a.TurnId, a.ToolCallId, func(tc ahptypes.ToolCallState) ahptypes.ToolCallState {
+		s, ok := tc.Value.(*ahptypes.ToolCallRunningState)
+		if !ok {
+			return tc
+		}
+		if s.Contributor == nil {
+			return tc
+		}
+		if _, ok := s.Contributor.Value.(*ahptypes.ToolCallMcpContributor); !ok {
+			return tc
+		}
+		meta := s.Meta
+		if a.Meta != nil {
+			meta = a.Meta
+		}
+		return ahptypes.ToolCallState{Value: &ahptypes.ToolCallAuthRequiredState{
+			Status:            ahptypes.ToolCallStatusAuthRequired,
+			ToolCallId:        s.ToolCallId,
+			ToolName:          s.ToolName,
+			DisplayName:       s.DisplayName,
+			Intention:         s.Intention,
+			Contributor:       s.Contributor,
+			Meta:              meta,
+			InvocationMessage: s.InvocationMessage,
+			ToolInput:         s.ToolInput,
+			Confirmed:         s.Confirmed,
+			SelectedOption:    s.SelectedOption,
+			Auth:              a.Auth,
+			Content:           append([]ahptypes.ToolResultContent(nil), s.Content...),
+		}}
+	})
+}
+
+func applyToolCallAuthResolved(state *ahptypes.ChatState, a *ahptypes.ChatToolCallAuthResolvedAction) ReduceOutcome {
+	return updateToolCall(state, a.TurnId, a.ToolCallId, func(tc ahptypes.ToolCallState) ahptypes.ToolCallState {
+		s, ok := tc.Value.(*ahptypes.ToolCallAuthRequiredState)
+		if !ok {
+			return tc
+		}
+		meta := s.Meta
+		if a.Meta != nil {
+			meta = a.Meta
+		}
+		return ahptypes.ToolCallState{Value: &ahptypes.ToolCallRunningState{
+			Status:            ahptypes.ToolCallStatusRunning,
+			ToolCallId:        s.ToolCallId,
+			ToolName:          s.ToolName,
+			DisplayName:       s.DisplayName,
+			Intention:         s.Intention,
+			Contributor:       s.Contributor,
+			Meta:              meta,
+			InvocationMessage: s.InvocationMessage,
+			ToolInput:         s.ToolInput,
+			Confirmed:         s.Confirmed,
+			SelectedOption:    s.SelectedOption,
+			Content:           append([]ahptypes.ToolResultContent(nil), s.Content...),
 		}}
 	})
 }
@@ -1275,38 +1415,36 @@ func applyTruncated(state *ahptypes.ChatState, turnID *string) ReduceOutcome {
 		state.Turns = state.Turns[:idx+1]
 	}
 	state.ActiveTurn = nil
-	state.InputRequests = nil
 	touchChatModified(state)
 	state.Status = summaryStatus(state, nil)
 	return ReduceOutcomeApplied
 }
 
 func applyInputAnswerChanged(state *ahptypes.ChatState, a *ahptypes.ChatInputAnswerChangedAction) ReduceOutcome {
-	list := state.InputRequests
-	idx := -1
-	for i := range list {
-		if list[i].Id == a.RequestId {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
+	if state.ActiveTurn == nil {
 		return ReduceOutcomeNoOp
 	}
-	req := &list[idx]
-	if req.Answers == nil {
-		req.Answers = make(map[string]ahptypes.ChatInputAnswer)
+	for i := range state.ActiveTurn.ResponseParts {
+		input, ok := state.ActiveTurn.ResponseParts[i].Value.(*ahptypes.InputRequestResponsePart)
+		if !ok || input.Response != nil || input.Request.Id != a.RequestId {
+			continue
+		}
+		req := &input.Request
+		if req.Answers == nil {
+			req.Answers = make(map[string]ahptypes.ChatInputAnswer)
+		}
+		if a.Answer == nil {
+			delete(req.Answers, a.QuestionId)
+		} else {
+			req.Answers[a.QuestionId] = *a.Answer
+		}
+		if len(req.Answers) == 0 {
+			req.Answers = nil
+		}
+		touchChatModified(state)
+		return ReduceOutcomeApplied
 	}
-	if a.Answer == nil {
-		delete(req.Answers, a.QuestionId)
-	} else {
-		req.Answers[a.QuestionId] = *a.Answer
-	}
-	if len(req.Answers) == 0 {
-		req.Answers = nil
-	}
-	touchChatModified(state)
-	return ReduceOutcomeApplied
+	return ReduceOutcomeNoOp
 }
 
 // ─── Terminal Reducer ──────────────────────────────────────────────────

@@ -541,7 +541,9 @@ const STATE_ENUMS = [
   'ChatOriginKind', 'ChatInteractivity', 'ChatInputAnswerState', 'ChatInputAnswerValueKind', 'ChatInputQuestionKind',
   'ChatInputResponseKind', 'SessionInputRequestKind',
   'TurnState', 'MessageKind', 'MessageAttachmentKind', 'ResponsePartKind', 'ToolCallStatus',
-  'ToolCallConfirmationReason', 'ToolCallCancellationReason', 'ConfirmationOptionKind',
+  'ToolCallConfirmationReason', 'ToolCallRiskAssessmentKind',
+  'ToolCallRiskAssessmentStatus',
+  'ToolCallCancellationReason', 'ConfirmationOptionKind',
   'ToolCallContributorKind',
   'ToolResultContentType', 'CustomizationType', 'CustomizationLoadStatus', 'TerminalClaimKind',
   'McpServerStatus', 'McpAuthRequiredReason',
@@ -556,6 +558,7 @@ const STATE_STRUCTS = [
   'SessionModelInfo', 'ModelSelection', 'AgentSelection', 'ConfigPropertySchema', 'ConfigSchema',
   'PendingMessage', 'ChatState', 'ChatSummary', 'SessionState', 'SessionActiveClient',
   'SessionChatInputRequest', 'SessionToolConfirmationRequest', 'SessionToolClientExecutionRequest',
+  'SessionToolAuthenticationRequest',
   'SessionSummary', 'ChangesSummary', 'ProjectInfo', 'SessionConfigState', 'Turn', 'ActiveTurn', 'Message',
   'MessageOrigin',
   'ChatInputOption',
@@ -574,9 +577,11 @@ const STATE_STRUCTS = [
   'ResourceReponsePart', 'ToolCallResponsePart', 'ReasoningResponsePart',
   'SystemNotificationResponsePart', 'InputRequestResponsePart',
   'ToolCallResult', 'ToolCallStreamingState',
-  'ToolCallPendingConfirmationState', 'ToolCallRunningState',
+  'ToolCallPendingConfirmationState', 'ToolCallRunningState', 'ToolCallAuthRequiredState',
   'ToolCallPendingResultConfirmationState', 'ToolCallCompletedState',
-  'ToolCallCancelledState', 'ConfirmationOption', 'ToolDefinition', 'ToolAnnotations',
+  'ToolCallCancelledState', 'ToolCallRiskAssessmentLoadingState',
+  'ToolCallRiskAssessmentCompleteState', 'ConfirmationOption',
+  'ToolDefinition', 'ToolAnnotations',
   'ToolResultTextContent', 'ToolResultEmbeddedResourceContent',
   'ToolResultResourceContent', 'ToolResultFileEditContent',
   'ToolResultTerminalContent', 'ToolResultTerminalCompleteContent',
@@ -588,7 +593,7 @@ const STATE_STRUCTS = [
   'RuleCustomization', 'HookCustomization',
   'McpServerCustomization', 'McpServerCustomizationApps', 'AhpMcpUiHostCapabilities',
   'McpServerStartingState', 'McpServerReadyState', 'McpServerAuthRequiredState',
-  'McpServerErrorState', 'McpServerStoppedState',
+  'McpServerErrorState', 'McpServerStoppedState', 'McpOAuthClient', 'McpAuthRequirement',
   'ToolCallClientContributor', 'ToolCallMcpContributor',
   'FileEdit', 'TerminalInfo',
   'TerminalClientClaim', 'TerminalSessionClaim', 'TerminalState',
@@ -628,6 +633,7 @@ const TOOL_CALL_STATE_UNION: UnionConfig = {
     { caseName: 'streaming', structName: 'ToolCallStreamingState', discriminantValue: 'streaming' },
     { caseName: 'pendingConfirmation', structName: 'ToolCallPendingConfirmationState', discriminantValue: 'pending-confirmation' },
     { caseName: 'running', structName: 'ToolCallRunningState', discriminantValue: 'running' },
+    { caseName: 'authRequired', structName: 'ToolCallAuthRequiredState', discriminantValue: 'auth-required' },
     { caseName: 'pendingResultConfirmation', structName: 'ToolCallPendingResultConfirmationState', discriminantValue: 'pending-result-confirmation' },
     { caseName: 'completed', structName: 'ToolCallCompletedState', discriminantValue: 'completed' },
     { caseName: 'cancelled', structName: 'ToolCallCancelledState', discriminantValue: 'cancelled' },
@@ -786,6 +792,16 @@ const TOOL_CALL_CONTRIBUTOR_UNION: UnionConfig = {
   ],
 };
 
+const TOOL_CALL_RISK_ASSESSMENT_UNION: UnionConfig = {
+  name: 'ToolCallRiskAssessment',
+  discriminantField: 'status',
+  allowUnknown: true,
+  variants: [
+    { caseName: 'loading', structName: 'ToolCallRiskAssessmentLoadingState', discriminantValue: 'loading' },
+    { caseName: 'complete', structName: 'ToolCallRiskAssessmentCompleteState', discriminantValue: 'complete' },
+  ],
+};
+
 const SESSION_INPUT_REQUEST_UNION: UnionConfig = {
   name: 'SessionInputRequest',
   discriminantField: 'kind',
@@ -795,6 +811,7 @@ const SESSION_INPUT_REQUEST_UNION: UnionConfig = {
     { caseName: 'chatInput', structName: 'SessionChatInputRequest', discriminantValue: 'chatInput' },
     { caseName: 'toolConfirmation', structName: 'SessionToolConfirmationRequest', discriminantValue: 'toolConfirmation' },
     { caseName: 'toolClientExecution', structName: 'SessionToolClientExecutionRequest', discriminantValue: 'toolClientExecution' },
+    { caseName: 'toolAuthentication', structName: 'SessionToolAuthenticationRequest', discriminantValue: 'toolAuthentication' },
   ],
 };
 
@@ -1062,6 +1079,8 @@ function generateStateFile(project: Project): string {
   lines.push('');
   lines.push(generateDiscriminatedUnion(TOOL_CALL_CONTRIBUTOR_UNION));
   lines.push('');
+  lines.push(generateDiscriminatedUnion(TOOL_CALL_RISK_ASSESSMENT_UNION));
+  lines.push('');
   lines.push(generateDiscriminatedUnion(SESSION_INPUT_REQUEST_UNION));
   lines.push('');
   lines.push(generateToolResultContentUnion());
@@ -1094,6 +1113,8 @@ const ACTION_VARIANTS: { type: string; caseName: string; tsInterface: string }[]
   { type: 'chat/toolCallComplete', caseName: 'chatToolCallComplete', tsInterface: 'ChatToolCallCompleteAction' },
   { type: 'chat/toolCallResultConfirmed', caseName: 'chatToolCallResultConfirmed', tsInterface: 'ChatToolCallResultConfirmedAction' },
   { type: 'chat/toolCallContentChanged', caseName: 'chatToolCallContentChanged', tsInterface: 'ChatToolCallContentChangedAction' },
+  { type: 'chat/toolCallAuthRequired', caseName: 'chatToolCallAuthRequired', tsInterface: 'ChatToolCallAuthRequiredAction' },
+  { type: 'chat/toolCallAuthResolved', caseName: 'chatToolCallAuthResolved', tsInterface: 'ChatToolCallAuthResolvedAction' },
   { type: 'chat/turnComplete', caseName: 'chatTurnComplete', tsInterface: 'ChatTurnCompleteAction' },
   { type: 'chat/turnCancelled', caseName: 'chatTurnCancelled', tsInterface: 'ChatTurnCancelledAction' },
   { type: 'chat/error', caseName: 'chatError', tsInterface: 'ChatErrorAction' },
@@ -1675,6 +1696,12 @@ public enum AHPCommands {
         JsonRpcRequest(id: id, method: "initialize", params: params)
     }
 
+    // \`ping\` carries no payload beyond the root channel discriminant, so there is
+    // no dedicated \`PingParams\` type. The helper hardcodes the channel object.
+    public static func ping(id: Int) -> JsonRpcRequest<[String: String]> {
+        JsonRpcRequest(id: id, method: "ping", params: ["channel": "ahp-root://"])
+    }
+
     public static func reconnect(id: Int, params: ReconnectParams) -> JsonRpcRequest<ReconnectParams> {
         JsonRpcRequest(id: id, method: "reconnect", params: params)
     }
@@ -1729,6 +1756,14 @@ public enum AHPCommands {
 
     public static func authenticate(id: Int, params: AuthenticateParams) -> JsonRpcRequest<AuthenticateParams> {
         JsonRpcRequest(id: id, method: "authenticate", params: params)
+    }
+
+    public static func createTerminal(id: Int, params: CreateTerminalParams) -> JsonRpcRequest<CreateTerminalParams> {
+        JsonRpcRequest(id: id, method: "createTerminal", params: params)
+    }
+
+    public static func disposeTerminal(id: Int, params: DisposeTerminalParams) -> JsonRpcRequest<DisposeTerminalParams> {
+        JsonRpcRequest(id: id, method: "disposeTerminal", params: params)
     }
 }
 
@@ -1925,7 +1960,7 @@ function checkExhaustiveness(project: Project): void {
     'SessionToolCallApprovedAction', // merged into SessionToolCallConfirmedAction
     'SessionToolCallDeniedAction',   // merged into SessionToolCallConfirmedAction
     'SessionToolCallConfirmedAction', // emitted as merged variant
-    'PingParams',                    // empty interface; no Swift type emitted
+    'PingParams',                    // empty interface; no Swift type emitted (AHPCommands.ping hardcodes the channel)
     'TerminalClaim',                // TERMINAL_CLAIM_UNION discriminated union
     'TerminalContentPart',           // TERMINAL_CONTENT_PART_UNION discriminated union
     'ChatInputQuestion',         // SESSION_INPUT_QUESTION_UNION discriminated union
@@ -1945,6 +1980,7 @@ function checkExhaustiveness(project: Project): void {
     'CustomizationLoadState',       // CUSTOMIZATION_LOAD_STATE_UNION discriminated union
     'McpServerState',              // MCP_SERVER_STATUS_UNION discriminated union
     'ToolCallContributor',          // TOOL_CALL_CONTRIBUTOR_UNION discriminated union
+    'ToolCallRiskAssessment',       // TOOL_CALL_RISK_ASSESSMENT_UNION discriminated union
     'SessionInputRequest',          // SESSION_INPUT_REQUEST_UNION discriminated union
     'ToolCallConfirmationState',    // TOOL_CALL_CONFIRMATION_STATE_UNION discriminated union
     'AuthRequiredErrorData',        // emitted by generateErrorsFile()

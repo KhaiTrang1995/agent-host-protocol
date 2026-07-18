@@ -644,7 +644,9 @@ const STATE_ENUMS = [
   'ChatOriginKind', 'ChatInteractivity', 'PendingMessageKind', 'ChatInputAnswerState', 'ChatInputAnswerValueKind', 'ChatInputQuestionKind',
   'ChatInputResponseKind', 'SessionInputRequestKind',
   'TurnState', 'MessageKind', 'MessageAttachmentKind', 'ResponsePartKind', 'ToolCallStatus',
-  'ToolCallConfirmationReason', 'ToolCallCancellationReason',
+  'ToolCallConfirmationReason', 'ToolCallRiskAssessmentKind',
+  'ToolCallRiskAssessmentStatus',
+  'ToolCallCancellationReason',
   'ConfirmationOptionKind', 'ToolCallContributorKind',
   'ToolResultContentType', 'CustomizationType', 'CustomizationLoadStatus', 'TerminalClaimKind',
   'McpServerStatus', 'McpAuthRequiredReason',
@@ -670,6 +672,7 @@ const STATE_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: strin
   { name: 'SessionChatInputRequest' },
   { name: 'SessionToolConfirmationRequest' },
   { name: 'SessionToolClientExecutionRequest' },
+  { name: 'SessionToolAuthenticationRequest' },
   { name: 'SessionSummary' },
   { name: 'ChangesSummary' },
   { name: 'ChatState' },
@@ -712,10 +715,13 @@ const STATE_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: strin
   { name: 'SystemNotificationResponsePart' },
   { name: 'InputRequestResponsePart' },
   { name: 'ToolCallResult' },
+  { name: 'ToolCallRiskAssessmentLoadingState' },
+  { name: 'ToolCallRiskAssessmentCompleteState' },
   { name: 'ConfirmationOption' },
   { name: 'ToolCallStreamingState' },
   { name: 'ToolCallPendingConfirmationState' },
   { name: 'ToolCallRunningState' },
+  { name: 'ToolCallAuthRequiredState' },
   { name: 'ToolCallPendingResultConfirmationState' },
   { name: 'ToolCallCompletedState' },
   { name: 'ToolCallCancelledState' },
@@ -748,6 +754,8 @@ const STATE_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: strin
   { name: 'McpServerAuthRequiredState' },
   { name: 'McpServerErrorState' },
   { name: 'McpServerStoppedState' },
+  { name: 'McpOAuthClient' },
+  { name: 'McpAuthRequirement' },
   { name: 'ToolCallClientContributor' },
   { name: 'ToolCallMcpContributor' },
   { name: 'FileEdit' },
@@ -797,6 +805,7 @@ const TOOL_CALL_STATE_UNION: UnionConfig = {
     { variantName: 'Streaming', innerType: 'ToolCallStreamingState', wireValue: 'streaming' },
     { variantName: 'PendingConfirmation', innerType: 'ToolCallPendingConfirmationState', wireValue: 'pending-confirmation' },
     { variantName: 'Running', innerType: 'ToolCallRunningState', wireValue: 'running' },
+    { variantName: 'AuthRequired', innerType: 'ToolCallAuthRequiredState', wireValue: 'auth-required' },
     { variantName: 'PendingResultConfirmation', innerType: 'ToolCallPendingResultConfirmationState', wireValue: 'pending-result-confirmation' },
     { variantName: 'Completed', innerType: 'ToolCallCompletedState', wireValue: 'completed' },
     { variantName: 'Cancelled', innerType: 'ToolCallCancelledState', wireValue: 'cancelled' },
@@ -972,6 +981,17 @@ const TOOL_CALL_CONTRIBUTOR_UNION: UnionConfig = {
   unknown: true,
 };
 
+const TOOL_CALL_RISK_ASSESSMENT_UNION: UnionConfig = {
+  name: 'ToolCallRiskAssessment',
+  discriminantField: 'status',
+  doc: 'ToolCallRiskAssessment is an asynchronous model-judge risk assessment.',
+  variants: [
+    { variantName: 'Loading', innerType: 'ToolCallRiskAssessmentLoadingState', wireValue: 'loading' },
+    { variantName: 'Complete', innerType: 'ToolCallRiskAssessmentCompleteState', wireValue: 'complete' },
+  ],
+  unknown: true,
+};
+
 const SESSION_INPUT_REQUEST_UNION: UnionConfig = {
   name: 'SessionInputRequest',
   discriminantField: 'kind',
@@ -980,6 +1000,7 @@ const SESSION_INPUT_REQUEST_UNION: UnionConfig = {
     { variantName: 'ChatInput', innerType: 'SessionChatInputRequest', wireValue: 'chatInput' },
     { variantName: 'ToolConfirmation', innerType: 'SessionToolConfirmationRequest', wireValue: 'toolConfirmation' },
     { variantName: 'ToolClientExecution', innerType: 'SessionToolClientExecutionRequest', wireValue: 'toolClientExecution' },
+    { variantName: 'ToolAuthentication', innerType: 'SessionToolAuthenticationRequest', wireValue: 'toolAuthentication' },
   ],
   unknown: true,
 };
@@ -1228,6 +1249,8 @@ function generateStateFile(project: Project): string {
   lines.push('');
   lines.push(generateDiscriminatedUnion(TOOL_CALL_CONTRIBUTOR_UNION));
   lines.push('');
+  lines.push(generateDiscriminatedUnion(TOOL_CALL_RISK_ASSESSMENT_UNION));
+  lines.push('');
   lines.push(generateDiscriminatedUnion(SESSION_INPUT_REQUEST_UNION));
   lines.push('');
   lines.push(generateChatOriginGo());
@@ -1264,6 +1287,8 @@ const ACTION_VARIANTS: {
   { type: 'chat/toolCallComplete', variantName: 'ChatToolCallComplete', tsInterface: 'ChatToolCallCompleteAction' },
   { type: 'chat/toolCallResultConfirmed', variantName: 'ChatToolCallResultConfirmed', tsInterface: 'ChatToolCallResultConfirmedAction' },
   { type: 'chat/toolCallContentChanged', variantName: 'ChatToolCallContentChanged', tsInterface: 'ChatToolCallContentChangedAction' },
+  { type: 'chat/toolCallAuthRequired', variantName: 'ChatToolCallAuthRequired', tsInterface: 'ChatToolCallAuthRequiredAction' },
+  { type: 'chat/toolCallAuthResolved', variantName: 'ChatToolCallAuthResolved', tsInterface: 'ChatToolCallAuthResolvedAction' },
   { type: 'chat/turnComplete', variantName: 'ChatTurnComplete', tsInterface: 'ChatTurnCompleteAction' },
   { type: 'chat/turnCancelled', variantName: 'ChatTurnCancelled', tsInterface: 'ChatTurnCancelledAction' },
   { type: 'chat/error', variantName: 'ChatError', tsInterface: 'ChatErrorAction' },
@@ -1936,6 +1961,7 @@ function checkExhaustiveness(project: Project): void {
     'CustomizationLoadState',
     'McpServerState',
     'ToolCallContributor',
+    'ToolCallRiskAssessment',
     'SessionInputRequest',
     'ToolCallConfirmationState',
     'ReconnectResult',

@@ -235,7 +235,7 @@ pub enum ChatInputResponseKind {
 /// a `*Kind`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SessionInputRequestKind {
-    /// A user-facing elicitation mirrored from a chat's `inputRequests`.
+    /// A user-facing elicitation mirrored from an unresolved chat response part.
     #[serde(rename = "chatInput")]
     ChatInput,
     /// A tool call awaiting parameter- or result-confirmation.
@@ -244,6 +244,9 @@ pub enum SessionInputRequestKind {
     /// A running tool the session wants an active client to execute.
     #[serde(rename = "toolClientExecution")]
     ToolClientExecution,
+    /// A tool call blocked on MCP authentication mid-execution.
+    #[serde(rename = "toolAuthentication")]
+    ToolAuthentication,
 }
 
 /// How a turn ended.
@@ -319,6 +322,11 @@ pub enum ToolCallStatus {
     PendingConfirmation,
     #[serde(rename = "running")]
     Running,
+    /// Running paused because the MCP server backing this call needs
+    /// authentication (typically step-up auth for insufficient scope,
+    /// surfacing mid-execution). See {@link ToolCallAuthRequiredState}.
+    #[serde(rename = "auth-required")]
+    AuthRequired,
     #[serde(rename = "pending-result-confirmation")]
     PendingResultConfirmation,
     #[serde(rename = "completed")]
@@ -340,6 +348,22 @@ pub enum ToolCallConfirmationReason {
     UserAction,
     #[serde(rename = "setting")]
     Setting,
+}
+
+/// Identifies a model judge as the source of a confirmation requirement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ToolCallRiskAssessmentKind {
+    #[serde(rename = "judge")]
+    Judge,
+}
+
+/// Lifecycle status of an asynchronous model-judge confirmation decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ToolCallRiskAssessmentStatus {
+    #[serde(rename = "loading")]
+    Loading,
+    #[serde(rename = "complete")]
+    Complete,
 }
 
 /// Why a tool call was cancelled.
@@ -1032,9 +1056,6 @@ pub struct ChatState {
     /// Messages to send automatically as new turns after the current turn finishes
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub queued_messages: Option<Vec<PendingMessage>>,
-    /// Requests for user input that are currently blocking or informing chat progress
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub input_requests: Option<Vec<ChatInputRequest>>,
     /// The user's in-progress draft input for this chat — the message they are
     /// composing but have not sent yet, including its
     /// {@link Message.model | model} / {@link Message.agent | agent} selection
@@ -1232,8 +1253,8 @@ pub struct SessionActiveClient {
     pub customizations: Option<Vec<ClientPluginCustomization>>,
 }
 
-/// A user-input elicitation surfaced at the session level, mirroring one entry
-/// of the owning chat's {@link ChatState.inputRequests}.
+/// A user-input elicitation surfaced at the session level, mirroring the request
+/// from an unresolved {@link InputRequestResponsePart} in the owning chat.
 ///
 /// Respond by dispatching `chat/inputCompleted` (or syncing drafts with
 /// `chat/inputAnswerChanged`) to {@link SessionInputRequestBase.chat | `chat`},
@@ -1316,6 +1337,38 @@ pub struct SessionToolClientExecutionRequest {
     /// host only ever populates this with a {@link ToolCallRunningState} (i.e. a
     /// {@link ToolCallState} in `running` status).
     pub tool_call: ToolCallState,
+}
+
+/// A tool call blocked on MCP authentication mid-execution, surfaced at the
+/// session level.
+///
+/// The {@link toolCall} is always a {@link ToolCallAuthRequiredState} (a
+/// {@link ToolCallState} in `auth-required` status). Unlike
+/// {@link SessionToolConfirmationRequest}, this is **not** answered by
+/// dispatching a `chat/*` action directly: the client obtains a token for
+/// {@link ToolCallAuthRequiredState.auth | `toolCall.auth`}`.resource` and
+/// pushes it via the existing `authenticate` command (see
+/// {@link /specification/authentication | Authentication}). The host resumes
+/// the tool call and dispatches `chat/toolCallAuthResolved` once the token is
+/// accepted, at which point it also removes this entry with
+/// `session/inputNeededRemoved`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionToolAuthenticationRequest {
+    /// Stable key for this entry, unique within the session's
+    /// {@link SessionState.inputNeeded} list. The host derives it however it likes
+    /// (for example from the chat URI plus the underlying request or tool-call
+    /// id); consumers MUST treat it as opaque. It is the key for the
+    /// `session/inputNeededSet` / `session/inputNeededRemoved` upsert convention.
+    pub id: String,
+    /// The chat the underlying request lives in. This is the channel a client
+    /// dispatches its response to — it does not need to have subscribed to that
+    /// chat first.
+    pub chat: Uri,
+    /// The turn the tool call belongs to.
+    pub turn_id: String,
+    /// The tool call awaiting authentication.
+    pub tool_call: ToolCallAuthRequiredState,
 }
 
 /// Lightweight catalog entry summarizing one session. Surfaced via
@@ -1795,11 +1848,11 @@ pub struct ChatInputMultiSelectQuestion {
     pub max: Option<i64>,
 }
 
-/// A live request for user input.
+/// The request payload carried by an {@link InputRequestResponsePart}.
 ///
-/// The server creates or replaces requests with `chat/inputRequested`.
-/// Clients sync drafts with `chat/inputAnswerChanged` and complete requests
-/// with `chat/inputCompleted`.
+/// The server creates or replaces the containing response part with
+/// `chat/inputRequested`. Clients sync drafts with `chat/inputAnswerChanged`
+/// and submit responses with `chat/inputCompleted`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatInputRequest {
@@ -2120,27 +2173,26 @@ pub struct SystemNotificationResponsePart {
     pub meta: Option<JsonObject>,
 }
 
-/// A resolved input request (elicitation) recorded in the turn transcript.
+/// A live or resolved input request (elicitation) in the turn response stream.
 ///
-/// While an input request is open it lives in {@link ChatState.inputRequests}
-/// as live, interactive state (see {@link ChatInputRequest}). When the request
-/// completes via `chat/inputCompleted`, the reducer removes it from
-/// `inputRequests` and appends this part to the active turn so the decision
-/// survives in history. This mirrors how a tool-call confirmation persists in
-/// its {@link ToolCallResponsePart} (via `confirmed` / `selectedOption` on the
-/// terminal {@link ToolCallState}): the live surface drives in-flight UX, the
-/// terminal outcome is durable and backfillable via `fetchTurns`.
+/// The server inserts the part with `chat/inputRequested`. While
+/// {@link response} is absent, clients can update answer drafts with
+/// `chat/inputAnswerChanged` and submit a response with `chat/inputCompleted`.
+/// Completion updates this part in place so its stream position is stable and
+/// the full interaction remains durable and backfillable via `fetchTurns`.
 ///
-/// No part is recorded when an outstanding request is *abandoned* (the turn
-/// completes, is cancelled, errors, or is truncated) rather than *completed*.
+/// If the turn ends without a submitted response, the unresolved part remains
+/// in the completed turn transcript with {@link response} absent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InputRequestResponsePart {
-    /// The resolved request, carrying its `id`, `message`, `url`, `questions`,
-    /// and the final `answers` synced/submitted at completion.
+    /// The request, carrying its `id`, `message`, `url`, `questions`, and current
+    /// draft or submitted `answers`.
     pub request: ChatInputRequest,
-    /// How the request was resolved: `accept`, `decline`, or `cancel`.
-    pub response: ChatInputResponseKind,
+    /// How the request was resolved. Absent until a client submits `accept`,
+    /// `decline`, or `cancel` with `chat/inputCompleted`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response: Option<ChatInputResponseKind>,
 }
 
 /// Tool execution result details, available after execution completes.
@@ -2164,6 +2216,23 @@ pub struct ToolCallResult {
     /// Error details if the tool failed
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<AnyValue>,
+}
+
+/// The model judge is still evaluating the tool call.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallRiskAssessmentLoadingState {
+    pub kind: ToolCallRiskAssessmentKind,
+}
+
+/// The model judge has completed its evaluation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallRiskAssessmentCompleteState {
+    pub kind: ToolCallRiskAssessmentKind,
+    pub reason: StringOrMarkdown,
+    /// The judge's normalized safety score, where `0` is unsafe and `1` is safe.
+    pub safety: f64,
 }
 
 /// A confirmation option that the server offers for a tool call awaiting
@@ -2250,6 +2319,9 @@ pub struct ToolCallPendingConfirmationState {
     /// Short title for the confirmation prompt (e.g. `"Run in terminal"`, `"Write file"`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confirmation_title: Option<StringOrMarkdown>,
+    /// Risk assessment that informed the confirmation requirement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub risk_assessment: Option<ToolCallRiskAssessment>,
     /// File edits that this tool call will perform, for preview before confirmation
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edits: Option<AnyValue>,
@@ -2301,6 +2373,73 @@ pub struct ToolCallRunningState {
     ///
     /// For example, a terminal content block lets clients subscribe to live
     /// output before the tool completes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<Vec<ToolResultContent>>,
+}
+
+/// A running tool call is paused because the MCP server backing it needs
+/// authentication — most commonly {@link McpAuthRequirement.reason |
+/// `insufficientScope`} step-up auth triggered by the `tools/call` request
+/// itself. Only ever reached from {@link ToolCallRunningState}, and normally
+/// returns there once authenticated: `running` → `auth-required` → `running`
+/// → …. A client MAY instead cancel the invocation without authenticating by
+/// dispatching a `chat/toolCallComplete` with a **failed** result, always
+/// moving straight to {@link ToolCallCompletedState} —
+/// `requiresResultConfirmation` is ignored on this path, so it can never
+/// enter {@link ToolCallPendingResultConfirmationState}. A **successful**
+/// result dispatched from this state is invalid and MUST be rejected/ignored
+/// as a no-op by the reducer, since execution never resumed after the
+/// challenge.
+///
+/// This is the tool-call-level counterpart to
+/// {@link McpServerAuthRequiredState} — that state means the MCP *server*
+/// cannot serve any request; this one means *this specific invocation* is
+/// waiting on the same kind of challenge. The two are dispatched
+/// independently and MAY be true at the same time, or not: an
+/// `insufficientScope` challenge triggered by a single tool call, for
+/// example, need not block the whole server.
+///
+/// Because the challenge is always resolved by pushing a token via the
+/// existing `authenticate` command, this state can only originate from a
+/// tool call {@link ToolCallContributorKind.MCP | contributed by an MCP
+/// server} — `contributor` is narrowed accordingly (unlike the optional,
+/// multi-kind `contributor` on other tool call states).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallAuthRequiredState {
+    /// Unique tool call identifier
+    pub tool_call_id: String,
+    /// Internal tool name (for debugging/logging)
+    pub tool_name: String,
+    /// Human-readable tool name
+    pub display_name: String,
+    /// Human-readable description of what the tool invocation intends to do
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intention: Option<String>,
+    /// Reference to the contributor of the tool being called.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contributor: Option<ToolCallContributor>,
+    /// Additional provider-specific metadata for this tool call.
+    ///
+    /// This MAY include a `ui` field corresponding to the MCP Apps (SEP-1865)
+    /// `McpUiToolMeta` found in MCP tool calls, which may be used in combination
+    /// with the {@link contributor} to serve MCP Apps.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// Message describing what the tool will do
+    pub invocation_message: StringOrMarkdown,
+    /// Raw tool input
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_input: Option<String>,
+    /// How the tool was confirmed for execution
+    pub confirmed: ToolCallConfirmationReason,
+    /// The confirmation option the user selected, if confirmation options were provided
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_option: Option<ConfirmationOption>,
+    pub status: ToolCallStatus,
+    /// The authentication challenge blocking this invocation.
+    pub auth: McpAuthRequirement,
+    /// Partial content produced before the call paused for authentication.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content: Option<Vec<ToolResultContent>>,
 }
@@ -3339,13 +3478,17 @@ pub struct McpServerReadyState {}
 pub struct McpServerAuthRequiredState {
     /// Why authentication is required.
     pub reason: McpAuthRequiredReason,
+    /// Pre-registered OAuth client to use for authorization. When present, clients
+    /// MUST use these credentials instead of dynamic client registration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oauth_client: Option<McpOAuthClient>,
     /// RFC 9728 Protected Resource Metadata. The `resource` field is the
     /// canonical MCP server URI per RFC 8707, used as the OAuth `resource`
     /// indicator. `authorization_servers` is REQUIRED by the MCP
     /// authorization spec.
     pub resource: ProtectedResourceMetadata,
     /// Scopes required for the current challenge, parsed from the
-    /// `WWW-Authenticate: Bearer scope="…"` header (or `scopes_supported`
+    /// `WWW-Authenticate: ******"…"` header (or `scopes_supported`
     /// fallback). Authoritative for the next authorization request — clients
     /// MUST NOT assume any subset/superset relationship to
     /// `resource.scopes_supported`.
@@ -3371,6 +3514,62 @@ pub struct McpServerErrorState {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct McpServerStoppedState {}
+
+/// A pre-registered OAuth client that clients use instead of dynamic client
+/// registration when resolving an MCP authentication challenge.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpOAuthClient {
+    /// OAuth client identifier registered with the authorization server.
+    pub client_id: String,
+    /// OAuth client secret for a confidential client. Absence means the client is
+    /// public and uses a secretless flow such as authorization code with PKCE.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_secret: Option<String>,
+}
+
+/// Reusable MCP authentication challenge — the RFC 9728 discovery info a
+/// client needs to obtain a token and push it via the `authenticate` command.
+/// Deliberately carries **no token**: this describes what is being asked for,
+/// never the ****** itself.
+///
+/// Shared by two independent state machines that describe the same OAuth
+/// challenge from different vantage points:
+///
+/// - {@link McpServerAuthRequiredState} — the MCP server itself cannot serve
+///   *any* request until the client authenticates.
+/// - {@link ToolCallAuthRequiredState} — a specific in-flight tool call is
+///   paused pending authentication (typically
+///   {@link McpAuthRequiredReason.InsufficientScope} step-up auth
+///   mid-execution). The server state and the tool-call state remain
+///   separate on purpose: the server saying "I need auth" and a tool
+///   invocation saying "I am waiting on that auth" are different facts that
+///   can be true independently.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpAuthRequirement {
+    /// Why authentication is required.
+    pub reason: McpAuthRequiredReason,
+    /// Pre-registered OAuth client to use for authorization. When present, clients
+    /// MUST use these credentials instead of dynamic client registration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oauth_client: Option<McpOAuthClient>,
+    /// RFC 9728 Protected Resource Metadata. The `resource` field is the
+    /// canonical MCP server URI per RFC 8707, used as the OAuth `resource`
+    /// indicator. `authorization_servers` is REQUIRED by the MCP
+    /// authorization spec.
+    pub resource: ProtectedResourceMetadata,
+    /// Scopes required for the current challenge, parsed from the
+    /// `WWW-Authenticate: ******"…"` header (or `scopes_supported`
+    /// fallback). Authoritative for the next authorization request — clients
+    /// MUST NOT assume any subset/superset relationship to
+    /// `resource.scopes_supported`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_scopes: Option<Vec<String>>,
+    /// Human-readable hint, typically from the OAuth `error_description`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -3998,6 +4197,8 @@ pub enum ToolCallState {
     PendingConfirmation(ToolCallPendingConfirmationState),
     #[serde(rename = "running")]
     Running(ToolCallRunningState),
+    #[serde(rename = "auth-required")]
+    AuthRequired(Box<ToolCallAuthRequiredState>),
     #[serde(rename = "pending-result-confirmation")]
     PendingResultConfirmation(ToolCallPendingResultConfirmationState),
     #[serde(rename = "completed")]
@@ -4242,6 +4443,20 @@ pub enum ToolCallContributor {
     Unknown(serde_json::Value),
 }
 
+/// Asynchronous model-judge confirmation rationale.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "status")]
+pub enum ToolCallRiskAssessment {
+    #[serde(rename = "loading")]
+    Loading(ToolCallRiskAssessmentLoadingState),
+    #[serde(rename = "complete")]
+    Complete(ToolCallRiskAssessmentCompleteState),
+    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
+    /// Reducers treat this as a no-op.
+    #[serde(untagged)]
+    Unknown(serde_json::Value),
+}
+
 /// One outstanding piece of input a session is blocked on, aggregated across all chats.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind")]
@@ -4252,6 +4467,8 @@ pub enum SessionInputRequest {
     ToolConfirmation(SessionToolConfirmationRequest),
     #[serde(rename = "toolClientExecution")]
     ToolClientExecution(SessionToolClientExecutionRequest),
+    #[serde(rename = "toolAuthentication")]
+    ToolAuthentication(SessionToolAuthenticationRequest),
     /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
     /// Reducers treat this as a no-op.
     #[serde(untagged)]

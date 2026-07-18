@@ -1,5 +1,5 @@
 {
-  "description": "toolCallReady ignores non-streaming/non-running tool calls",
+  "description": "chat/toolCallAuthResolved is a no-op for a tool call that is not in auth-required status",
   "reducer": "chat",
   "initial": {
     "turns": [],
@@ -12,36 +12,38 @@
           "kind": "user"
         }
       },
-      "responseParts": [
-        {
-          "kind": "toolCall",
-          "toolCall": {
-            "status": "pending-confirmation",
-            "toolCallId": "tc-1",
-            "toolName": "bash",
-            "displayName": "Run Command",
-            "intention": null,
-            "contributor": null,
-            "_meta": null,
-            "invocationMessage": "Run",
-            "toolInput": null,
-            "confirmationTitle": null
-          }
-        }
-      ],
+      "responseParts": [],
       "usage": null
     },
     "resource": "copilot:/test-session",
     "title": "Test Session",
-    "status": 24,
+    "status": 8,
     "modifiedAt": "1970-01-01T00:00:02.000Z"
   },
   "actions": [
     {
+      "type": "chat/toolCallStart",
+      "turnId": "turn-1",
+      "toolCallId": "tc-4",
+      "toolName": "search",
+      "displayName": "Search Repo",
+      "contributor": {
+        "kind": "mcp",
+        "customizationId": "mcp-1"
+      }
+    },
+    {
       "type": "chat/toolCallReady",
       "turnId": "turn-1",
-      "toolCallId": "tc-1",
-      "invocationMessage": "Run again"
+      "toolCallId": "tc-4",
+      "invocationMessage": "Search: foo",
+      "toolInput": "foo",
+      "confirmed": "not-needed"
+    },
+    {
+      "type": "chat/toolCallAuthResolved",
+      "turnId": "turn-1",
+      "toolCallId": "tc-4"
     }
   ],
   "expected": {
@@ -59,16 +61,19 @@
         {
           "kind": "toolCall",
           "toolCall": {
-            "status": "pending-confirmation",
-            "toolCallId": "tc-1",
-            "toolName": "bash",
-            "displayName": "Run Command",
+            "status": "running",
+            "toolCallId": "tc-4",
+            "toolName": "search",
+            "displayName": "Search Repo",
             "intention": null,
-            "contributor": null,
+            "contributor": {
+              "kind": "mcp",
+              "customizationId": "mcp-1"
+            },
             "_meta": null,
-            "invocationMessage": "Run",
-            "toolInput": null,
-            "confirmationTitle": null
+            "invocationMessage": "Search: foo",
+            "toolInput": "foo",
+            "confirmed": "not-needed"
           }
         }
       ],
@@ -76,7 +81,7 @@
     },
     "resource": "copilot:/test-session",
     "title": "Test Session",
-    "status": 24,
+    "status": 8,
     "modifiedAt": "1970-01-01T00:00:02.000Z"
   }
 }

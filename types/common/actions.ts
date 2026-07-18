@@ -56,6 +56,8 @@ import type {
   ChatToolCallCompleteAction,
   ChatToolCallResultConfirmedAction,
   ChatToolCallContentChangedAction,
+  ChatToolCallAuthRequiredAction,
+  ChatToolCallAuthResolvedAction,
   ChatTurnCompleteAction,
   ChatTurnCancelledAction,
   ChatErrorAction,
@@ -138,6 +140,8 @@ export const enum ActionType {
   ChatToolCallComplete = 'chat/toolCallComplete',
   ChatToolCallResultConfirmed = 'chat/toolCallResultConfirmed',
   ChatToolCallContentChanged = 'chat/toolCallContentChanged',
+  ChatToolCallAuthRequired = 'chat/toolCallAuthRequired',
+  ChatToolCallAuthResolved = 'chat/toolCallAuthResolved',
   ChatTurnComplete = 'chat/turnComplete',
   ChatTurnCancelled = 'chat/turnCancelled',
   ChatError = 'chat/error',
@@ -280,6 +284,8 @@ export type StateAction =
   | ChatToolCallCompleteAction
   | ChatToolCallResultConfirmedAction
   | ChatToolCallContentChangedAction
+  | ChatToolCallAuthRequiredAction
+  | ChatToolCallAuthResolvedAction
   | ChatTurnCompleteAction
   | ChatTurnCancelledAction
   | ChatErrorAction

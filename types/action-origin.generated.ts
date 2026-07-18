@@ -44,6 +44,8 @@ import type {
   ChatToolCallCompleteAction,
   ChatToolCallResultConfirmedAction,
   ChatToolCallContentChangedAction,
+  ChatToolCallAuthRequiredAction,
+  ChatToolCallAuthResolvedAction,
   ChatTurnCompleteAction,
   ChatTurnCancelledAction,
   ChatErrorAction,
@@ -190,6 +192,8 @@ export type ChatAction =
   | ChatToolCallCompleteAction
   | ChatToolCallResultConfirmedAction
   | ChatToolCallContentChangedAction
+  | ChatToolCallAuthRequiredAction
+  | ChatToolCallAuthResolvedAction
   | ChatTurnCompleteAction
   | ChatTurnCancelledAction
   | ChatErrorAction
@@ -235,6 +239,8 @@ export type ServerChatAction =
   | ChatToolCallStartAction
   | ChatToolCallDeltaAction
   | ChatToolCallReadyAction
+  | ChatToolCallAuthRequiredAction
+  | ChatToolCallAuthResolvedAction
   | ChatTurnCompleteAction
   | ChatErrorAction
   | ChatActivityChangedAction
@@ -392,6 +398,8 @@ export const IS_CLIENT_DISPATCHABLE: { readonly [K in StateAction['type']]: bool
   [ActionType.ChatToolCallComplete]: true,
   [ActionType.ChatToolCallResultConfirmed]: true,
   [ActionType.ChatToolCallContentChanged]: true,
+  [ActionType.ChatToolCallAuthRequired]: false,
+  [ActionType.ChatToolCallAuthResolved]: false,
   [ActionType.ChatTurnComplete]: false,
   [ActionType.ChatTurnCancelled]: true,
   [ActionType.ChatError]: false,
