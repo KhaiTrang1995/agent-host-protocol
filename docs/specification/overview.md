@@ -100,10 +100,10 @@ Machine-readable [JSON Schema (2020-12)](https://json-schema.org/draft/2020-12/s
 
 | Schema | Description |
 |---|---|
-| [state.schema.json](/agent-host-protocol/schema/state.schema.json) | State types |
-| [actions.schema.json](/agent-host-protocol/schema/actions.schema.json) | Action types |
-| [commands.schema.json](/agent-host-protocol/schema/commands.schema.json) | Command parameters and results |
-| [notifications.schema.json](/agent-host-protocol/schema/notifications.schema.json) | Notification types |
-| [errors.schema.json](/agent-host-protocol/schema/errors.schema.json) | Error codes |
+| [state.schema.json](/schema/state.schema.json) | State types |
+| [actions.schema.json](/schema/actions.schema.json) | Action types |
+| [commands.schema.json](/schema/commands.schema.json) | Command parameters and results |
+| [notifications.schema.json](/schema/notifications.schema.json) | Notification types |
+| [errors.schema.json](/schema/errors.schema.json) | Error codes |
 
 These schemas are generated from the TypeScript type definitions and can be used for validation, code generation, or editor support.
