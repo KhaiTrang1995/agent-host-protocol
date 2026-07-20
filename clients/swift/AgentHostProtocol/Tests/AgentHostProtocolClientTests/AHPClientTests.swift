@@ -649,6 +649,69 @@ final class AHPClientTests: XCTestCase {
         await client.shutdown()
     }
 
+    func testCompletionsSendWrapperPreservesChannel() async throws {
+        let (clientSide, serverSide) = InMemoryTransport.pair()
+        let client = AHPClient(transport: clientSide)
+        try await client.connect()
+
+        let serverTask = Task {
+            let request = try await readRequest(from: serverSide, expectedMethod: "completions")
+            let paramsCodable = try XCTUnwrap(request.params)
+            let paramsData = try JSONEncoder().encode(paramsCodable)
+            let params = try JSONDecoder().decode(CompletionsParams.self, from: paramsData)
+            // The wrapper must preserve the caller-supplied chat channel.
+            XCTAssertEqual(params.channel, "ahp-chat:/abc")
+            XCTAssertEqual(params.kind, .userMessage)
+            XCTAssertEqual(params.text, "look at @foo")
+            XCTAssertEqual(params.offset, 12)
+            try await respond(
+                to: request.id,
+                with: CompletionsResult(items: []),
+                on: serverSide
+            )
+        }
+
+        let result = try await client.completions(
+            CompletionsParams(channel: "ahp-chat:/abc", kind: .userMessage, text: "look at @foo", offset: 12)
+        )
+        XCTAssertEqual(result.items.count, 0)
+
+        try await serverTask.value
+        await client.shutdown()
+    }
+
+    func testSessionConfigCompletionsSendWrapperTargetsRootChannel() async throws {
+        let (clientSide, serverSide) = InMemoryTransport.pair()
+        let client = AHPClient(transport: clientSide)
+        try await client.connect()
+
+        let serverTask = Task {
+            let request = try await readRequest(from: serverSide, expectedMethod: "sessionConfigCompletions")
+            let paramsCodable = try XCTUnwrap(request.params)
+            let paramsData = try JSONEncoder().encode(paramsCodable)
+            let params = try JSONDecoder().decode(SessionConfigCompletionsParams.self, from: paramsData)
+            // The wrapper must force the root channel regardless of caller input.
+            XCTAssertEqual(params.channel, RootResourceURI)
+            XCTAssertEqual(params.property, "baseBranch")
+            XCTAssertEqual(params.query, "ma")
+            try await respond(
+                to: request.id,
+                with: SessionConfigCompletionsResult(items: [
+                    SessionConfigValueItem(value: "main", label: "main", description: nil),
+                ]),
+                on: serverSide
+            )
+        }
+
+        let result = try await client.sessionConfigCompletions(
+            SessionConfigCompletionsParams(channel: "", property: "baseBranch", query: "ma")
+        )
+        XCTAssertEqual(result.items.first?.value, "main")
+
+        try await serverTask.value
+        await client.shutdown()
+    }
+
     func testInboundResourceRequestRoutesToTypedHandler() async throws {
         let (clientSide, serverSide) = InMemoryTransport.pair()
         let client = AHPClient(transport: clientSide)

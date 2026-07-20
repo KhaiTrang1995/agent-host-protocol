@@ -32,14 +32,15 @@ use std::time::Duration;
 
 use ahp_types::actions::{ActionEnvelope, StateAction};
 use ahp_types::commands::{
-    CreateResourceWatchParams, CreateResourceWatchResult, DispatchActionParams, InitializeParams,
-    InitializeResult, ReconnectParams, ReconnectResult, ResourceCopyParams, ResourceCopyResult,
-    ResourceDeleteParams, ResourceDeleteResult, ResourceListParams, ResourceListResult,
-    ResourceMkdirParams, ResourceMkdirResult, ResourceMoveParams, ResourceMoveResult,
-    ResourceReadParams, ResourceReadResult, ResourceRequestParams, ResourceRequestResult,
-    ResourceResolveParams, ResourceResolveResult, ResourceWriteParams, ResourceWriteResult,
-    SubscribeParams, SubscribeResult, SubscribeView, SubscriptionDeliveryOptions,
-    UnsubscribeParams,
+    CompletionsParams, CompletionsResult, CreateResourceWatchParams, CreateResourceWatchResult,
+    DispatchActionParams, InitializeParams, InitializeResult, ReconnectParams, ReconnectResult,
+    ResourceCopyParams, ResourceCopyResult, ResourceDeleteParams, ResourceDeleteResult,
+    ResourceListParams, ResourceListResult, ResourceMkdirParams, ResourceMkdirResult,
+    ResourceMoveParams, ResourceMoveResult, ResourceReadParams, ResourceReadResult,
+    ResourceRequestParams, ResourceRequestResult, ResourceResolveParams, ResourceResolveResult,
+    ResourceWriteParams, ResourceWriteResult, SessionConfigCompletionsParams,
+    SessionConfigCompletionsResult, SubscribeParams, SubscribeResult, SubscribeView,
+    SubscriptionDeliveryOptions, UnsubscribeParams,
 };
 use ahp_types::common::{Uri, ROOT_RESOURCE_URI};
 use ahp_types::errors::json_rpc_error_codes;
@@ -804,6 +805,32 @@ impl Client {
     ) -> Result<CreateResourceWatchResult, ClientError> {
         params.channel = ROOT_RESOURCE_URI.to_string();
         self.request("createResourceWatch", params).await
+    }
+
+    // ─── Completions commands (send) ─────────────────────────────────────
+
+    /// Request inline completion items for a partially-typed input
+    /// (`completions`), e.g. to power `@`-mention pickers.
+    ///
+    /// Unlike the `resource*` wrappers, the caller-supplied `channel` (the chat
+    /// URI the completion is scoped to) is preserved. Debounce calls to avoid
+    /// flooding the server on every keystroke.
+    pub async fn completions(
+        &self,
+        params: CompletionsParams,
+    ) -> Result<CompletionsResult, ClientError> {
+        self.request("completions", params).await
+    }
+
+    /// Query the server for allowed values of a dynamic session config property
+    /// (`sessionConfigCompletions`). Targets the root channel; any `channel`
+    /// set on `params` is overwritten.
+    pub async fn session_config_completions(
+        &self,
+        mut params: SessionConfigCompletionsParams,
+    ) -> Result<SessionConfigCompletionsResult, ClientError> {
+        params.channel = ROOT_RESOURCE_URI.to_string();
+        self.request("sessionConfigCompletions", params).await
     }
 }
 

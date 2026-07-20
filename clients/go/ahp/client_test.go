@@ -273,6 +273,164 @@ func TestResourceReadSendWrapperTargetsRootChannel(t *testing.T) {
 	}
 }
 
+func TestCompletionsSendWrapperPreservesChannel(t *testing.T) {
+	clientSide, serverSide := newMemTransportPair()
+	serverErr := make(chan error, 1)
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		msg, err := serverSide.Recv(ctx)
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		parsed, err := msg.IntoParsed()
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		if parsed.Request == nil || parsed.Request.Method != "completions" {
+			serverErr <- errors.New("expected completions request")
+			return
+		}
+		var params ahptypes.CompletionsParams
+		if err := json.Unmarshal(parsed.Request.Params, &params); err != nil {
+			serverErr <- err
+			return
+		}
+		// The wrapper must preserve the caller-supplied chat channel.
+		if params.Channel != "ahp-chat:/abc" {
+			serverErr <- fmt.Errorf("channel = %q, want ahp-chat:/abc", params.Channel)
+			return
+		}
+		if params.Kind != ahptypes.CompletionItemKindUserMessage {
+			serverErr <- fmt.Errorf("kind = %q, want userMessage", params.Kind)
+			return
+		}
+		resultBody, err := json.Marshal(ahptypes.CompletionsResult{Items: []ahptypes.CompletionItem{}})
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		resp := ahptypes.JsonRpcMessage{SuccessResponse: &ahptypes.JsonRpcSuccessResponse{
+			JsonRpc: ahptypes.JsonRpcV2,
+			ID:      parsed.Request.ID,
+			Result:  resultBody,
+		}}
+		out, err := EncodeMessage(resp)
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		serverErr <- serverSide.Send(ctx, out)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	client, err := Connect(ctx, clientSide, DefaultConfig())
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer client.Shutdown(context.Background())
+
+	result, err := client.Completions(ctx, ahptypes.CompletionsParams{
+		Channel: "ahp-chat:/abc",
+		Kind:    ahptypes.CompletionItemKindUserMessage,
+		Text:    "look at @foo",
+		Offset:  12,
+	})
+	if err != nil {
+		t.Fatalf("Completions: %v", err)
+	}
+	if len(result.Items) != 0 {
+		t.Errorf("Items = %d, want 0", len(result.Items))
+	}
+	if err := <-serverErr; err != nil {
+		t.Fatalf("server: %v", err)
+	}
+}
+
+func TestSessionConfigCompletionsSendWrapperTargetsRootChannel(t *testing.T) {
+	clientSide, serverSide := newMemTransportPair()
+	serverErr := make(chan error, 1)
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		msg, err := serverSide.Recv(ctx)
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		parsed, err := msg.IntoParsed()
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		if parsed.Request == nil || parsed.Request.Method != "sessionConfigCompletions" {
+			serverErr <- errors.New("expected sessionConfigCompletions request")
+			return
+		}
+		var params ahptypes.SessionConfigCompletionsParams
+		if err := json.Unmarshal(parsed.Request.Params, &params); err != nil {
+			serverErr <- err
+			return
+		}
+		// The wrapper must force the root channel regardless of caller input.
+		if params.Channel != ahptypes.RootResourceURI {
+			serverErr <- fmt.Errorf("channel = %q, want %q", params.Channel, ahptypes.RootResourceURI)
+			return
+		}
+		if params.Property != "baseBranch" {
+			serverErr <- fmt.Errorf("property = %q, want baseBranch", params.Property)
+			return
+		}
+		resultBody, err := json.Marshal(ahptypes.SessionConfigCompletionsResult{
+			Items: []ahptypes.SessionConfigValueItem{{Value: "main", Label: "main"}},
+		})
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		resp := ahptypes.JsonRpcMessage{SuccessResponse: &ahptypes.JsonRpcSuccessResponse{
+			JsonRpc: ahptypes.JsonRpcV2,
+			ID:      parsed.Request.ID,
+			Result:  resultBody,
+		}}
+		out, err := EncodeMessage(resp)
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		serverErr <- serverSide.Send(ctx, out)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	client, err := Connect(ctx, clientSide, DefaultConfig())
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer client.Shutdown(context.Background())
+
+	query := "ma"
+	result, err := client.SessionConfigCompletions(ctx, ahptypes.SessionConfigCompletionsParams{
+		Channel:  "ahp-session:/ignored",
+		Property: "baseBranch",
+		Query:    &query,
+	})
+	if err != nil {
+		t.Fatalf("SessionConfigCompletions: %v", err)
+	}
+	if len(result.Items) != 1 || result.Items[0].Value != "main" {
+		t.Errorf("Items = %+v, want one item with value main", result.Items)
+	}
+	if err := <-serverErr; err != nil {
+		t.Fatalf("server: %v", err)
+	}
+}
+
 func TestInboundResourceRequestRoutesToTypedHandler(t *testing.T) {
 	clientSide, serverSide := newMemTransportPair()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

@@ -29,6 +29,7 @@ import type {
 } from '../src/types/common/actions.js';
 import { ActionType } from '../src/types/common/actions.js';
 import { ContentEncoding } from '../src/types/common/commands.js';
+import { CompletionItemKind } from '../src/types/channels-session/commands.js';
 import type {
   DispatchActionParams,
   InitializeParams,
@@ -457,6 +458,56 @@ test('createResourceWatch wrapper returns the watch channel URI', async () => {
 
   const got = await watchPromise;
   assert.equal(got.channel, 'ahp-resource-watch:/abc');
+
+  await client.shutdown();
+});
+
+test('completions wrapper preserves the caller-supplied chat channel', async () => {
+  const [c, s] = InMemoryTransport.pair();
+  const client = new AhpClient(c);
+  client.connect();
+
+  const completionsPromise = client.completions({
+    channel: 'ahp-chat:/abc',
+    kind: CompletionItemKind.UserMessage,
+    text: 'look at @foo',
+    offset: 12,
+  });
+
+  const req = await readRequest(s);
+  assert.equal(req.method, 'completions');
+  // Unlike the resource wrappers, the chat channel must be preserved.
+  assert.equal((req.params as { channel?: string }).channel, 'ahp-chat:/abc');
+  assert.equal((req.params as { kind?: string }).kind, 'userMessage');
+
+  reply(s, req.id, { items: [] });
+
+  const got = await completionsPromise;
+  assert.deepEqual(got.items, []);
+
+  await client.shutdown();
+});
+
+test('sessionConfigCompletions wrapper fills in the root channel', async () => {
+  const [c, s] = InMemoryTransport.pair();
+  const client = new AhpClient(c);
+  client.connect();
+
+  const completionsPromise = client.sessionConfigCompletions({
+    property: 'baseBranch',
+    query: 'ma',
+  });
+
+  const req = await readRequest(s);
+  assert.equal(req.method, 'sessionConfigCompletions');
+  assert.equal((req.params as { channel?: string }).channel, ROOT);
+  assert.equal((req.params as { property?: string }).property, 'baseBranch');
+  assert.equal((req.params as { query?: string }).query, 'ma');
+
+  reply(s, req.id, { items: [{ value: 'main', label: 'main' }] });
+
+  const got = await completionsPromise;
+  assert.equal(got.items[0]?.value, 'main');
 
   await client.shutdown();
 });

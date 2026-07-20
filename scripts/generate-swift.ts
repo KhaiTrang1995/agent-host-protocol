@@ -1753,6 +1753,14 @@ public enum AHPCommands {
         JsonRpcRequest(id: id, method: "authenticate", params: params)
     }
 
+    public static func sessionConfigCompletions(id: Int, params: SessionConfigCompletionsParams) -> JsonRpcRequest<SessionConfigCompletionsParams> {
+        JsonRpcRequest(id: id, method: "sessionConfigCompletions", params: params)
+    }
+
+    public static func completions(id: Int, params: CompletionsParams) -> JsonRpcRequest<CompletionsParams> {
+        JsonRpcRequest(id: id, method: "completions", params: params)
+    }
+
     public static func createTerminal(id: Int, params: CreateTerminalParams) -> JsonRpcRequest<CreateTerminalParams> {
         JsonRpcRequest(id: id, method: "createTerminal", params: params)
     }
