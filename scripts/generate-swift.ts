@@ -583,7 +583,8 @@ const STATE_STRUCTS = [
   'ToolDefinition', 'ToolAnnotations',
   'ToolResultTextContent', 'ToolResultEmbeddedResourceContent',
   'ToolResultResourceContent', 'ToolResultFileEditContent',
-  'ToolResultTerminalContent', 'ToolResultTerminalCompleteContent',
+  'ToolResultTerminalContent', 'ToolResultTerminalOutputContent',
+  'ToolResultTerminalCompleteContent',
   'ToolResultSubagentContent',
   'CustomizationLoadingState', 'CustomizationLoadedState',
   'CustomizationDegradedState', 'CustomizationErrorState',
@@ -821,6 +822,7 @@ function generateToolResultContentUnion(): string {
     case resource(ToolResultResourceContent)
     case fileEdit(ToolResultFileEditContent)
     case terminal(ToolResultTerminalContent)
+    case terminalOutput(ToolResultTerminalOutputContent)
     case terminalComplete(ToolResultTerminalCompleteContent)
     case subagent(ToolResultSubagentContent)
     /// Unknown or future tool result content type; the raw payload is preserved
@@ -845,6 +847,8 @@ function generateToolResultContentUnion(): string {
                 self = .fileEdit(try ToolResultFileEditContent(from: decoder))
             case "terminal":
                 self = .terminal(try ToolResultTerminalContent(from: decoder))
+            case "terminalOutput":
+                self = .terminalOutput(try ToolResultTerminalOutputContent(from: decoder))
             case "terminalComplete":
                 self = .terminalComplete(try ToolResultTerminalCompleteContent(from: decoder))
             case "subagent":
@@ -867,6 +871,7 @@ function generateToolResultContentUnion(): string {
         case .resource(let v): try v.encode(to: encoder)
         case .fileEdit(let v): try v.encode(to: encoder)
         case .terminal(let v): try v.encode(to: encoder)
+        case .terminalOutput(let v): try v.encode(to: encoder)
         case .terminalComplete(let v): try v.encode(to: encoder)
         case .subagent(let v): try v.encode(to: encoder)
         case .unknown(let v): try v.encode(to: encoder)

@@ -1331,6 +1331,7 @@ export const enum ToolResultContentType {
   Resource = 'resource',
   FileEdit = 'fileEdit',
   Terminal = 'terminal',
+  TerminalOutput = 'terminalOutput',
   TerminalComplete = 'terminalComplete',
   Subagent = 'subagent',
 }
@@ -1400,6 +1401,20 @@ export interface ToolResultTerminalContent {
 }
 
 /**
+ * An inline output snapshot from a running terminal-style tool call.
+ *
+ * This content may accompany a {@link ToolResultTerminalContent} block but
+ * does not require a terminal resource.
+ *
+ * @category Tool Result Content
+ */
+export interface ToolResultTerminalOutputContent {
+  type: ToolResultContentType.TerminalOutput;
+  /** Output in this snapshot */
+  output: string;
+}
+
+/**
  * Record of a command executed by a terminal-style tool (e.g. a shell tool),
  * appended to the tool result when the command exits.
  *
@@ -1459,6 +1474,7 @@ export interface ToolResultSubagentContent {
  * `ToolResultResourceContent` for lazy-loading large results,
  * `ToolResultFileEditContent` for file edit diffs,
  * `ToolResultTerminalContent` for live terminal output,
+ * `ToolResultTerminalOutputContent` for inline live command output,
  * `ToolResultTerminalCompleteContent` for terminal-style completion metadata, and
  * `ToolResultSubagentContent` for tool-spawned worker chats (AHP extensions).
  *
@@ -1470,5 +1486,6 @@ export type ToolResultContent =
   | ToolResultResourceContent
   | ToolResultFileEditContent
   | ToolResultTerminalContent
+  | ToolResultTerminalOutputContent
   | ToolResultTerminalCompleteContent
   | ToolResultSubagentContent;

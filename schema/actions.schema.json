@@ -6305,6 +6305,23 @@
         "title"
       ]
     },
+    "ToolResultTerminalOutputContent": {
+      "type": "object",
+      "description": "An inline output snapshot from a running terminal-style tool call.\n\nThis content may accompany a {@link ToolResultTerminalContent} block but\ndoes not require a terminal resource.",
+      "properties": {
+        "type": {
+          "const": "terminalOutput"
+        },
+        "output": {
+          "type": "string",
+          "description": "Output in this snapshot"
+        }
+      },
+      "required": [
+        "type",
+        "output"
+      ]
+    },
     "ToolResultTerminalCompleteContent": {
       "type": "object",
       "description": "Record of a command executed by a terminal-style tool (e.g. a shell tool),\nappended to the tool result when the command exits.\n\nThis records the command's exit, not the terminal's — the terminal may\nkeep running afterwards.\n\nWhen live output was exposed through a terminal channel (a\n{@link ToolResultTerminalContent} block in the same tool result),\n{@link resource} identifies that channel; otherwise this block stands alone\nas the retained command result.",
@@ -7257,13 +7274,16 @@
           "$ref": "#/$defs/ToolResultTerminalContent"
         },
         {
+          "$ref": "#/$defs/ToolResultTerminalOutputContent"
+        },
+        {
           "$ref": "#/$defs/ToolResultTerminalCompleteContent"
         },
         {
           "$ref": "#/$defs/ToolResultSubagentContent"
         }
       ],
-      "description": "Content block in a tool result.\n\nMirrors the content blocks in MCP `CallToolResult.content`, plus\n`ToolResultResourceContent` for lazy-loading large results,\n`ToolResultFileEditContent` for file edit diffs,\n`ToolResultTerminalContent` for live terminal output,\n`ToolResultTerminalCompleteContent` for terminal-style completion metadata, and\n`ToolResultSubagentContent` for tool-spawned worker chats (AHP extensions)."
+      "description": "Content block in a tool result.\n\nMirrors the content blocks in MCP `CallToolResult.content`, plus\n`ToolResultResourceContent` for lazy-loading large results,\n`ToolResultFileEditContent` for file edit diffs,\n`ToolResultTerminalContent` for live terminal output,\n`ToolResultTerminalOutputContent` for inline live command output,\n`ToolResultTerminalCompleteContent` for terminal-style completion metadata, and\n`ToolResultSubagentContent` for tool-spawned worker chats (AHP extensions)."
     },
     "TerminalClaim": {
       "oneOf": [

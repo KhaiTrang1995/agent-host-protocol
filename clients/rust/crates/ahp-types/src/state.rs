@@ -407,6 +407,8 @@ pub enum ToolResultContentType {
     FileEdit,
     #[serde(rename = "terminal")]
     Terminal,
+    #[serde(rename = "terminalOutput")]
+    TerminalOutput,
     #[serde(rename = "terminalComplete")]
     TerminalComplete,
     #[serde(rename = "subagent")]
@@ -2676,6 +2678,17 @@ pub struct ToolResultTerminalContent {
     pub title: String,
 }
 
+/// An inline output snapshot from a running terminal-style tool call.
+///
+/// This content may accompany a {@link ToolResultTerminalContent} block but
+/// does not require a terminal resource.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolResultTerminalOutputContent {
+    /// Output in this snapshot
+    pub output: String,
+}
+
 /// Record of a command executed by a terminal-style tool (e.g. a shell tool),
 /// appended to the tool result when the command exits.
 ///
@@ -4286,6 +4299,8 @@ pub enum ToolResultContent {
     FileEdit(ToolResultFileEditContent),
     #[serde(rename = "terminal")]
     Terminal(ToolResultTerminalContent),
+    #[serde(rename = "terminalOutput")]
+    TerminalOutput(ToolResultTerminalOutputContent),
     #[serde(rename = "terminalComplete")]
     TerminalComplete(ToolResultTerminalCompleteContent),
     #[serde(rename = "subagent")]

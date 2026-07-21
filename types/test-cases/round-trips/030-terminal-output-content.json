@@ -1,0 +1,38 @@
+{
+  "name": "terminal-output-content",
+  "group": "A",
+  "description": "ActionEnvelope carries an inline terminal output snapshot.",
+  "type": "ActionEnvelope",
+  "input": {
+    "channel": "ahp-chat:/s1/c1",
+    "action": {
+      "type": "chat/toolCallContentChanged",
+      "turnId": "turn-1",
+      "toolCallId": "tool-1",
+      "content": [
+        {
+          "type": "terminalOutput",
+          "output": "line 2\nline 3\n"
+        }
+      ]
+    },
+    "serverSeq": 8
+  },
+  "acceptableOutputs": [
+    {
+      "action": {
+        "content": [
+          {
+            "output": "line 2\nline 3\n",
+            "type": "terminalOutput"
+          }
+        ],
+        "toolCallId": "tool-1",
+        "turnId": "turn-1",
+        "type": "chat/toolCallContentChanged"
+      },
+      "channel": "ahp-chat:/s1/c1",
+      "serverSeq": 8
+    }
+  ]
+}

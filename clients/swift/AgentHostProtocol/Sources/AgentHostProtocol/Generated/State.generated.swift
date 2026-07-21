@@ -267,6 +267,7 @@ public enum ToolResultContentType: String, Codable, Sendable {
     case resource = "resource"
     case fileEdit = "fileEdit"
     case terminal = "terminal"
+    case terminalOutput = "terminalOutput"
     case terminalComplete = "terminalComplete"
     case subagent = "subagent"
 }
@@ -3232,6 +3233,20 @@ public struct ToolResultTerminalContent: Codable, Sendable {
     }
 }
 
+public struct ToolResultTerminalOutputContent: Codable, Sendable {
+    public var type: ToolResultContentType
+    /// Output in this snapshot
+    public var output: String
+
+    public init(
+        type: ToolResultContentType,
+        output: String
+    ) {
+        self.type = type
+        self.output = output
+    }
+}
+
 public struct ToolResultTerminalCompleteContent: Codable, Sendable {
     public var type: ToolResultContentType
     /// URI of the `ahp-terminal:` channel that carried live output for this
@@ -5766,6 +5781,7 @@ public enum ToolResultContent: Codable, Sendable {
     case resource(ToolResultResourceContent)
     case fileEdit(ToolResultFileEditContent)
     case terminal(ToolResultTerminalContent)
+    case terminalOutput(ToolResultTerminalOutputContent)
     case terminalComplete(ToolResultTerminalCompleteContent)
     case subagent(ToolResultSubagentContent)
     /// Unknown or future tool result content type; the raw payload is preserved
@@ -5790,6 +5806,8 @@ public enum ToolResultContent: Codable, Sendable {
                 self = .fileEdit(try ToolResultFileEditContent(from: decoder))
             case "terminal":
                 self = .terminal(try ToolResultTerminalContent(from: decoder))
+            case "terminalOutput":
+                self = .terminalOutput(try ToolResultTerminalOutputContent(from: decoder))
             case "terminalComplete":
                 self = .terminalComplete(try ToolResultTerminalCompleteContent(from: decoder))
             case "subagent":
@@ -5812,6 +5830,7 @@ public enum ToolResultContent: Codable, Sendable {
         case .resource(let v): try v.encode(to: encoder)
         case .fileEdit(let v): try v.encode(to: encoder)
         case .terminal(let v): try v.encode(to: encoder)
+        case .terminalOutput(let v): try v.encode(to: encoder)
         case .terminalComplete(let v): try v.encode(to: encoder)
         case .subagent(let v): try v.encode(to: encoder)
         case .unknown(let v): try v.encode(to: encoder)

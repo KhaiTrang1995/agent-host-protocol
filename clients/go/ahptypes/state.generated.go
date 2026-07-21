@@ -291,6 +291,7 @@ const (
 	ToolResultContentTypeResource         ToolResultContentType = "resource"
 	ToolResultContentTypeFileEdit         ToolResultContentType = "fileEdit"
 	ToolResultContentTypeTerminal         ToolResultContentType = "terminal"
+	ToolResultContentTypeTerminalOutput   ToolResultContentType = "terminalOutput"
 	ToolResultContentTypeTerminalComplete ToolResultContentType = "terminalComplete"
 	ToolResultContentTypeSubagent         ToolResultContentType = "subagent"
 )
@@ -2159,6 +2160,16 @@ type ToolResultTerminalContent struct {
 	Title string `json:"title"`
 }
 
+// An inline output snapshot from a running terminal-style tool call.
+//
+// This content may accompany a {@link ToolResultTerminalContent} block but
+// does not require a terminal resource.
+type ToolResultTerminalOutputContent struct {
+	Type ToolResultContentType `json:"type"`
+	// Output in this snapshot
+	Output string `json:"output"`
+}
+
 // Record of a command executed by a terminal-style tool (e.g. a shell tool),
 // appended to the tool result when the command exits.
 //
@@ -4010,6 +4021,7 @@ func (*ToolResultEmbeddedResourceContent) isToolResultContent() {}
 func (*ToolResultResourceContent) isToolResultContent()         {}
 func (*ToolResultFileEditContent) isToolResultContent()         {}
 func (*ToolResultTerminalContent) isToolResultContent()         {}
+func (*ToolResultTerminalOutputContent) isToolResultContent()   {}
 func (*ToolResultTerminalCompleteContent) isToolResultContent() {}
 func (*ToolResultSubagentContent) isToolResultContent()         {}
 
@@ -4053,6 +4065,12 @@ func (u *ToolResultContent) UnmarshalJSON(data []byte) error {
 		u.Value = &value
 	case "terminal":
 		var value ToolResultTerminalContent
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	case "terminalOutput":
+		var value ToolResultTerminalOutputContent
 		if err := json.Unmarshal(data, &value); err != nil {
 			return err
 		}
