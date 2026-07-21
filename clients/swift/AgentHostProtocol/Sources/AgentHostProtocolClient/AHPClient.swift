@@ -515,6 +515,29 @@ public actor AHPClient {
         return try await request(method: "createResourceWatch", params: params)
     }
 
+    // MARK: - Completions commands (send)
+
+    /// Request inline completion items for a partially-typed input
+    /// (`completions`), e.g. to power `@`-mention pickers.
+    ///
+    /// Unlike the `resource*` wrappers, the caller-supplied `channel` (the chat
+    /// URI the completion is scoped to) is preserved. Debounce calls to avoid
+    /// flooding the server on every keystroke.
+    @discardableResult
+    public func completions(_ params: CompletionsParams) async throws -> CompletionsResult {
+        return try await request(method: "completions", params: params)
+    }
+
+    /// Query the server for allowed values of a dynamic session config property
+    /// (`sessionConfigCompletions`). Targets the root channel; any `channel` set
+    /// on the passed params is overwritten.
+    @discardableResult
+    public func sessionConfigCompletions(_ params: SessionConfigCompletionsParams) async throws -> SessionConfigCompletionsResult {
+        var params = params
+        params.channel = RootResourceURI
+        return try await request(method: "sessionConfigCompletions", params: params)
+    }
+
     // MARK: - Server-initiated requests (inbound)
 
     /// Install a generic handler for inbound server-initiated requests.

@@ -204,6 +204,105 @@ async fn resource_read_send_wrapper_targets_root_channel() {
 }
 
 #[tokio::test]
+async fn completions_send_wrapper_preserves_channel() {
+    use ahp_types::commands::{CompletionItemKind, CompletionsParams};
+
+    let (client_side, mut server_side) = pair();
+    let client = Client::connect(client_side, ClientConfig::default())
+        .await
+        .expect("connect");
+
+    let server = tokio::spawn(async move {
+        let msg = server_side.recv().await.unwrap().unwrap();
+        let JsonRpcMessage::Request(req) = msg.into_parsed().unwrap() else {
+            panic!("expected Request")
+        };
+        assert_eq!(req.method, "completions");
+        let params = req.params.unwrap();
+        // The wrapper must preserve the caller-supplied chat channel.
+        assert_eq!(params["channel"], "ahp-chat:/abc");
+        assert_eq!(params["kind"], "userMessage");
+        assert_eq!(params["text"], "look at @foo");
+
+        let result = serde_json::json!({ "items": [] });
+        let resp = JsonRpcMessage::SuccessResponse(JsonRpcSuccessResponse {
+            jsonrpc: JsonRpcVersion::V2,
+            id: req.id,
+            result: ahp_types::common::AnyValue::from(result),
+        });
+        server_side
+            .send(TransportMessage::encode(&resp).unwrap())
+            .await
+            .unwrap();
+    });
+
+    let result = client
+        .completions(CompletionsParams {
+            channel: "ahp-chat:/abc".into(),
+            kind: CompletionItemKind::UserMessage,
+            text: "look at @foo".into(),
+            offset: 12,
+        })
+        .await
+        .expect("completions");
+    assert!(result.items.is_empty());
+
+    client.shutdown().await;
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn session_config_completions_send_wrapper_targets_root_channel() {
+    use ahp_types::commands::SessionConfigCompletionsParams;
+
+    let (client_side, mut server_side) = pair();
+    let client = Client::connect(client_side, ClientConfig::default())
+        .await
+        .expect("connect");
+
+    let server = tokio::spawn(async move {
+        let msg = server_side.recv().await.unwrap().unwrap();
+        let JsonRpcMessage::Request(req) = msg.into_parsed().unwrap() else {
+            panic!("expected Request")
+        };
+        assert_eq!(req.method, "sessionConfigCompletions");
+        let params = req.params.unwrap();
+        // The wrapper must force the root channel regardless of caller input.
+        assert_eq!(params["channel"], "ahp-root://");
+        assert_eq!(params["property"], "baseBranch");
+        assert_eq!(params["query"], "ma");
+
+        let result = serde_json::json!({ "items": [{ "value": "main", "label": "main" }] });
+        let resp = JsonRpcMessage::SuccessResponse(JsonRpcSuccessResponse {
+            jsonrpc: JsonRpcVersion::V2,
+            id: req.id,
+            result: ahp_types::common::AnyValue::from(result),
+        });
+        server_side
+            .send(TransportMessage::encode(&resp).unwrap())
+            .await
+            .unwrap();
+    });
+
+    let result = client
+        .session_config_completions(SessionConfigCompletionsParams {
+            channel: String::new(),
+            provider: None,
+            working_directory: None,
+            config: None,
+            property: "baseBranch".into(),
+            query: Some("ma".into()),
+        })
+        .await
+        .expect("session_config_completions");
+    assert_eq!(result.items.len(), 1);
+    assert_eq!(result.items[0].value, "main");
+
+    client.shutdown().await;
+    server.await.unwrap();
+}
+
+#[tokio::test]
 async fn ping_targets_root_channel_and_resolves_on_null_result() {
     let (client_side, mut server_side) = pair();
     let client = Client::connect(client_side, ClientConfig::default())
