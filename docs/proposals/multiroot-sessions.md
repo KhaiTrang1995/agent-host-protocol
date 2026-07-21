@@ -219,7 +219,7 @@ flowchart LR
 The concrete, additive changes that back the framing above — a reviewer's map of
 the `types/` surface. Full prose detail lives in the
 [State Model](/guide/state-model#multiroot-sessions) and
-[Changesets](/guide/changesets) guides. Target spec version: **0.7.0**.
+[Changesets](/guide/changesets) guides. Target spec version: **0.6.0**.
 
 Everything here is **additive and optional** — no field is required, no existing
 field changes type, and old clients that ignore the new surface behave exactly
@@ -237,7 +237,7 @@ as today.
 | `ChatState.workingDirectories?` / `ChatSummary.workingDirectories?` | `channels-chat/state.ts` | added |
 | `CreateChatParams.workingDirectories?` | `channels-chat/commands.ts` | added |
 | `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` actions | `channels-chat/actions.ts` | added (action) |
-| 4 `ActionType` entries + `ACTION_INTRODUCED_IN` (`0.7.0`) | `common/actions.ts`, `version/registry.ts` | added |
+| 4 `ActionType` entries + `ACTION_INTRODUCED_IN` (`0.6.0`) | `common/actions.ts`, `version/registry.ts` | added |
 
 > **Revised after review.** The directory-mutation surface started as four
 > **commands** (`add/removeWorkspaceFolder`, `add/removeChatWorkspaceFolder`
@@ -245,7 +245,7 @@ as today.
 > following the keyed-collection convention — the set lives in state, so clients
 > mutate it by dispatching actions and observe the result on
 > `workingDirectories`. The deprecated singular `workingDirectory` fields were
-> **hard-removed** (a breaking change → 0.7.0), not kept as a shorthand. An
+> **hard-removed** (0.6.0 is a breaking release), not kept as a shorthand. An
 > earlier revision also added a `Changeset.workingDirectory` field to group
 > changes per directory; that was **dropped** — a changeset can span
 > directories (e.g. a per-turn diff), so a single-directory scalar is the wrong
@@ -319,12 +319,11 @@ interface ChatWorkingDirectoryRemovedAction {
 
 ### 8.3 Versioning & gating
 
-- `PROTOCOL_VERSION` is **`0.7.0`** — a MINOR bump because the feature is
-  breaking (it removes the singular `workingDirectory` fields that shipped in the
-  released `0.6.0`), and pre-1.0 breaking changes land in a MINOR.
-  `SUPPORTED_PROTOCOL_VERSIONS` = `[0.7.0, 0.6.0, 0.5.2, 0.5.1]`.
+- `PROTOCOL_VERSION` is **`0.6.0`** (a breaking release; the branch's base
+  already advanced the ongoing-dev version to `0.6.0`). `SUPPORTED_PROTOCOL_VERSIONS`
+  = `[0.6.0, 0.5.2, 0.5.1]`.
 - The four directory mutations are **state actions**, so they carry
-  `ACTION_INTRODUCED_IN` entries at `0.7.0` (and are `@clientDispatchable`).
+  `ACTION_INTRODUCED_IN` entries at `0.6.0` (and are `@clientDispatchable`).
   Everything else — the capability and the create-time / state fields — is gated
   by the `multipleWorkingDirectories` capability plus the `initialize` version
   handshake.
@@ -342,12 +341,10 @@ interface ChatWorkingDirectoryRemovedAction {
   that genuinely pin a fixed process root opt in via
   `MultipleWorkingDirectoriesCapability.immutablePrimary` (index `0` fixed).
 
-- **Hard-remove the singular `workingDirectory`.** *Resolved (per review):*
-  removing these fields is a breaking change, so the feature targets a MINOR
-  bump (`0.7.0`); the deprecated singular fields on
+- **Hard-remove the singular `workingDirectory`.** *Resolved (per review):* 0.6.0
+  is a breaking release, so the deprecated singular fields on
   `CreateSessionParams` / `SessionMetadata` / `ChatState` / `ChatSummary` are
-  removed outright rather than kept as a shorthand. (Originally planned to ride
-  `0.6.0`'s breaking window, but `0.6.0` shipped without this feature.)
+  removed outright rather than kept as a shorthand.
 
 - **Directory mutations are state actions, not commands.** *Resolved (per
   review):* `workingDirectories` is a keyed collection, so it follows the
