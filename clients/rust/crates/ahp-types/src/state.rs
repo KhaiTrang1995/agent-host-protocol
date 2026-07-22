@@ -407,8 +407,6 @@ pub enum ToolResultContentType {
     FileEdit,
     #[serde(rename = "terminal")]
     Terminal,
-    #[serde(rename = "terminalOutput")]
-    TerminalOutput,
     #[serde(rename = "terminalComplete")]
     TerminalComplete,
     #[serde(rename = "subagent")]
@@ -2665,28 +2663,35 @@ pub struct ToolResultFileEditContent {
     pub diff: Option<AnyValue>,
 }
 
-/// A reference to a terminal whose output is relevant to this tool result.
+/// A reference to a terminal whose output is relevant to this tool result,
+/// or an inline terminal-style output snapshot. At least one of
+/// {@link resource} or {@link output} SHOULD be present.
 ///
 /// Clients can subscribe to the terminal's URI to stream its output in real
-/// time, providing live feedback while a tool is executing.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// time, providing live feedback while a tool is executing. When both
+/// `resource` and `output` are present the resource is authoritative —
+/// `output` offers a bounded snapshot for clients that do not subscribe.
+///
+/// A {@link ToolResultTerminalCompleteContent} block can retain completion
+/// metadata for a command associated with this terminal and reference the same
+/// resource.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolResultTerminalContent {
     /// Terminal URI (subscribable for full terminal state)
-    pub resource: Uri,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource: Option<Uri>,
     /// Display title for the terminal content
-    pub title: String,
-}
-
-/// An inline output snapshot from a running terminal-style tool call.
-///
-/// This content may accompany a {@link ToolResultTerminalContent} block but
-/// does not require a terminal resource.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ToolResultTerminalOutputContent {
-    /// Output in this snapshot
-    pub output: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Inline snapshot of output produced so far. A replacement snapshot, not a
+    /// delta: each `chat/toolCallContentChanged` action supersedes the previous
+    /// snapshot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    /// Whether this terminal-style resource is backed by a pseudoterminal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_pty: Option<bool>,
 }
 
 /// Record of a command executed by a terminal-style tool (e.g. a shell tool),
@@ -3653,6 +3658,9 @@ pub struct TerminalState {
     /// are absent in the normal idle state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_command_detection: Option<bool>,
+    /// Whether this terminal-style resource is backed by a pseudoterminal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_pty: Option<bool>,
 }
 
 /// Unstructured terminal output — content before, between, or after commands,
@@ -4299,8 +4307,6 @@ pub enum ToolResultContent {
     FileEdit(ToolResultFileEditContent),
     #[serde(rename = "terminal")]
     Terminal(ToolResultTerminalContent),
-    #[serde(rename = "terminalOutput")]
-    TerminalOutput(ToolResultTerminalOutputContent),
     #[serde(rename = "terminalComplete")]
     TerminalComplete(ToolResultTerminalCompleteContent),
     #[serde(rename = "subagent")]

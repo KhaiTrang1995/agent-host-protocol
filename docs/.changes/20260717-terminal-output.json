@@ -1,5 +1,0 @@
-{
-  "type": "added",
-  "message": "`ToolResultTerminalOutputContent` for cumulative live output snapshots from terminal-style tool calls.",
-  "issues": [323]
-}

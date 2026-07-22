@@ -68,7 +68,6 @@ export type {
   FileEdit,
   ToolResultFileEditContent,
   ToolResultTerminalContent,
-  ToolResultTerminalOutputContent,
   ToolResultTerminalCompleteContent,
   ToolResultSubagentContent,
   SessionActiveClient,

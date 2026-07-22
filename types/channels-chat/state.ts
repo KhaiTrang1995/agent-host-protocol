@@ -1331,7 +1331,6 @@ export const enum ToolResultContentType {
   Resource = 'resource',
   FileEdit = 'fileEdit',
   Terminal = 'terminal',
-  TerminalOutput = 'terminalOutput',
   TerminalComplete = 'terminalComplete',
   Subagent = 'subagent',
 }
@@ -1385,33 +1384,35 @@ export interface ToolResultFileEditContent extends FileEdit {
 }
 
 /**
- * A reference to a terminal whose output is relevant to this tool result.
+ * A reference to a terminal whose output is relevant to this tool result,
+ * or an inline terminal-style output snapshot. At least one of
+ * {@link resource} or {@link output} SHOULD be present.
  *
  * Clients can subscribe to the terminal's URI to stream its output in real
- * time, providing live feedback while a tool is executing.
+ * time, providing live feedback while a tool is executing. When both
+ * `resource` and `output` are present the resource is authoritative —
+ * `output` offers a bounded snapshot for clients that do not subscribe.
+ *
+ * A {@link ToolResultTerminalCompleteContent} block can retain completion
+ * metadata for a command associated with this terminal and reference the same
+ * resource.
  *
  * @category Tool Result Content
  */
 export interface ToolResultTerminalContent {
   type: ToolResultContentType.Terminal;
   /** Terminal URI (subscribable for full terminal state) */
-  resource: URI;
+  resource?: URI;
   /** Display title for the terminal content */
-  title: string;
-}
-
-/**
- * An inline output snapshot from a running terminal-style tool call.
- *
- * This content may accompany a {@link ToolResultTerminalContent} block but
- * does not require a terminal resource.
- *
- * @category Tool Result Content
- */
-export interface ToolResultTerminalOutputContent {
-  type: ToolResultContentType.TerminalOutput;
-  /** Output in this snapshot */
-  output: string;
+  title?: string;
+  /**
+   * Inline snapshot of output produced so far. A replacement snapshot, not a
+   * delta: each `chat/toolCallContentChanged` action supersedes the previous
+   * snapshot.
+   */
+  output?: string;
+  /** Whether this terminal-style resource is backed by a pseudoterminal. */
+  isPty?: boolean;
 }
 
 /**
@@ -1474,7 +1475,6 @@ export interface ToolResultSubagentContent {
  * `ToolResultResourceContent` for lazy-loading large results,
  * `ToolResultFileEditContent` for file edit diffs,
  * `ToolResultTerminalContent` for live terminal output,
- * `ToolResultTerminalOutputContent` for inline live command output,
  * `ToolResultTerminalCompleteContent` for terminal-style completion metadata, and
  * `ToolResultSubagentContent` for tool-spawned worker chats (AHP extensions).
  *
@@ -1486,6 +1486,5 @@ export type ToolResultContent =
   | ToolResultResourceContent
   | ToolResultFileEditContent
   | ToolResultTerminalContent
-  | ToolResultTerminalOutputContent
   | ToolResultTerminalCompleteContent
   | ToolResultSubagentContent;

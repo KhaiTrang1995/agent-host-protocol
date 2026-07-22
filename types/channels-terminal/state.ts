@@ -107,6 +107,8 @@ export interface TerminalState {
    * are absent in the normal idle state.
    */
   supportsCommandDetection?: boolean;
+  /** Whether this terminal-style resource is backed by a pseudoterminal. */
+  isPty?: boolean;
 }
 
 // ─── Terminal Content Parts ──────────────────────────────────────────────────

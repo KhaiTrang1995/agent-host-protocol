@@ -4435,7 +4435,7 @@
     },
     "ToolResultTerminalContent": {
       "type": "object",
-      "description": "A reference to a terminal whose output is relevant to this tool result.\n\nClients can subscribe to the terminal's URI to stream its output in real\ntime, providing live feedback while a tool is executing.",
+      "description": "A reference to a terminal whose output is relevant to this tool result,\nor an inline terminal-style output snapshot. At least one of\n{@link resource} or {@link output} SHOULD be present.\n\nClients can subscribe to the terminal's URI to stream its output in real\ntime, providing live feedback while a tool is executing. When both\n`resource` and `output` are present the resource is authoritative —\n`output` offers a bounded snapshot for clients that do not subscribe.\n\nA {@link ToolResultTerminalCompleteContent} block can retain completion\nmetadata for a command associated with this terminal and reference the same\nresource.",
       "properties": {
         "type": {
           "const": "terminal"
@@ -4447,29 +4447,18 @@
         "title": {
           "type": "string",
           "description": "Display title for the terminal content"
-        }
-      },
-      "required": [
-        "type",
-        "resource",
-        "title"
-      ]
-    },
-    "ToolResultTerminalOutputContent": {
-      "type": "object",
-      "description": "An inline output snapshot from a running terminal-style tool call.\n\nThis content may accompany a {@link ToolResultTerminalContent} block but\ndoes not require a terminal resource.",
-      "properties": {
-        "type": {
-          "const": "terminalOutput"
         },
         "output": {
           "type": "string",
-          "description": "Output in this snapshot"
+          "description": "Inline snapshot of output produced so far. A replacement snapshot, not a\ndelta: each `chat/toolCallContentChanged` action supersedes the previous\nsnapshot."
+        },
+        "isPty": {
+          "type": "boolean",
+          "description": "Whether this terminal-style resource is backed by a pseudoterminal."
         }
       },
       "required": [
-        "type",
-        "output"
+        "type"
       ]
     },
     "ToolResultTerminalCompleteContent": {
@@ -4643,6 +4632,10 @@
         "supportsCommandDetection": {
           "type": "boolean",
           "description": "Whether this terminal emits `terminal/commandExecuted` and\n`terminal/commandFinished` actions and populates `command`-typed parts.\n\nClients MUST check this flag before relying on command detection.\nDo NOT use the presence of a `command` part as a feature flag — parts\nare absent in the normal idle state."
+        },
+        "isPty": {
+          "type": "boolean",
+          "description": "Whether this terminal-style resource is backed by a pseudoterminal."
         }
       },
       "required": [
@@ -5517,16 +5510,13 @@
           "$ref": "#/$defs/ToolResultTerminalContent"
         },
         {
-          "$ref": "#/$defs/ToolResultTerminalOutputContent"
-        },
-        {
           "$ref": "#/$defs/ToolResultTerminalCompleteContent"
         },
         {
           "$ref": "#/$defs/ToolResultSubagentContent"
         }
       ],
-      "description": "Content block in a tool result.\n\nMirrors the content blocks in MCP `CallToolResult.content`, plus\n`ToolResultResourceContent` for lazy-loading large results,\n`ToolResultFileEditContent` for file edit diffs,\n`ToolResultTerminalContent` for live terminal output,\n`ToolResultTerminalOutputContent` for inline live command output,\n`ToolResultTerminalCompleteContent` for terminal-style completion metadata, and\n`ToolResultSubagentContent` for tool-spawned worker chats (AHP extensions)."
+      "description": "Content block in a tool result.\n\nMirrors the content blocks in MCP `CallToolResult.content`, plus\n`ToolResultResourceContent` for lazy-loading large results,\n`ToolResultFileEditContent` for file edit diffs,\n`ToolResultTerminalContent` for live terminal output,\n`ToolResultTerminalCompleteContent` for terminal-style completion metadata, and\n`ToolResultSubagentContent` for tool-spawned worker chats (AHP extensions)."
     },
     "ToolCallRiskAssessment": {
       "oneOf": [

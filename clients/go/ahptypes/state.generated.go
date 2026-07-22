@@ -291,7 +291,6 @@ const (
 	ToolResultContentTypeResource         ToolResultContentType = "resource"
 	ToolResultContentTypeFileEdit         ToolResultContentType = "fileEdit"
 	ToolResultContentTypeTerminal         ToolResultContentType = "terminal"
-	ToolResultContentTypeTerminalOutput   ToolResultContentType = "terminalOutput"
 	ToolResultContentTypeTerminalComplete ToolResultContentType = "terminalComplete"
 	ToolResultContentTypeSubagent         ToolResultContentType = "subagent"
 )
@@ -2148,26 +2147,30 @@ type ToolResultFileEditContent struct {
 	Type ToolResultContentType `json:"type"`
 }
 
-// A reference to a terminal whose output is relevant to this tool result.
+// A reference to a terminal whose output is relevant to this tool result,
+// or an inline terminal-style output snapshot. At least one of
+// {@link resource} or {@link output} SHOULD be present.
 //
 // Clients can subscribe to the terminal's URI to stream its output in real
-// time, providing live feedback while a tool is executing.
+// time, providing live feedback while a tool is executing. When both
+// `resource` and `output` are present the resource is authoritative —
+// `output` offers a bounded snapshot for clients that do not subscribe.
+//
+// A {@link ToolResultTerminalCompleteContent} block can retain completion
+// metadata for a command associated with this terminal and reference the same
+// resource.
 type ToolResultTerminalContent struct {
 	Type ToolResultContentType `json:"type"`
 	// Terminal URI (subscribable for full terminal state)
-	Resource URI `json:"resource"`
+	Resource *URI `json:"resource,omitempty"`
 	// Display title for the terminal content
-	Title string `json:"title"`
-}
-
-// An inline output snapshot from a running terminal-style tool call.
-//
-// This content may accompany a {@link ToolResultTerminalContent} block but
-// does not require a terminal resource.
-type ToolResultTerminalOutputContent struct {
-	Type ToolResultContentType `json:"type"`
-	// Output in this snapshot
-	Output string `json:"output"`
+	Title *string `json:"title,omitempty"`
+	// Inline snapshot of output produced so far. A replacement snapshot, not a
+	// delta: each `chat/toolCallContentChanged` action supersedes the previous
+	// snapshot.
+	Output *string `json:"output,omitempty"`
+	// Whether this terminal-style resource is backed by a pseudoterminal.
+	IsPty *bool `json:"isPty,omitempty"`
 }
 
 // Record of a command executed by a terminal-style tool (e.g. a shell tool),
@@ -3016,6 +3019,8 @@ type TerminalState struct {
 	// Do NOT use the presence of a `command` part as a feature flag — parts
 	// are absent in the normal idle state.
 	SupportsCommandDetection *bool `json:"supportsCommandDetection,omitempty"`
+	// Whether this terminal-style resource is backed by a pseudoterminal.
+	IsPty *bool `json:"isPty,omitempty"`
 }
 
 // Unstructured terminal output — content before, between, or after commands,
@@ -4021,7 +4026,6 @@ func (*ToolResultEmbeddedResourceContent) isToolResultContent() {}
 func (*ToolResultResourceContent) isToolResultContent()         {}
 func (*ToolResultFileEditContent) isToolResultContent()         {}
 func (*ToolResultTerminalContent) isToolResultContent()         {}
-func (*ToolResultTerminalOutputContent) isToolResultContent()   {}
 func (*ToolResultTerminalCompleteContent) isToolResultContent() {}
 func (*ToolResultSubagentContent) isToolResultContent()         {}
 
@@ -4065,12 +4069,6 @@ func (u *ToolResultContent) UnmarshalJSON(data []byte) error {
 		u.Value = &value
 	case "terminal":
 		var value ToolResultTerminalContent
-		if err := json.Unmarshal(data, &value); err != nil {
-			return err
-		}
-		u.Value = &value
-	case "terminalOutput":
-		var value ToolResultTerminalOutputContent
 		if err := json.Unmarshal(data, &value); err != nil {
 			return err
 		}

@@ -1,0 +1,5 @@
+{
+  "type": "changed",
+  "message": "`ToolResultTerminalContent` now carries optional inline `output` snapshots and optional `isPty` metadata, with `resource` and `title` now optional; `TerminalState` gains matching `isPty` metadata.",
+  "issues": [322, 323]
+}

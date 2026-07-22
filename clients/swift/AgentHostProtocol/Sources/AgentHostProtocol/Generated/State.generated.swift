@@ -267,7 +267,6 @@ public enum ToolResultContentType: String, Codable, Sendable {
     case resource = "resource"
     case fileEdit = "fileEdit"
     case terminal = "terminal"
-    case terminalOutput = "terminalOutput"
     case terminalComplete = "terminalComplete"
     case subagent = "subagent"
 }
@@ -3218,32 +3217,28 @@ public struct ToolResultFileEditContent: Codable, Sendable {
 public struct ToolResultTerminalContent: Codable, Sendable {
     public var type: ToolResultContentType
     /// Terminal URI (subscribable for full terminal state)
-    public var resource: String
+    public var resource: String?
     /// Display title for the terminal content
-    public var title: String
+    public var title: String?
+    /// Inline snapshot of output produced so far. A replacement snapshot, not a
+    /// delta: each `chat/toolCallContentChanged` action supersedes the previous
+    /// snapshot.
+    public var output: String?
+    /// Whether this terminal-style resource is backed by a pseudoterminal.
+    public var isPty: Bool?
 
     public init(
         type: ToolResultContentType,
-        resource: String,
-        title: String
+        resource: String? = nil,
+        title: String? = nil,
+        output: String? = nil,
+        isPty: Bool? = nil
     ) {
         self.type = type
         self.resource = resource
         self.title = title
-    }
-}
-
-public struct ToolResultTerminalOutputContent: Codable, Sendable {
-    public var type: ToolResultContentType
-    /// Output in this snapshot
-    public var output: String
-
-    public init(
-        type: ToolResultContentType,
-        output: String
-    ) {
-        self.type = type
         self.output = output
+        self.isPty = isPty
     }
 }
 
@@ -4497,6 +4492,8 @@ public struct TerminalState: Codable, Sendable {
     /// Do NOT use the presence of a `command` part as a feature flag — parts
     /// are absent in the normal idle state.
     public var supportsCommandDetection: Bool?
+    /// Whether this terminal-style resource is backed by a pseudoterminal.
+    public var isPty: Bool?
 
     public init(
         title: String,
@@ -4506,7 +4503,8 @@ public struct TerminalState: Codable, Sendable {
         content: [TerminalContentPart],
         exitCode: Int? = nil,
         claim: TerminalClaim,
-        supportsCommandDetection: Bool? = nil
+        supportsCommandDetection: Bool? = nil,
+        isPty: Bool? = nil
     ) {
         self.title = title
         self.cwd = cwd
@@ -4516,6 +4514,7 @@ public struct TerminalState: Codable, Sendable {
         self.exitCode = exitCode
         self.claim = claim
         self.supportsCommandDetection = supportsCommandDetection
+        self.isPty = isPty
     }
 }
 
@@ -5781,7 +5780,6 @@ public enum ToolResultContent: Codable, Sendable {
     case resource(ToolResultResourceContent)
     case fileEdit(ToolResultFileEditContent)
     case terminal(ToolResultTerminalContent)
-    case terminalOutput(ToolResultTerminalOutputContent)
     case terminalComplete(ToolResultTerminalCompleteContent)
     case subagent(ToolResultSubagentContent)
     /// Unknown or future tool result content type; the raw payload is preserved
@@ -5806,8 +5804,6 @@ public enum ToolResultContent: Codable, Sendable {
                 self = .fileEdit(try ToolResultFileEditContent(from: decoder))
             case "terminal":
                 self = .terminal(try ToolResultTerminalContent(from: decoder))
-            case "terminalOutput":
-                self = .terminalOutput(try ToolResultTerminalOutputContent(from: decoder))
             case "terminalComplete":
                 self = .terminalComplete(try ToolResultTerminalCompleteContent(from: decoder))
             case "subagent":
@@ -5830,7 +5826,6 @@ public enum ToolResultContent: Codable, Sendable {
         case .resource(let v): try v.encode(to: encoder)
         case .fileEdit(let v): try v.encode(to: encoder)
         case .terminal(let v): try v.encode(to: encoder)
-        case .terminalOutput(let v): try v.encode(to: encoder)
         case .terminalComplete(let v): try v.encode(to: encoder)
         case .subagent(let v): try v.encode(to: encoder)
         case .unknown(let v): try v.encode(to: encoder)

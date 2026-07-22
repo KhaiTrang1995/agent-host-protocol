@@ -1,7 +1,7 @@
 {
-  "name": "terminal-output-content",
+  "name": "terminal-content-ispty",
   "group": "A",
-  "description": "ActionEnvelope carries an inline terminal output snapshot.",
+  "description": "ActionEnvelope carries a terminal reference marked as non-PTY (isPty false), allowing clients to identify its backing before subscribing.",
   "type": "ActionEnvelope",
   "input": {
     "channel": "ahp-chat:/s1/c1",
@@ -11,20 +11,24 @@
       "toolCallId": "tool-1",
       "content": [
         {
-          "type": "terminalOutput",
-          "output": "line 2\nline 3\n"
+          "type": "terminal",
+          "resource": "ahp-terminal:/s1/t1",
+          "title": "npm test",
+          "isPty": false
         }
       ]
     },
-    "serverSeq": 8
+    "serverSeq": 10
   },
   "acceptableOutputs": [
     {
       "action": {
         "content": [
           {
-            "output": "line 2\nline 3\n",
-            "type": "terminalOutput"
+            "isPty": false,
+            "resource": "ahp-terminal:/s1/t1",
+            "title": "npm test",
+            "type": "terminal"
           }
         ],
         "toolCallId": "tool-1",
@@ -32,7 +36,7 @@
         "type": "chat/toolCallContentChanged"
       },
       "channel": "ahp-chat:/s1/c1",
-      "serverSeq": 8
+      "serverSeq": 10
     }
   ]
 }
