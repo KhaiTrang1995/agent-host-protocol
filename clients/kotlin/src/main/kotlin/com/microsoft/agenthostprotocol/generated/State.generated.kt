@@ -196,6 +196,24 @@ enum class ChatOriginKind {
 }
 
 /**
+ * Discriminant for {@link ChatSourceTurn} — which kind of source-turn snapshot
+ * a fork or side chat was created from.
+ */
+@Serializable
+enum class ChatSourceTurnKind {
+    /**
+     * A completed turn retained in the source chat's `turns`.
+     */
+    @SerialName("completed")
+    COMPLETED,
+    /**
+     * The source chat's current in-progress `activeTurn`.
+     */
+    @SerialName("active")
+    ACTIVE
+}
+
+/**
  * How a user can interact with a chat.
  *
  * - `Full` — user can send messages and watch (default when absent)
@@ -992,8 +1010,10 @@ data class MultipleChatsCapability(
      * `kind: "sideChat"` to `createChat`.
      *
      * A side chat receives the source turn as context without copying the source
-     * transcript into its own visible history. Side-chat support always implies
-     * multi-chat support.
+     * transcript into its own visible history. The source may be a completed turn
+     * or the source chat's current active turn; when active, the host snapshots
+     * the available partial assistant response at creation time. Side-chat
+     * support always implies multi-chat support.
      */
     val sideChat: Boolean? = null
 )
@@ -1322,6 +1342,30 @@ data class ChatSummary(
      * See {@link ChatState.primaryWorkingDirectory} for the full semantics.
      */
     val primaryWorkingDirectory: String? = null
+)
+
+@Serializable
+data class CompletedChatSourceTurn(
+    /**
+     * Discriminant
+     */
+    val kind: ChatSourceTurnKind,
+    /**
+     * Turn identifier in the source chat.
+     */
+    val turnId: String
+)
+
+@Serializable
+data class ActiveChatSourceTurn(
+    /**
+     * Discriminant
+     */
+    val kind: ChatSourceTurnKind,
+    /**
+     * Active turn identifier in the source chat.
+     */
+    val turnId: String
 )
 
 @Serializable
@@ -4632,6 +4676,44 @@ data class ResourceChange(
 
 // ─── Discriminated Unions ───────────────────────────────────────────────────
 
+@Serializable(with = ChatSourceTurnSerializer::class)
+sealed interface ChatSourceTurn
+
+@JvmInline
+value class ChatSourceTurnCompleted(val value: CompletedChatSourceTurn) : ChatSourceTurn
+@JvmInline
+value class ChatSourceTurnActive(val value: ActiveChatSourceTurn) : ChatSourceTurn
+
+internal object ChatSourceTurnSerializer : KSerializer<ChatSourceTurn> {
+    override val descriptor: SerialDescriptor =
+        buildClassSerialDescriptor("ChatSourceTurn")
+
+    override fun deserialize(decoder: Decoder): ChatSourceTurn {
+        val input = decoder as? JsonDecoder
+            ?: error("ChatSourceTurn can only be deserialized from JSON")
+        val element = input.decodeJsonElement()
+        val obj = element as? JsonObject
+            ?: error("Expected JsonObject for ChatSourceTurn")
+        val discriminant = (obj["kind"] as? JsonPrimitive)?.content
+            ?: error("Missing kind discriminator on ChatSourceTurn")
+        return when (discriminant) {
+            "completed" -> ChatSourceTurnCompleted(input.json.decodeFromJsonElement(CompletedChatSourceTurn.serializer(), element))
+            "active" -> ChatSourceTurnActive(input.json.decodeFromJsonElement(ActiveChatSourceTurn.serializer(), element))
+            else -> error("Unknown ChatSourceTurn discriminator: $discriminant")
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: ChatSourceTurn) {
+        val output = encoder as? JsonEncoder
+            ?: error("ChatSourceTurn can only be serialized to JSON")
+        val element: JsonElement = when (value) {
+            is ChatSourceTurnCompleted -> output.json.encodeToJsonElement(CompletedChatSourceTurn.serializer(), value.value)
+            is ChatSourceTurnActive -> output.json.encodeToJsonElement(ActiveChatSourceTurn.serializer(), value.value)
+        }
+        output.encodeJsonElement(element)
+    }
+}
+
 @Serializable(with = ChatOriginSerializer::class)
 sealed interface ChatOrigin {
     @JvmInline value class User(val value: ChatOriginUser) : ChatOrigin
@@ -4650,7 +4732,7 @@ data class ChatOriginUser(
 data class ChatOriginFork(
     val kind: ChatOriginKind = ChatOriginKind.FORK,
     val chat: String,
-    val turnId: String,
+    val turn: CompletedChatSourceTurn,
 )
 
 @Serializable
@@ -4664,7 +4746,7 @@ data class ChatOriginTool(
 data class ChatOriginSideChat(
     val kind: ChatOriginKind = ChatOriginKind.SIDE_CHAT,
     val chat: String,
-    val turnId: String,
+    val turn: ChatSourceTurn,
 )
 
 internal object ChatOriginSerializer : KSerializer<ChatOrigin> {

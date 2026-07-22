@@ -641,7 +641,7 @@ function generateDiscriminatedUnion(cfg: UnionConfig): string {
 
 const STATE_ENUMS = [
   'PolicyState', 'SessionLifecycle', 'SessionStatus',
-  'ChatOriginKind', 'ChatInteractivity', 'PendingMessageKind', 'ChatInputAnswerState', 'ChatInputAnswerValueKind', 'ChatInputQuestionKind',
+  'ChatOriginKind', 'ChatSourceTurnKind', 'ChatInteractivity', 'PendingMessageKind', 'ChatInputAnswerState', 'ChatInputAnswerValueKind', 'ChatInputQuestionKind',
   'ChatInputResponseKind', 'SessionInputRequestKind',
   'TurnState', 'MessageKind', 'MessageAttachmentKind', 'ResponsePartKind', 'ToolCallStatus',
   'ToolCallConfirmationReason', 'ToolCallRiskAssessmentKind',
@@ -677,6 +677,8 @@ const STATE_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: strin
   { name: 'ChangesSummary' },
   { name: 'ChatState' },
   { name: 'ChatSummary' },
+  { name: 'CompletedChatSourceTurn' },
+  { name: 'ActiveChatSourceTurn' },
   { name: 'PendingMessage' },
   { name: 'ProjectInfo' },
   { name: 'SessionConfigPropertySchema' },
@@ -1025,7 +1027,7 @@ func (*ChatUserOrigin) isChatOrigin() {}
 type ChatForkOrigin struct {
 \tKind   ChatOriginKind \`json:"kind"\`
 \tChat   URI            \`json:"chat"\`
-\tTurnId string         \`json:"turnId"\`
+\tTurn   CompletedChatSourceTurn \`json:"turn"\`
 }
 
 func (*ChatForkOrigin) isChatOrigin() {}
@@ -1033,7 +1035,7 @@ func (*ChatForkOrigin) isChatOrigin() {}
 type ChatSideChatOrigin struct {
 \tKind   ChatOriginKind \`json:"kind"\`
 \tChat   URI            \`json:"chat"\`
-\tTurnId string         \`json:"turnId"\`
+\tTurn   ChatSourceTurn \`json:"turn"\`
 }
 
 func (*ChatSideChatOrigin) isChatOrigin() {}
@@ -1269,6 +1271,8 @@ function generateStateFile(project: Project): string {
   lines.push('');
   lines.push(generateDiscriminatedUnion(SESSION_INPUT_REQUEST_UNION));
   lines.push('');
+  lines.push(generateDiscriminatedUnion(CHAT_SOURCE_TURN_UNION));
+  lines.push('');
   lines.push(generateChatOriginGo());
   lines.push('');
   lines.push(generateSnapshotState());
@@ -1481,7 +1485,7 @@ const COMMAND_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: str
   { name: 'SubscribeParams' }, { name: 'SubscribeView' }, { name: 'SubscriptionDeliveryOptions' }, { name: 'SubscribeResult' },
   { name: 'SessionForkSource' }, { name: 'CreateSessionParams' },
   { name: 'DisposeSessionParams' },
-  { name: 'ChatSource' }, { name: 'CreateChatParams' }, { name: 'DisposeChatParams' },
+  { name: 'ForkChatSource' }, { name: 'SideChatSource' }, { name: 'CreateChatParams' }, { name: 'DisposeChatParams' },
   { name: 'ListSessionsParams' }, { name: 'ListSessionsResult' },
   { name: 'ResourceReadParams' }, { name: 'ResourceReadResult' },
   { name: 'ResourceWriteParams' }, { name: 'ResourceWriteResult' },
@@ -1513,6 +1517,26 @@ const RECONNECT_RESULT_UNION: UnionConfig = {
   variants: [
     { variantName: 'Replay', innerType: 'ReconnectReplayResult', wireValue: 'replay' },
     { variantName: 'Snapshot', innerType: 'ReconnectSnapshotResult', wireValue: 'snapshot' },
+  ],
+};
+
+const CHAT_SOURCE_UNION: UnionConfig = {
+  name: 'ChatSource',
+  discriminantField: 'kind',
+  doc: 'ChatSource identifies how a new chat uses a source chat.',
+  variants: [
+    { variantName: 'Fork', innerType: 'ForkChatSource', wireValue: 'fork' },
+    { variantName: 'SideChat', innerType: 'SideChatSource', wireValue: 'sideChat' },
+  ],
+};
+
+const CHAT_SOURCE_TURN_UNION: UnionConfig = {
+  name: 'ChatSourceTurn',
+  discriminantField: 'kind',
+  doc: 'ChatSourceTurn identifies whether a source-turn snapshot came from a completed or active turn.',
+  variants: [
+    { variantName: 'Completed', innerType: 'CompletedChatSourceTurn', wireValue: 'completed' },
+    { variantName: 'Active', innerType: 'ActiveChatSourceTurn', wireValue: 'active' },
   ],
 };
 
@@ -1608,6 +1632,10 @@ function generateCommandsFile(project: Project): string {
       lines.push('');
     }
   }
+
+  lines.push('// ─── ChatSource Union ─────────────────────────────────────────────────\n');
+  lines.push(generateDiscriminatedUnion(CHAT_SOURCE_UNION));
+  lines.push('');
 
   lines.push('// ─── ReconnectResult Union ────────────────────────────────────────────\n');
   lines.push(generateDiscriminatedUnion(RECONNECT_RESULT_UNION));
@@ -1964,7 +1992,9 @@ function checkExhaustiveness(project: Project): void {
     'PingParams',
     'TerminalClaim',
     'TerminalContentPart',
+    'ChatSourceTurn',
     'ChatOrigin',
+    'ChatSource',
     'ChatInputQuestion',
     'ChatInputAnswerValue',
     'ChatInputAnswer',

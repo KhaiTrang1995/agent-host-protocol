@@ -560,10 +560,10 @@
           "type": "object",
           "properties": {
             "uri": {
-              "type": "string"
+              "$ref": "#/$defs/URI"
             },
             "content": {
-              "type": "string"
+              "$ref": "#/$defs/ContentRef"
             }
           },
           "required": [
@@ -576,10 +576,10 @@
           "type": "object",
           "properties": {
             "uri": {
-              "type": "string"
+              "$ref": "#/$defs/URI"
             },
             "content": {
-              "type": "string"
+              "$ref": "#/$defs/ContentRef"
             }
           },
           "required": [
@@ -807,7 +807,7 @@
         },
         "sideChat": {
           "type": "boolean",
-          "description": "The agent can create a side chat from a specific turn. When absent or\n`false`, clients MUST NOT pass a {@link ChatSource} with\n`kind: \"sideChat\"` to `createChat`.\n\nA side chat receives the source turn as context without copying the source\ntranscript into its own visible history. Side-chat support always implies\nmulti-chat support."
+          "description": "The agent can create a side chat from a specific turn. When absent or\n`false`, clients MUST NOT pass a {@link ChatSource} with\n`kind: \"sideChat\"` to `createChat`.\n\nA side chat receives the source turn as context without copying the source\ntranscript into its own visible history. The source may be a completed turn\nor the source chat's current active turn; when active, the host snapshots\nthe available partial assistant response at creation time. Side-chat\nsupport always implies multi-chat support."
         }
       }
     },
@@ -1511,13 +1511,22 @@
           "type": "object",
           "properties": {
             "type": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "object"
+              ]
             },
             "properties": {
-              "type": "string"
+              "type": "object",
+              "additionalProperties": {
+                "type": "object"
+              }
             },
             "required": {
-              "type": "string"
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           },
           "required": [
@@ -1529,13 +1538,22 @@
           "type": "object",
           "properties": {
             "type": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "object"
+              ]
             },
             "properties": {
-              "type": "string"
+              "type": "object",
+              "additionalProperties": {
+                "type": "object"
+              }
             },
             "required": {
-              "type": "string"
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           },
           "required": [
@@ -2387,7 +2405,8 @@
           "type": "object",
           "properties": {
             "tools": {
-              "type": "string"
+              "type": "object",
+              "additionalProperties": {}
             }
           },
           "description": "Producer serves `sampling/createMessage` via `mcpMethodCall`."
@@ -2670,6 +2689,42 @@
         "title",
         "status",
         "modifiedAt"
+      ]
+    },
+    "CompletedChatSourceTurn": {
+      "type": "object",
+      "description": "A completed turn used as a chat source or recorded in chat origin.",
+      "properties": {
+        "kind": {
+          "const": "completed",
+          "description": "Discriminant"
+        },
+        "turnId": {
+          "type": "string",
+          "description": "Turn identifier in the source chat."
+        }
+      },
+      "required": [
+        "kind",
+        "turnId"
+      ]
+    },
+    "ActiveChatSourceTurn": {
+      "type": "object",
+      "description": "The current in-progress turn used as a side-chat source or recorded in chat\norigin.\n\nWhen a host accepts side-chat creation from an active turn, it snapshots the\nsource chat's retained history plus that turn's current user message and any\npartial assistant response already available. Later source-turn deltas do not\nretroactively change the created side chat's starting context.",
+      "properties": {
+        "kind": {
+          "const": "active",
+          "description": "Discriminant"
+        },
+        "turnId": {
+          "type": "string",
+          "description": "Active turn identifier in the source chat."
+        }
+      },
+      "required": [
+        "kind",
+        "turnId"
       ]
     },
     "PendingMessage": {
@@ -3957,7 +4012,10 @@
           "type": "object",
           "properties": {
             "items": {
-              "type": "string"
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/FileEdit"
+              }
             }
           },
           "required": [
@@ -4470,10 +4528,10 @@
           "type": "object",
           "properties": {
             "uri": {
-              "type": "string"
+              "$ref": "#/$defs/URI"
             },
             "content": {
-              "type": "string"
+              "$ref": "#/$defs/ContentRef"
             }
           },
           "required": [
@@ -4486,10 +4544,10 @@
           "type": "object",
           "properties": {
             "uri": {
-              "type": "string"
+              "$ref": "#/$defs/URI"
             },
             "content": {
-              "type": "string"
+              "$ref": "#/$defs/ContentRef"
             }
           },
           "required": [
@@ -5080,7 +5138,10 @@
           "type": "object",
           "properties": {
             "items": {
-              "type": "string"
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           },
           "required": [
@@ -5092,7 +5153,10 @@
           "type": "object",
           "properties": {
             "items": {
-              "type": "string"
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           },
           "required": [
@@ -5363,16 +5427,16 @@
               "const": "fork"
             },
             "chat": {
-              "type": "string"
+              "$ref": "#/$defs/URI"
             },
-            "turnId": {
-              "type": "string"
+            "turn": {
+              "$ref": "#/$defs/CompletedChatSourceTurn"
             }
           },
           "required": [
             "kind",
             "chat",
-            "turnId"
+            "turn"
           ]
         },
         {
@@ -5382,16 +5446,16 @@
               "const": "sideChat"
             },
             "chat": {
-              "type": "string"
+              "$ref": "#/$defs/URI"
             },
-            "turnId": {
-              "type": "string"
+            "turn": {
+              "$ref": "#/$defs/ChatSourceTurn"
             }
           },
           "required": [
             "kind",
             "chat",
-            "turnId"
+            "turn"
           ]
         },
         {
@@ -5401,7 +5465,7 @@
               "const": "tool"
             },
             "chat": {
-              "type": "string"
+              "$ref": "#/$defs/URI"
             },
             "toolCallId": {
               "type": "string"
@@ -5701,6 +5765,17 @@
       ],
       "type": "string",
       "description": "Discriminant for {@link ResourceChange.type}."
+    },
+    "ChatSourceTurn": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/CompletedChatSourceTurn"
+        },
+        {
+          "$ref": "#/$defs/ActiveChatSourceTurn"
+        }
+      ],
+      "description": "A source-turn reference used by chat creation and durable chat origin state."
     }
   }
 }

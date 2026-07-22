@@ -102,6 +102,27 @@ describe('generated JSON schemas', () => {
 
         assert.deepEqual(kinds, ['user', 'fork', 'sideChat', 'tool']);
       });
+
+      it('references structured source-turn payloads from ChatOrigin', () => {
+        const defs = schema.$defs as Record<string, Record<string, unknown>>;
+        const chatOrigin = defs.ChatOrigin;
+        const branches = chatOrigin.oneOf as Array<Record<string, unknown>>;
+        const branchByKind = new Map(
+          branches.map((branch) => {
+            const properties = branch.properties as Record<string, Record<string, unknown>>;
+            return [properties.kind.const as string, properties];
+          }),
+        );
+
+        assert.deepEqual(
+          branchByKind.get('fork')?.turn,
+          { $ref: '#/$defs/CompletedChatSourceTurn' },
+        );
+        assert.deepEqual(
+          branchByKind.get('sideChat')?.turn,
+          { $ref: '#/$defs/ChatSourceTurn' },
+        );
+      });
     });
   }
 });

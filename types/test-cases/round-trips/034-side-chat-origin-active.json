@@ -1,21 +1,21 @@
 {
-  "name": "side-chat-origin",
+  "name": "side-chat-origin-active",
   "group": "A",
-  "description": "A session/chatAdded action preserves completed-turn side-chat provenance through the ChatOrigin discriminated union.",
+  "description": "A session/chatAdded action preserves active-turn side-chat provenance through the ChatOrigin discriminated union.",
   "type": "StateAction",
   "input": {
     "type": "session/chatAdded",
     "summary": {
-      "resource": "ahp-chat:/side",
+      "resource": "ahp-chat:/side-active",
       "title": "Side investigation",
       "status": 1,
-      "modifiedAt": "2026-07-13T19:00:00.000Z",
+      "modifiedAt": "2026-07-22T20:00:00.000Z",
       "origin": {
         "kind": "sideChat",
         "chat": "ahp-chat:/main",
         "turn": {
-          "kind": "completed",
-          "turnId": "turn-12"
+          "kind": "active",
+          "turnId": "turn-active"
         }
       }
     }
@@ -24,16 +24,16 @@
     {
       "type": "session/chatAdded",
       "summary": {
-        "resource": "ahp-chat:/side",
+        "resource": "ahp-chat:/side-active",
         "title": "Side investigation",
         "status": 1,
-        "modifiedAt": "2026-07-13T19:00:00.000Z",
+        "modifiedAt": "2026-07-22T20:00:00.000Z",
         "origin": {
           "kind": "sideChat",
           "chat": "ahp-chat:/main",
           "turn": {
-            "kind": "completed",
-            "turnId": "turn-12"
+            "kind": "active",
+            "turnId": "turn-active"
           }
         }
       }

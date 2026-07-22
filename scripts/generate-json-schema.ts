@@ -271,8 +271,7 @@ function inlineObjectToSchema(text: string, project: Project): JsonSchema {
     if (match) {
       const [, name, optional, type] = match;
       const fieldType = type.trim();
-      schema.properties![name] =
-        enumMemberToSchema(fieldType, project) ?? { type: mapSimpleType(fieldType) };
+      schema.properties![name] = typeTextToSchema(fieldType, project);
       if (!optional) {
         schema.required!.push(name);
       }
@@ -281,13 +280,6 @@ function inlineObjectToSchema(text: string, project: Project): JsonSchema {
 
   if (schema.required!.length === 0) delete schema.required;
   return schema;
-}
-
-function mapSimpleType(t: string): string {
-  if (t === 'string') return 'string';
-  if (t === 'number') return 'number';
-  if (t === 'boolean') return 'boolean';
-  return 'string'; // fallback
 }
 
 // ─── Interface → JSON Schema ─────────────────────────────────────────────────

@@ -15,9 +15,9 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use crate::actions::{ActionEnvelope, StateAction};
 #[allow(unused_imports)]
 use crate::state::{
-    AgentSelection, ContentRef, Message, MessageAttachment, ModelSelection, SessionActiveClient,
-    SessionConfigSchema, SessionSummary, Snapshot, SnapshotState, TelemetryCapabilities,
-    TerminalClaim, TextRange, Turn,
+    AgentSelection, ChatSourceTurn, CompletedChatSourceTurn, ContentRef, Message,
+    MessageAttachment, ModelSelection, SessionActiveClient, SessionConfigSchema, SessionSummary,
+    Snapshot, SnapshotState, TelemetryCapabilities, TerminalClaim, TextRange, Turn,
 };
 
 // ─── Enums ────────────────────────────────────────────────────────────
@@ -479,18 +479,36 @@ pub struct DisposeSessionParams {
     pub channel: Uri,
 }
 
-/// Identifies a source chat and completed turn for a new chat.
+/// Copies source history through a completed turn into the new chat.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatSource {
-    /// How the source is used.
+pub struct ForkChatSource {
+    /// Discriminant
     pub kind: ChatSourceKind,
     /// URI of the existing source chat.
     pub chat: Uri,
-    /// Completed turn in the source chat. For a fork, content through this turn is
-    /// copied. For a side chat, that content is supplied as context but is not
-    /// copied into the new chat's visible `turns`.
-    pub turn_id: String,
+    /// Completed turn in the source chat. Content through this turn is copied into
+    /// the new chat's visible `turns`.
+    pub turn: CompletedChatSourceTurn,
+}
+
+/// Supplies source context to a new side chat without copying it into the side
+/// chat's visible history.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SideChatSource {
+    /// Discriminant
+    pub kind: ChatSourceKind,
+    /// URI of the existing source chat.
+    pub chat: Uri,
+    /// Source turn in the source chat.
+    ///
+    /// When this is `kind: "completed"`, the side chat is seeded from the source
+    /// chat's retained history through that turn. When this is `kind: "active"`,
+    /// the host snapshots the source chat's retained history plus the active turn's
+    /// current user message and any partial assistant response already available
+    /// when accepting `createChat`.
+    pub turn: ChatSourceTurn,
 }
 
 /// Creates a new chat within a session.
@@ -504,13 +522,15 @@ pub struct CreateChatParams {
     /// Optional initial message for the new chat.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_message: Option<Message>,
-    /// Optional source chat and completed turn.
+    /// Optional source chat and source turn.
     ///
     /// The source chat MUST belong to this session. Clients MUST only request
     /// `kind: "fork"` when the selected agent advertises
     /// `capabilities.multipleChats.fork`, and
     /// `kind: "sideChat"` when the selected agent advertises
-    /// `capabilities.multipleChats.sideChat`.
+    /// `capabilities.multipleChats.sideChat`. Forks require
+    /// `source.turn.kind: "completed"`. Side chats accept either a completed turn
+    /// or the source chat's current active turn.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<ChatSource>,
     /// Initial working-directory subset for this chat. Every entry MUST be
@@ -1320,6 +1340,52 @@ pub struct ChangesetOperationFollowUp {
     /// When `true`, open in an external handler rather than inline.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external: Option<bool>,
+}
+
+// ─── ChatSource Union ─────────────────────────────────────────────────
+
+/// How a new chat uses a source chat.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "serde_json::Value", into = "serde_json::Value")]
+pub enum ChatSource {
+    Fork(ForkChatSource),
+    SideChat(SideChatSource),
+}
+
+impl TryFrom<serde_json::Value> for ChatSource {
+    type Error = String;
+
+    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+        let Some(object) = value.as_object() else {
+            return Err("ChatSource must be a JSON object".to_string());
+        };
+        let Some(kind) = object.get("kind").and_then(|value| value.as_str()) else {
+            return Err("ChatSource is missing a string kind discriminant".to_string());
+        };
+
+        match kind {
+            "fork" => serde_json::from_value(value)
+                .map(|inner| Self::Fork(inner))
+                .map_err(|error| error.to_string()),
+            "sideChat" => serde_json::from_value(value)
+                .map(|inner| Self::SideChat(inner))
+                .map_err(|error| error.to_string()),
+            _ => Err(format!("unknown kind: {kind}")),
+        }
+    }
+}
+
+impl From<ChatSource> for serde_json::Value {
+    fn from(value: ChatSource) -> Self {
+        match value {
+            ChatSource::Fork(inner) => {
+                serde_json::to_value(inner).expect("serializing ChatSource::Fork")
+            }
+            ChatSource::SideChat(inner) => {
+                serde_json::to_value(inner).expect("serializing ChatSource::SideChat")
+            }
+        }
+    }
 }
 
 // ─── ReconnectResult Union ────────────────────────────────────────────

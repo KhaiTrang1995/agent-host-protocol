@@ -384,16 +384,32 @@ type DisposeSessionParams struct {
 	Channel URI `json:"channel"`
 }
 
-// Identifies a source chat and completed turn for a new chat.
-type ChatSource struct {
-	// How the source is used.
+// Copies source history through a completed turn into the new chat.
+type ForkChatSource struct {
+	// Discriminant
 	Kind ChatSourceKind `json:"kind"`
 	// URI of the existing source chat.
 	Chat URI `json:"chat"`
-	// Completed turn in the source chat. For a fork, content through this turn is
-	// copied. For a side chat, that content is supplied as context but is not
-	// copied into the new chat's visible `turns`.
-	TurnId string `json:"turnId"`
+	// Completed turn in the source chat. Content through this turn is copied into
+	// the new chat's visible `turns`.
+	Turn CompletedChatSourceTurn `json:"turn"`
+}
+
+// Supplies source context to a new side chat without copying it into the side
+// chat's visible history.
+type SideChatSource struct {
+	// Discriminant
+	Kind ChatSourceKind `json:"kind"`
+	// URI of the existing source chat.
+	Chat URI `json:"chat"`
+	// Source turn in the source chat.
+	//
+	// When this is `kind: "completed"`, the side chat is seeded from the source
+	// chat's retained history through that turn. When this is `kind: "active"`,
+	// the host snapshots the source chat's retained history plus the active turn's
+	// current user message and any partial assistant response already available
+	// when accepting `createChat`.
+	Turn ChatSourceTurn `json:"turn"`
 }
 
 // Creates a new chat within a session.
@@ -404,13 +420,15 @@ type CreateChatParams struct {
 	Chat URI `json:"chat"`
 	// Optional initial message for the new chat.
 	InitialMessage *Message `json:"initialMessage,omitempty"`
-	// Optional source chat and completed turn.
+	// Optional source chat and source turn.
 	//
 	// The source chat MUST belong to this session. Clients MUST only request
 	// `kind: "fork"` when the selected agent advertises
 	// `capabilities.multipleChats.fork`, and
 	// `kind: "sideChat"` when the selected agent advertises
-	// `capabilities.multipleChats.sideChat`.
+	// `capabilities.multipleChats.sideChat`. Forks require
+	// `source.turn.kind: "completed"`. Side chats accept either a completed turn
+	// or the source chat's current active turn.
 	Source *ChatSource `json:"source,omitempty"`
 	// Initial working-directory subset for this chat. Every entry MUST be
 	// present in the owning session's `workingDirectories`; the server MUST
@@ -1095,6 +1113,53 @@ type ChangesetOperationFollowUp struct {
 	Content ContentRef `json:"content"`
 	// When `true`, open in an external handler rather than inline.
 	External *bool `json:"external,omitempty"`
+}
+
+// ─── ChatSource Union ─────────────────────────────────────────────────
+
+// ChatSource identifies how a new chat uses a source chat.
+type ChatSource struct {
+	Value isChatSource
+}
+
+// isChatSource is the marker interface implemented by every
+// concrete variant of ChatSource.
+type isChatSource interface{ isChatSource() }
+
+func (*ForkChatSource) isChatSource() {}
+func (*SideChatSource) isChatSource() {}
+
+// UnmarshalJSON decodes the variant indicated by the "kind" discriminator.
+func (u *ChatSource) UnmarshalJSON(data []byte) error {
+	disc, _, err := readDiscriminator(data, "kind")
+	if err != nil {
+		return err
+	}
+	switch disc {
+	case "fork":
+		var value ForkChatSource
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	case "sideChat":
+		var value SideChatSource
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	default:
+		return &json.UnmarshalTypeError{Value: "ChatSource", Type: nil}
+	}
+	return nil
+}
+
+// MarshalJSON encodes the active variant back to JSON.
+func (u ChatSource) MarshalJSON() ([]byte, error) {
+	if u.Value == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(u.Value)
 }
 
 // ─── ReconnectResult Union ────────────────────────────────────────────

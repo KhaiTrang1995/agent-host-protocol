@@ -6,7 +6,11 @@
 
 import type { URI } from '../common/state.js';
 import type { BaseParams } from '../common/commands.js';
-import type { Message } from './state.js';
+import type {
+  ChatSourceTurn,
+  CompletedChatSourceTurn,
+  Message,
+} from './state.js';
 
 // ─── createChat ──────────────────────────────────────────────────────────────
 
@@ -21,21 +25,47 @@ export const enum ChatSourceKind {
 }
 
 /**
- * Identifies a source chat and completed turn for a new chat.
- *
+ * Copies source history through a completed turn into the new chat.
  */
-export interface ChatSource {
-  /** How the source is used. */
-  kind: ChatSourceKind;
+export interface ForkChatSource {
+  /** Discriminant */
+  kind: ChatSourceKind.Fork;
   /** URI of the existing source chat. */
   chat: URI;
   /**
-   * Completed turn in the source chat. For a fork, content through this turn is
-   * copied. For a side chat, that content is supplied as context but is not
-   * copied into the new chat's visible `turns`.
+   * Completed turn in the source chat. Content through this turn is copied into
+   * the new chat's visible `turns`.
    */
-  turnId: string;
+  turn: CompletedChatSourceTurn;
 }
+
+/**
+ * Supplies source context to a new side chat without copying it into the side
+ * chat's visible history.
+ */
+export interface SideChatSource {
+  /** Discriminant */
+  kind: ChatSourceKind.SideChat;
+  /** URI of the existing source chat. */
+  chat: URI;
+  /**
+   * Source turn in the source chat.
+   *
+   * When this is `kind: "completed"`, the side chat is seeded from the source
+   * chat's retained history through that turn. When this is `kind: "active"`,
+   * the host snapshots the source chat's retained history plus the active turn's
+   * current user message and any partial assistant response already available
+   * when accepting `createChat`.
+   */
+  turn: ChatSourceTurn;
+}
+
+/**
+ * Identifies a source chat for a new chat.
+ */
+export type ChatSource =
+  | ForkChatSource
+  | SideChatSource;
 
 /**
  * Creates a new chat within a session.
@@ -54,13 +84,15 @@ export interface CreateChatParams extends BaseParams {
   /** Optional initial message for the new chat. */
   initialMessage?: Message;
   /**
-   * Optional source chat and completed turn.
+   * Optional source chat and source turn.
    *
    * The source chat MUST belong to this session. Clients MUST only request
    * `kind: "fork"` when the selected agent advertises
    * `capabilities.multipleChats.fork`, and
    * `kind: "sideChat"` when the selected agent advertises
-   * `capabilities.multipleChats.sideChat`.
+   * `capabilities.multipleChats.sideChat`. Forks require
+   * `source.turn.kind: "completed"`. Side chats accept either a completed turn
+   * or the source chat's current active turn.
    */
   source?: ChatSource;
   /**

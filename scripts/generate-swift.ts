@@ -538,7 +538,7 @@ function generatePartialStructFromInterface(
 
 const STATE_ENUMS = [
   'PolicyState', 'PendingMessageKind', 'SessionLifecycle', 'SessionStatus',
-  'ChatOriginKind', 'ChatInteractivity', 'ChatInputAnswerState', 'ChatInputAnswerValueKind', 'ChatInputQuestionKind',
+  'ChatOriginKind', 'ChatSourceTurnKind', 'ChatInteractivity', 'ChatInputAnswerState', 'ChatInputAnswerValueKind', 'ChatInputQuestionKind',
   'ChatInputResponseKind', 'SessionInputRequestKind',
   'TurnState', 'MessageKind', 'MessageAttachmentKind', 'ResponsePartKind', 'ToolCallStatus',
   'ToolCallConfirmationReason', 'ToolCallRiskAssessmentKind',
@@ -556,7 +556,7 @@ const STATE_STRUCTS = [
   'MultipleChatsCapability',
   'MultipleWorkingDirectoriesCapability',
   'SessionModelInfo', 'ModelSelection', 'AgentSelection', 'ConfigPropertySchema', 'ConfigSchema',
-  'PendingMessage', 'ChatState', 'ChatSummary', 'SessionState', 'SessionActiveClient',
+  'PendingMessage', 'ChatState', 'ChatSummary', 'CompletedChatSourceTurn', 'ActiveChatSourceTurn', 'SessionState', 'SessionActiveClient',
   'SessionChatInputRequest', 'SessionToolConfirmationRequest', 'SessionToolClientExecutionRequest',
   'SessionToolAuthenticationRequest',
   'SessionSummary', 'ChangesSummary', 'ProjectInfo', 'SessionConfigState', 'Turn', 'ActiveTurn', 'Message',
@@ -620,6 +620,15 @@ const RESPONSE_PART_UNION: UnionConfig = {
     { caseName: 'reasoning', structName: 'ReasoningResponsePart', discriminantValue: 'reasoning' },
     { caseName: 'systemNotification', structName: 'SystemNotificationResponsePart', discriminantValue: 'systemNotification' },
     { caseName: 'inputRequest', structName: 'InputRequestResponsePart', discriminantValue: 'inputRequest' },
+  ],
+};
+
+const CHAT_SOURCE_TURN_UNION: UnionConfig = {
+  name: 'ChatSourceTurn',
+  discriminantField: 'kind',
+  variants: [
+    { caseName: 'completed', structName: 'CompletedChatSourceTurn', discriminantValue: 'completed' },
+    { caseName: 'active', structName: 'ActiveChatSourceTurn', discriminantValue: 'active' },
   ],
 };
 
@@ -969,12 +978,12 @@ function generateChatOriginSwift(): string {
 public struct ChatOriginFork: Codable, Sendable {
     public var kind: ChatOriginKind
     public var chat: String
-    public var turnId: String
+    public var turn: CompletedChatSourceTurn
 
-    public init(kind: ChatOriginKind = .fork, chat: String, turnId: String) {
+    public init(kind: ChatOriginKind = .fork, chat: String, turn: CompletedChatSourceTurn) {
         self.kind = kind
         self.chat = chat
-        self.turnId = turnId
+        self.turn = turn
     }
 }
 
@@ -993,12 +1002,12 @@ public struct ChatOriginTool: Codable, Sendable {
 public struct ChatOriginSideChat: Codable, Sendable {
     public var kind: ChatOriginKind
     public var chat: String
-    public var turnId: String
+    public var turn: ChatSourceTurn
 
-    public init(kind: ChatOriginKind = .sideChat, chat: String, turnId: String) {
+    public init(kind: ChatOriginKind = .sideChat, chat: String, turn: ChatSourceTurn) {
         self.kind = kind
         self.chat = chat
-        self.turnId = turnId
+        self.turn = turn
     }
 }
 
@@ -1065,6 +1074,8 @@ function generateStateFile(project: Project): string {
   }
 
   lines.push('// MARK: - Discriminated Unions\n');
+  lines.push(generateDiscriminatedUnion(CHAT_SOURCE_TURN_UNION));
+  lines.push('');
   lines.push(generateChatOriginSwift());
   lines.push('');
   lines.push(generateDiscriminatedUnion(RESPONSE_PART_UNION));
@@ -1369,7 +1380,7 @@ const COMMAND_STRUCTS = [
   'ReconnectParams', 'ReconnectReplayResult', 'ReconnectSnapshotResult',
   'SubscribeParams', 'SubscribeView', 'SubscriptionDeliveryOptions', 'SubscribeResult',
   'SessionForkSource', 'CreateSessionParams', 'DisposeSessionParams',
-  'ChatSource', 'CreateChatParams', 'DisposeChatParams',
+  'ForkChatSource', 'SideChatSource', 'CreateChatParams', 'DisposeChatParams',
   'ListSessionsParams', 'ListSessionsResult',
   'ResourceReadParams', 'ResourceReadResult',
   'ResourceWriteParams', 'ResourceWriteResult',
@@ -1403,6 +1414,15 @@ const RECONNECT_RESULT_UNION: UnionConfig = {
   ],
 };
 
+const CHAT_SOURCE_UNION: UnionConfig = {
+  name: 'ChatSource',
+  discriminantField: 'kind',
+  variants: [
+    { caseName: 'fork', structName: 'ForkChatSource', discriminantValue: 'fork' },
+    { caseName: 'sideChat', structName: 'SideChatSource', discriminantValue: 'sideChat' },
+  ],
+};
+
 function generateCommandsFile(project: Project): string {
   const lines: string[] = [GENERATED_HEADER];
 
@@ -1429,6 +1449,10 @@ function generateCommandsFile(project: Project): string {
       lines.push('');
     }
   }
+
+  lines.push('// MARK: - Command Unions\n');
+  lines.push(generateDiscriminatedUnion(CHAT_SOURCE_UNION));
+  lines.push('');
 
   lines.push('// MARK: - ReconnectResult Union\n');
   lines.push(generateDiscriminatedUnion(RECONNECT_RESULT_UNION));
@@ -1990,7 +2014,9 @@ function checkExhaustiveness(project: Project): void {
     'ChatInputQuestion',         // SESSION_INPUT_QUESTION_UNION discriminated union
     'ChatInputAnswerValue',      // SESSION_INPUT_ANSWER_VALUE_UNION discriminated union
     'ChatInputAnswer',           // CHAT_INPUT_ANSWER_UNION discriminated union
+    'ChatSourceTurn',            // CHAT_SOURCE_TURN_UNION discriminated union
     'ChatOrigin',                // hand-generated union for inline variants
+    'ChatSource',                // CHAT_SOURCE_UNION discriminated union
     'ChatToolCallApprovedAction',
     'ChatToolCallDeniedAction',
     'ChatToolCallConfirmedAction',

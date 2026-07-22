@@ -75,6 +75,17 @@ const (
 	ChatOriginKindTool ChatOriginKind = "tool"
 )
 
+// Discriminant for {@link ChatSourceTurn} — which kind of source-turn snapshot
+// a fork or side chat was created from.
+type ChatSourceTurnKind string
+
+const (
+	// A completed turn retained in the source chat's `turns`.
+	ChatSourceTurnKindCompleted ChatSourceTurnKind = "completed"
+	// The source chat's current in-progress `activeTurn`.
+	ChatSourceTurnKindActive ChatSourceTurnKind = "active"
+)
+
 // How a user can interact with a chat.
 //
 // - `Full` — user can send messages and watch (default when absent)
@@ -612,8 +623,10 @@ type MultipleChatsCapability struct {
 	// `kind: "sideChat"` to `createChat`.
 	//
 	// A side chat receives the source turn as context without copying the source
-	// transcript into its own visible history. Side-chat support always implies
-	// multi-chat support.
+	// transcript into its own visible history. The source may be a completed turn
+	// or the source chat's current active turn; when active, the host snapshots
+	// the available partial assistant response at creation time. Side-chat
+	// support always implies multi-chat support.
 	SideChat *bool `json:"sideChat,omitempty"`
 }
 
@@ -1178,6 +1191,28 @@ type ChatSummary struct {
 	// The chat's primary working directory.
 	// See {@link ChatState.primaryWorkingDirectory} for the full semantics.
 	PrimaryWorkingDirectory *URI `json:"primaryWorkingDirectory,omitempty"`
+}
+
+// A completed turn used as a chat source or recorded in chat origin.
+type CompletedChatSourceTurn struct {
+	// Discriminant
+	Kind ChatSourceTurnKind `json:"kind"`
+	// Turn identifier in the source chat.
+	TurnId string `json:"turnId"`
+}
+
+// The current in-progress turn used as a side-chat source or recorded in chat
+// origin.
+//
+// When a host accepts side-chat creation from an active turn, it snapshots the
+// source chat's retained history plus that turn's current user message and any
+// partial assistant response already available. Later source-turn deltas do not
+// retroactively change the created side chat's starting context.
+type ActiveChatSourceTurn struct {
+	// Discriminant
+	Kind ChatSourceTurnKind `json:"kind"`
+	// Active turn identifier in the source chat.
+	TurnId string `json:"turnId"`
 }
 
 // A message queued for future delivery to the agent.
@@ -4785,6 +4820,51 @@ func (u SessionInputRequest) MarshalJSON() ([]byte, error) {
 	return json.Marshal(u.Value)
 }
 
+// ChatSourceTurn identifies whether a source-turn snapshot came from a completed or active turn.
+type ChatSourceTurn struct {
+	Value isChatSourceTurn
+}
+
+// isChatSourceTurn is the marker interface implemented by every
+// concrete variant of ChatSourceTurn.
+type isChatSourceTurn interface{ isChatSourceTurn() }
+
+func (*CompletedChatSourceTurn) isChatSourceTurn() {}
+func (*ActiveChatSourceTurn) isChatSourceTurn()    {}
+
+// UnmarshalJSON decodes the variant indicated by the "kind" discriminator.
+func (u *ChatSourceTurn) UnmarshalJSON(data []byte) error {
+	disc, _, err := readDiscriminator(data, "kind")
+	if err != nil {
+		return err
+	}
+	switch disc {
+	case "completed":
+		var value CompletedChatSourceTurn
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	case "active":
+		var value ActiveChatSourceTurn
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	default:
+		return &json.UnmarshalTypeError{Value: "ChatSourceTurn", Type: nil}
+	}
+	return nil
+}
+
+// MarshalJSON encodes the active variant back to JSON.
+func (u ChatSourceTurn) MarshalJSON() ([]byte, error) {
+	if u.Value == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(u.Value)
+}
+
 // ChatOrigin describes how a chat came into existence.
 type ChatOrigin struct {
 	Value isChatOrigin
@@ -4800,17 +4880,17 @@ type ChatUserOrigin struct {
 func (*ChatUserOrigin) isChatOrigin() {}
 
 type ChatForkOrigin struct {
-	Kind   ChatOriginKind `json:"kind"`
-	Chat   URI            `json:"chat"`
-	TurnId string         `json:"turnId"`
+	Kind ChatOriginKind          `json:"kind"`
+	Chat URI                     `json:"chat"`
+	Turn CompletedChatSourceTurn `json:"turn"`
 }
 
 func (*ChatForkOrigin) isChatOrigin() {}
 
 type ChatSideChatOrigin struct {
-	Kind   ChatOriginKind `json:"kind"`
-	Chat   URI            `json:"chat"`
-	TurnId string         `json:"turnId"`
+	Kind ChatOriginKind `json:"kind"`
+	Chat URI            `json:"chat"`
+	Turn ChatSourceTurn `json:"turn"`
 }
 
 func (*ChatSideChatOrigin) isChatOrigin() {}

@@ -154,6 +154,18 @@ pub enum ChatOriginKind {
     Tool,
 }
 
+/// Discriminant for {@link ChatSourceTurn} — which kind of source-turn snapshot
+/// a fork or side chat was created from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ChatSourceTurnKind {
+    /// A completed turn retained in the source chat's `turns`.
+    #[serde(rename = "completed")]
+    Completed,
+    /// The source chat's current in-progress `activeTurn`.
+    #[serde(rename = "active")]
+    Active,
+}
+
 /// How a user can interact with a chat.
 ///
 /// - `Full` — user can send messages and watch (default when absent)
@@ -837,8 +849,10 @@ pub struct MultipleChatsCapability {
     /// `kind: "sideChat"` to `createChat`.
     ///
     /// A side chat receives the source turn as context without copying the source
-    /// transcript into its own visible history. Side-chat support always implies
-    /// multi-chat support.
+    /// transcript into its own visible history. The source may be a completed turn
+    /// or the source chat's current active turn; when active, the host snapshots
+    /// the available partial assistant response at creation time. Side-chat
+    /// support always implies multi-chat support.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub side_chat: Option<bool>,
 }
@@ -1142,6 +1156,32 @@ pub struct ChatSummary {
     /// See {@link ChatState.primaryWorkingDirectory} for the full semantics.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primary_working_directory: Option<Uri>,
+}
+
+/// A completed turn used as a chat source or recorded in chat origin.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletedChatSourceTurn {
+    /// Discriminant
+    pub kind: ChatSourceTurnKind,
+    /// Turn identifier in the source chat.
+    pub turn_id: String,
+}
+
+/// The current in-progress turn used as a side-chat source or recorded in chat
+/// origin.
+///
+/// When a host accepts side-chat creation from an active turn, it snapshots the
+/// source chat's retained history plus that turn's current user message and any
+/// partial assistant response already available. Later source-turn deltas do not
+/// retroactively change the created side chat's starting context.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveChatSourceTurn {
+    /// Discriminant
+    pub kind: ChatSourceTurnKind,
+    /// Active turn identifier in the source chat.
+    pub turn_id: String,
 }
 
 /// Full state for a single session, loaded when a client subscribes to the session's URI.
@@ -4216,6 +4256,50 @@ pub struct ResourceChange {
 
 // ─── Discriminated Unions ─────────────────────────────────────────────
 
+/// A source-turn snapshot used when creating or describing a chat.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "serde_json::Value", into = "serde_json::Value")]
+pub enum ChatSourceTurn {
+    Completed(CompletedChatSourceTurn),
+    Active(ActiveChatSourceTurn),
+}
+
+impl TryFrom<serde_json::Value> for ChatSourceTurn {
+    type Error = String;
+
+    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+        let Some(object) = value.as_object() else {
+            return Err("ChatSourceTurn must be a JSON object".to_string());
+        };
+        let Some(kind) = object.get("kind").and_then(|value| value.as_str()) else {
+            return Err("ChatSourceTurn is missing a string kind discriminant".to_string());
+        };
+
+        match kind {
+            "completed" => serde_json::from_value(value)
+                .map(|inner| Self::Completed(inner))
+                .map_err(|error| error.to_string()),
+            "active" => serde_json::from_value(value)
+                .map(|inner| Self::Active(inner))
+                .map_err(|error| error.to_string()),
+            _ => Err(format!("unknown kind: {kind}")),
+        }
+    }
+}
+
+impl From<ChatSourceTurn> for serde_json::Value {
+    fn from(value: ChatSourceTurn) -> Self {
+        match value {
+            ChatSourceTurn::Completed(inner) => {
+                serde_json::to_value(inner).expect("serializing ChatSourceTurn::Completed")
+            }
+            ChatSourceTurn::Active(inner) => {
+                serde_json::to_value(inner).expect("serializing ChatSourceTurn::Active")
+            }
+        }
+    }
+}
+
 /// How a chat came into existence.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind")]
@@ -4228,18 +4312,16 @@ pub enum ChatOrigin {
     Fork {
         /// URI of the chat this one was forked from.
         chat: Uri,
-        /// Turn the fork was taken from.
-        #[serde(rename = "turnId")]
-        turn_id: String,
+        /// Completed source-turn snapshot the fork was taken from.
+        turn: CompletedChatSourceTurn,
     },
     /// Independent side conversation created from a specific turn.
     #[serde(rename = "sideChat")]
     SideChat {
         /// URI of the chat that supplied the side-chat context.
         chat: Uri,
-        /// Turn through which context was supplied.
-        #[serde(rename = "turnId")]
-        turn_id: String,
+        /// Source-turn snapshot through which context was supplied.
+        turn: ChatSourceTurn,
     },
     /// Spawned by a tool call in another chat.
     #[serde(rename = "tool")]

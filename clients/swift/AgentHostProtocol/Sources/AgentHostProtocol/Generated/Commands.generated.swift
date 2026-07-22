@@ -454,24 +454,48 @@ public struct DisposeSessionParams: Codable, Sendable {
     }
 }
 
-public struct ChatSource: Codable, Sendable {
-    /// How the source is used.
+public struct ForkChatSource: Codable, Sendable {
+    /// Discriminant
     public var kind: ChatSourceKind
     /// URI of the existing source chat.
     public var chat: String
-    /// Completed turn in the source chat. For a fork, content through this turn is
-    /// copied. For a side chat, that content is supplied as context but is not
-    /// copied into the new chat's visible `turns`.
-    public var turnId: String
+    /// Completed turn in the source chat. Content through this turn is copied into
+    /// the new chat's visible `turns`.
+    public var turn: CompletedChatSourceTurn
 
     public init(
         kind: ChatSourceKind,
         chat: String,
-        turnId: String
+        turn: CompletedChatSourceTurn
     ) {
         self.kind = kind
         self.chat = chat
-        self.turnId = turnId
+        self.turn = turn
+    }
+}
+
+public struct SideChatSource: Codable, Sendable {
+    /// Discriminant
+    public var kind: ChatSourceKind
+    /// URI of the existing source chat.
+    public var chat: String
+    /// Source turn in the source chat.
+    ///
+    /// When this is `kind: "completed"`, the side chat is seeded from the source
+    /// chat's retained history through that turn. When this is `kind: "active"`,
+    /// the host snapshots the source chat's retained history plus the active turn's
+    /// current user message and any partial assistant response already available
+    /// when accepting `createChat`.
+    public var turn: ChatSourceTurn
+
+    public init(
+        kind: ChatSourceKind,
+        chat: String,
+        turn: ChatSourceTurn
+    ) {
+        self.kind = kind
+        self.chat = chat
+        self.turn = turn
     }
 }
 
@@ -482,13 +506,15 @@ public struct CreateChatParams: Codable, Sendable {
     public var chat: String
     /// Optional initial message for the new chat.
     public var initialMessage: Message?
-    /// Optional source chat and completed turn.
+    /// Optional source chat and source turn.
     ///
     /// The source chat MUST belong to this session. Clients MUST only request
     /// `kind: "fork"` when the selected agent advertises
     /// `capabilities.multipleChats.fork`, and
     /// `kind: "sideChat"` when the selected agent advertises
-    /// `capabilities.multipleChats.sideChat`.
+    /// `capabilities.multipleChats.sideChat`. Forks require
+    /// `source.turn.kind: "completed"`. Side chats accept either a completed turn
+    /// or the source chat's current active turn.
     public var source: ChatSource?
     /// Initial working-directory subset for this chat. Every entry MUST be
     /// present in the owning session's `workingDirectories`; the server MUST
@@ -1430,6 +1456,37 @@ public struct ChangesetOperationFollowUp: Codable, Sendable {
     ) {
         self.content = content
         self.external = external
+    }
+}
+
+// MARK: - Command Unions
+
+public enum ChatSource: Codable, Sendable {
+    case fork(ForkChatSource)
+    case sideChat(SideChatSource)
+
+    private enum DiscriminantKey: String, CodingKey {
+        case discriminant = "kind"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: DiscriminantKey.self)
+        let discriminant = try container.decode(String.self, forKey: .discriminant)
+        switch discriminant {
+        case "fork":
+            self = .fork(try ForkChatSource(from: decoder))
+        case "sideChat":
+            self = .sideChat(try SideChatSource(from: decoder))
+        default:
+            throw DecodingError.dataCorruptedError(forKey: .discriminant, in: container, debugDescription: "Unknown ChatSource discriminant: \(discriminant)")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        switch self {
+        case .fork(let value): try value.encode(to: encoder)
+        case .sideChat(let value): try value.encode(to: encoder)
+        }
     }
 }
 

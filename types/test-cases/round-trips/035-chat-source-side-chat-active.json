@@ -1,0 +1,24 @@
+{
+  "name": "chat-source-side-chat-active",
+  "group": "A",
+  "description": "ChatSource allows an explicit active-turn sideChat source without weakening the completed-turn fork contract.",
+  "type": "ChatSource",
+  "input": {
+    "kind": "sideChat",
+    "chat": "ahp-chat:/main",
+    "turn": {
+      "kind": "active",
+      "turnId": "turn-active"
+    }
+  },
+  "acceptableOutputs": [
+    {
+      "kind": "sideChat",
+      "chat": "ahp-chat:/main",
+      "turn": {
+        "kind": "active",
+        "turnId": "turn-active"
+      }
+    }
+  ]
+}

@@ -467,9 +467,9 @@ data class DisposeSessionParams(
 )
 
 @Serializable
-data class ChatSource(
+data class ForkChatSource(
     /**
-     * How the source is used.
+     * Discriminant
      */
     val kind: ChatSourceKind,
     /**
@@ -477,11 +477,32 @@ data class ChatSource(
      */
     val chat: String,
     /**
-     * Completed turn in the source chat. For a fork, content through this turn is
-     * copied. For a side chat, that content is supplied as context but is not
-     * copied into the new chat's visible `turns`.
+     * Completed turn in the source chat. Content through this turn is copied into
+     * the new chat's visible `turns`.
      */
-    val turnId: String
+    val turn: CompletedChatSourceTurn
+)
+
+@Serializable
+data class SideChatSource(
+    /**
+     * Discriminant
+     */
+    val kind: ChatSourceKind,
+    /**
+     * URI of the existing source chat.
+     */
+    val chat: String,
+    /**
+     * Source turn in the source chat.
+     *
+     * When this is `kind: "completed"`, the side chat is seeded from the source
+     * chat's retained history through that turn. When this is `kind: "active"`,
+     * the host snapshots the source chat's retained history plus the active turn's
+     * current user message and any partial assistant response already available
+     * when accepting `createChat`.
+     */
+    val turn: ChatSourceTurn
 )
 
 @Serializable
@@ -499,13 +520,15 @@ data class CreateChatParams(
      */
     val initialMessage: Message? = null,
     /**
-     * Optional source chat and completed turn.
+     * Optional source chat and source turn.
      *
      * The source chat MUST belong to this session. Clients MUST only request
      * `kind: "fork"` when the selected agent advertises
      * `capabilities.multipleChats.fork`, and
      * `kind: "sideChat"` when the selected agent advertises
-     * `capabilities.multipleChats.sideChat`.
+     * `capabilities.multipleChats.sideChat`. Forks require
+     * `source.turn.kind: "completed"`. Side chats accept either a completed turn
+     * or the source chat's current active turn.
      */
     val source: ChatSource? = null,
     /**
@@ -1268,6 +1291,46 @@ data class ChangesetOperationFollowUp(
      */
     val external: Boolean? = null
 )
+
+// ─── ChatSource Union ───────────────────────────────────────────────────────
+
+@Serializable(with = ChatSourceSerializer::class)
+sealed interface ChatSource
+
+@JvmInline
+value class ChatSourceFork(val value: ForkChatSource) : ChatSource
+@JvmInline
+value class ChatSourceSideChat(val value: SideChatSource) : ChatSource
+
+internal object ChatSourceSerializer : KSerializer<ChatSource> {
+    override val descriptor: SerialDescriptor =
+        buildClassSerialDescriptor("ChatSource")
+
+    override fun deserialize(decoder: Decoder): ChatSource {
+        val input = decoder as? JsonDecoder
+            ?: error("ChatSource can only be deserialized from JSON")
+        val element = input.decodeJsonElement()
+        val obj = element as? JsonObject
+            ?: error("Expected JsonObject for ChatSource")
+        val discriminant = (obj["kind"] as? JsonPrimitive)?.content
+            ?: error("Missing kind discriminator on ChatSource")
+        return when (discriminant) {
+            "fork" -> ChatSourceFork(input.json.decodeFromJsonElement(ForkChatSource.serializer(), element))
+            "sideChat" -> ChatSourceSideChat(input.json.decodeFromJsonElement(SideChatSource.serializer(), element))
+            else -> error("Unknown ChatSource discriminator: $discriminant")
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: ChatSource) {
+        val output = encoder as? JsonEncoder
+            ?: error("ChatSource can only be serialized to JSON")
+        val element: JsonElement = when (value) {
+            is ChatSourceFork -> output.json.encodeToJsonElement(ForkChatSource.serializer(), value.value)
+            is ChatSourceSideChat -> output.json.encodeToJsonElement(SideChatSource.serializer(), value.value)
+        }
+        output.encodeJsonElement(element)
+    }
+}
 
 // ─── ReconnectResult Union ──────────────────────────────────────────────────
 

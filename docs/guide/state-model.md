@@ -149,7 +149,7 @@ ChatState {
   status: number          // SessionStatus bitset
   activity?: string
   modifiedAt: string
-  origin?: ChatOrigin      // how the chat came to exist (user / fork / tool)
+  origin?: ChatOrigin      // how the chat came to exist (user / fork / sideChat / tool)
   workingDirectories?: URI[]      // subset of session's workingDirectories
   primaryWorkingDirectory?: URI      // this chat's primary, read-only (set at creation, when requiresPrimary)
 
@@ -661,7 +661,8 @@ createChat({
 
 Forked chats (`source.kind: "fork"`) inherit the source chat's
 `workingDirectories` and primary, so both fields are ignored for forks. Side
-chats can still choose their own subset and primary.
+chats can still choose their own subset and primary, whether they start from a
+completed source turn or an active-turn snapshot.
 
 #### Managing the subset after creation
 

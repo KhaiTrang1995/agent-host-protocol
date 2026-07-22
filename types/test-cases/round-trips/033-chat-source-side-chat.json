@@ -1,18 +1,24 @@
 {
   "name": "chat-source-side-chat",
   "group": "A",
-  "description": "ChatSource requires an explicit sideChat discriminator alongside its source chat and completed turn.",
+  "description": "ChatSource requires an explicit sideChat discriminator alongside its source chat and completed-turn snapshot.",
   "type": "ChatSource",
   "input": {
     "kind": "sideChat",
     "chat": "ahp-chat:/main",
-    "turnId": "turn-12"
+    "turn": {
+      "kind": "completed",
+      "turnId": "turn-12"
+    }
   },
   "acceptableOutputs": [
     {
       "kind": "sideChat",
       "chat": "ahp-chat:/main",
-      "turnId": "turn-12"
+      "turn": {
+        "kind": "completed",
+        "turnId": "turn-12"
+      }
     }
   ]
 }

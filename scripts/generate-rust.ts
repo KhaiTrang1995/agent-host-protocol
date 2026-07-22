@@ -631,6 +631,88 @@ function generateDiscriminatedUnion(cfg: UnionConfig): string {
   return lines.join('\n');
 }
 
+function generateValueRoutedDiscriminatedUnion(cfg: UnionConfig): string {
+  const lines: string[] = [];
+  if (cfg.doc) {
+    for (const d of cfg.doc.split('\n')) lines.push(`/// ${d.trimEnd()}`);
+  }
+  lines.push('#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]');
+  lines.push('#[serde(try_from = "serde_json::Value", into = "serde_json::Value")]');
+  lines.push(`pub enum ${cfg.name} {`);
+
+  for (const v of cfg.variants) {
+    if (v.doc) {
+      for (const d of v.doc.split('\n')) lines.push(`    /// ${d.trimEnd()}`);
+    }
+    if (v.isUnit) {
+      lines.push(`    ${v.variantName},`);
+    } else {
+      const inner = v.boxed ? `Box<${v.innerType}>` : v.innerType;
+      lines.push(`    ${v.variantName}(${inner}),`);
+    }
+  }
+
+  if (cfg.unknown) {
+    lines.push('    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.');
+    lines.push('    /// Reducers treat this as a no-op.');
+    lines.push('    Unknown(serde_json::Value),');
+  }
+
+  lines.push('}');
+  lines.push('');
+  lines.push(`impl TryFrom<serde_json::Value> for ${cfg.name} {`);
+  lines.push('    type Error = String;');
+  lines.push('');
+  lines.push('    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {');
+  lines.push('        let Some(object) = value.as_object() else {');
+  lines.push(`            return Err("${cfg.name} must be a JSON object".to_string());`);
+  lines.push('        };');
+  lines.push(`        let Some(kind) = object.get(${JSON.stringify(cfg.discriminantField)}).and_then(|value| value.as_str()) else {`);
+  lines.push(`            return Err("${cfg.name} is missing a string ${cfg.discriminantField} discriminant".to_string());`);
+  lines.push('        };');
+  lines.push('');
+  lines.push('        match kind {');
+  for (const v of cfg.variants) {
+    lines.push(`            ${JSON.stringify(v.wireValue)} => {`);
+    if (v.isUnit) {
+      lines.push(`                Ok(Self::${v.variantName})`);
+    } else {
+      const boxOpen = v.boxed ? 'Box::new(' : '';
+      const boxClose = v.boxed ? ')' : '';
+      lines.push(`                serde_json::from_value(value).map(|inner| Self::${v.variantName}(${boxOpen}inner${boxClose})).map_err(|error| error.to_string())`);
+    }
+    lines.push('            }');
+  }
+  if (cfg.unknown) {
+    lines.push('            _ => Ok(Self::Unknown(value)),');
+  } else {
+    lines.push(`            _ => Err(format!("unknown ${cfg.discriminantField}: {kind}")),`);
+  }
+  lines.push('        }');
+  lines.push('    }');
+  lines.push('}');
+  lines.push('');
+  lines.push(`impl From<${cfg.name}> for serde_json::Value {`);
+  lines.push(`    fn from(value: ${cfg.name}) -> Self {`);
+  lines.push('        match value {');
+  for (const v of cfg.variants) {
+    if (v.isUnit) {
+      lines.push(`            ${cfg.name}::${v.variantName} => serde_json::json!({ ${JSON.stringify(cfg.discriminantField)}: ${JSON.stringify(v.wireValue)} }),`);
+    } else {
+      const innerPattern = v.boxed ? 'inner' : 'inner';
+      const innerValue = v.boxed ? '*inner' : 'inner';
+      lines.push(`            ${cfg.name}::${v.variantName}(${innerPattern}) => serde_json::to_value(${innerValue}).expect("serializing ${cfg.name}::${v.variantName}"),`);
+    }
+  }
+  if (cfg.unknown) {
+    lines.push(`            ${cfg.name}::Unknown(value) => value,`);
+  }
+  lines.push('        }');
+  lines.push('    }');
+  lines.push('}');
+  return lines.join('\n');
+}
+
 // ─── Interface → Rust Struct (auto) ──────────────────────────────────────────
 
 function generateStructFromInterface(
@@ -651,7 +733,7 @@ function generateStructFromInterface(
 
 const STATE_ENUMS = [
   'PolicyState', 'PendingMessageKind', 'SessionLifecycle', 'SessionStatus',
-  'ChatOriginKind', 'ChatInteractivity', 'ChatInputAnswerState', 'ChatInputAnswerValueKind', 'ChatInputQuestionKind',
+  'ChatOriginKind', 'ChatSourceTurnKind', 'ChatInteractivity', 'ChatInputAnswerState', 'ChatInputAnswerValueKind', 'ChatInputQuestionKind',
   'ChatInputResponseKind', 'SessionInputRequestKind',
   'TurnState', 'MessageKind', 'MessageAttachmentKind', 'ResponsePartKind', 'ToolCallStatus',
   'ToolCallConfirmationReason', 'ToolCallRiskAssessmentKind',
@@ -701,6 +783,8 @@ const STATE_STRUCTS: { name: string; omitDiscriminants?: boolean; rustName?: str
   { name: 'PendingMessage' },
   { name: 'ChatState' },
   { name: 'ChatSummary' },
+  { name: 'CompletedChatSourceTurn' },
+  { name: 'ActiveChatSourceTurn' },
   { name: 'SessionState' },
   { name: 'SessionActiveClient' },
   { name: 'SessionChatInputRequest', omitDiscriminants: true },
@@ -1056,18 +1140,16 @@ pub enum ChatOrigin {
     Fork {
         /// URI of the chat this one was forked from.
         chat: Uri,
-        /// Turn the fork was taken from.
-        #[serde(rename = "turnId")]
-        turn_id: String,
+        /// Completed source-turn snapshot the fork was taken from.
+        turn: CompletedChatSourceTurn,
     },
     /// Independent side conversation created from a specific turn.
     #[serde(rename = "sideChat")]
     SideChat {
         /// URI of the chat that supplied the side-chat context.
         chat: Uri,
-        /// Turn through which context was supplied.
-        #[serde(rename = "turnId")]
-        turn_id: String,
+        /// Source-turn snapshot through which context was supplied.
+        turn: ChatSourceTurn,
     },
     /// Spawned by a tool call in another chat.
     #[serde(rename = "tool")]
@@ -1084,6 +1166,16 @@ pub enum ChatOrigin {
     Unknown(serde_json::Value),
 }`;
 }
+
+const CHAT_SOURCE_TURN_UNION: UnionConfig = {
+  name: 'ChatSourceTurn',
+  discriminantField: 'kind',
+  doc: 'A source-turn snapshot used when creating or describing a chat.',
+  variants: [
+    { variantName: 'Completed', innerType: 'CompletedChatSourceTurn', wireValue: 'completed' },
+    { variantName: 'Active', innerType: 'ActiveChatSourceTurn', wireValue: 'active' },
+  ],
+};
 
 function generateSnapshotState(): string {
   return `/// The state payload of a snapshot — root, session, chat, terminal,
@@ -1140,6 +1232,8 @@ function generateStateFile(project: Project): string {
   }
 
   lines.push('// ─── Discriminated Unions ─────────────────────────────────────────────\n');
+  lines.push(generateValueRoutedDiscriminatedUnion(CHAT_SOURCE_TURN_UNION));
+  lines.push('');
   lines.push(generateChatOrigin());
   lines.push('');
   lines.push(generateDiscriminatedUnion(RESPONSE_PART_UNION));
@@ -1425,7 +1519,7 @@ const COMMAND_STRUCTS: { name: string; omitDiscriminants?: boolean; rustName?: s
   { name: 'SubscribeParams' }, { name: 'SubscribeView' }, { name: 'SubscriptionDeliveryOptions' }, { name: 'SubscribeResult' },
   { name: 'SessionForkSource' }, { name: 'CreateSessionParams' },
   { name: 'DisposeSessionParams' },
-  { name: 'ChatSource' }, { name: 'CreateChatParams' },
+  { name: 'ForkChatSource' }, { name: 'SideChatSource' }, { name: 'CreateChatParams' },
   { name: 'DisposeChatParams' },
   { name: 'ListSessionsParams' }, { name: 'ListSessionsResult' },
   { name: 'ResourceReadParams' }, { name: 'ResourceReadResult' },
@@ -1461,12 +1555,22 @@ const RECONNECT_RESULT_UNION: UnionConfig = {
   ],
 };
 
+const CHAT_SOURCE_UNION: UnionConfig = {
+  name: 'ChatSource',
+  discriminantField: 'kind',
+  doc: 'How a new chat uses a source chat.',
+  variants: [
+    { variantName: 'Fork', innerType: 'ForkChatSource', wireValue: 'fork' },
+    { variantName: 'SideChat', innerType: 'SideChatSource', wireValue: 'sideChat' },
+  ],
+};
+
 function generateCommandsFile(project: Project): string {
   const lines: string[] = [GENERATED_HEADER];
   lines.push('#[allow(unused_imports)]');
   lines.push('use crate::actions::{ActionEnvelope, StateAction};');
   lines.push('#[allow(unused_imports)]');
-  lines.push('use crate::state::{AgentSelection, ContentRef, Message, MessageAttachment, ModelSelection, SessionActiveClient, SessionConfigSchema, SessionSummary, Snapshot, SnapshotState, TelemetryCapabilities, TerminalClaim, TextRange, Turn};');
+  lines.push('use crate::state::{AgentSelection, ChatSourceTurn, CompletedChatSourceTurn, ContentRef, Message, MessageAttachment, ModelSelection, SessionActiveClient, SessionConfigSchema, SessionSummary, Snapshot, SnapshotState, TelemetryCapabilities, TerminalClaim, TextRange, Turn};');
   lines.push('');
 
   lines.push('// ─── Enums ────────────────────────────────────────────────────────────\n');
@@ -1497,6 +1601,10 @@ function generateCommandsFile(project: Project): string {
       lines.push('');
     }
   }
+
+  lines.push('// ─── ChatSource Union ─────────────────────────────────────────────────\n');
+  lines.push(generateValueRoutedDiscriminatedUnion(CHAT_SOURCE_UNION));
+  lines.push('');
 
   lines.push('// ─── ReconnectResult Union ────────────────────────────────────────────\n');
   lines.push(generateDiscriminatedUnion(RECONNECT_RESULT_UNION));
@@ -1864,7 +1972,9 @@ function checkExhaustiveness(project: Project): void {
     'ChatToolCallDeniedAction',     // merged into ChatToolCallConfirmedAction
     'ChatToolCallConfirmedAction',  // emitted as merged variant
     'ChatAction',                   // source-only union covered by StateAction
+    'ChatSourceTurn',
     'ChatOrigin',                   // hand-generated union for inline variants
+    'ChatSource',
     'PingParams',
     'TerminalClaim',
     'TerminalContentPart',
