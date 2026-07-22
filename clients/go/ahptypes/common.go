@@ -85,6 +85,8 @@ type PartialChatSummary struct {
 	Origin *ChatOrigin `json:"origin,omitempty"`
 	// The subset of the session's working directories this chat uses.
 	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
+	// The chat's primary working directory.
+	PrimaryWorkingDirectory *URI `json:"primaryWorkingDirectory,omitempty"`
 }
 
 // ─── StringOrMarkdown ────────────────────────────────────────────────────

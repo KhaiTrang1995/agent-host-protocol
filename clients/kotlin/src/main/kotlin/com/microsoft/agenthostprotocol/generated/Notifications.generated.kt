@@ -200,13 +200,21 @@ data class PartialSessionSummary(
      * maintained by the `session/workingDirectorySet` /
      * `session/workingDirectoryRemoved` actions. Directories are equal peers
      * except when the agent advertises
-     * {@link MultipleWorkingDirectoriesCapability.immutablePrimary} (the first
-     * entry is then a fixed process root). Individual chats MAY restrict to a
-     * subset via {@link ChatSummary.workingDirectories | their own
-     * `workingDirectories`}; a chat that sets none operates against this full
-     * set.
+     * {@link MultipleWorkingDirectoriesCapability.requiresPrimary}, in which case
+     * one of them is designated the primary (see {@link primaryWorkingDirectory}).
+     * Individual chats MAY restrict to a subset via
+     * {@link ChatSummary.workingDirectories | their own `workingDirectories`}; a
+     * chat that sets none operates against this full set.
      */
     val workingDirectories: List<String>? = null,
+    /**
+     * The session's primary working directory — the distinguished root the agent
+     * centers on. When set, it MUST be one of {@link workingDirectories}. Present
+     * when the agent advertises
+     * {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; absent when
+     * the agent has no primary (all directories equal peers).
+     */
+    val primaryWorkingDirectory: String? = null,
     /**
      * Lightweight summary of this session's inline annotations channel
      * (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render

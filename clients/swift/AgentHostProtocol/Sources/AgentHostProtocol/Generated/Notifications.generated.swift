@@ -186,12 +186,18 @@ public struct PartialSessionSummary: Codable, Sendable {
     /// maintained by the `session/workingDirectorySet` /
     /// `session/workingDirectoryRemoved` actions. Directories are equal peers
     /// except when the agent advertises
-    /// {@link MultipleWorkingDirectoriesCapability.immutablePrimary} (the first
-    /// entry is then a fixed process root). Individual chats MAY restrict to a
-    /// subset via {@link ChatSummary.workingDirectories | their own
-    /// `workingDirectories`}; a chat that sets none operates against this full
-    /// set.
+    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}, in which case
+    /// one of them is designated the primary (see {@link primaryWorkingDirectory}).
+    /// Individual chats MAY restrict to a subset via
+    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`}; a
+    /// chat that sets none operates against this full set.
     public var workingDirectories: [String]?
+    /// The session's primary working directory — the distinguished root the agent
+    /// centers on. When set, it MUST be one of {@link workingDirectories}. Present
+    /// when the agent advertises
+    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; absent when
+    /// the agent has no primary (all directories equal peers).
+    public var primaryWorkingDirectory: String?
     /// Lightweight summary of this session's inline annotations channel
     /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
     /// annotation / entry counts without subscribing. Absent when the session
@@ -221,6 +227,7 @@ public struct PartialSessionSummary: Codable, Sendable {
         case activity
         case project
         case workingDirectories
+        case primaryWorkingDirectory
         case annotations
         case resource
         case createdAt
@@ -236,6 +243,7 @@ public struct PartialSessionSummary: Codable, Sendable {
         activity: String? = nil,
         project: ProjectInfo? = nil,
         workingDirectories: [String]? = nil,
+        primaryWorkingDirectory: String? = nil,
         annotations: AnnotationsSummary? = nil,
         resource: String? = nil,
         createdAt: String? = nil,
@@ -249,6 +257,7 @@ public struct PartialSessionSummary: Codable, Sendable {
         self.activity = activity
         self.project = project
         self.workingDirectories = workingDirectories
+        self.primaryWorkingDirectory = primaryWorkingDirectory
         self.annotations = annotations
         self.resource = resource
         self.createdAt = createdAt

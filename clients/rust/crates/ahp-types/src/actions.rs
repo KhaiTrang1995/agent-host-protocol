@@ -954,9 +954,9 @@ pub struct SessionWorkingDirectorySetAction {
 /// Removes `directory` from the set; a no-op when it is not present. There is no
 /// atomic backend "remove one" primitive — a host reconfigures its agent to the
 /// reduced set — so this action is safe to model as idempotent. A host MAY
-/// decline to apply the removal (e.g. an immutable primary directory, see
-/// {@link MultipleWorkingDirectoriesCapability.immutablePrimary}); it then leaves
-/// the set unchanged.
+/// decline to apply the removal (e.g. the current primary directory of an agent
+/// that {@link MultipleWorkingDirectoriesCapability.requiresPrimary | requires a
+/// primary}); it then leaves the set unchanged.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionWorkingDirectoryRemovedAction {
@@ -1762,6 +1762,10 @@ pub struct PartialChatSummary {
     /// See {@link ChatState.workingDirectories} for the full semantics.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_directories: Option<Vec<Uri>>,
+    /// The chat's primary working directory.
+    /// See {@link ChatState.primaryWorkingDirectory} for the full semantics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_working_directory: Option<Uri>,
 }
 
 // ─── StateAction Union ───────────────────────────────────────────────

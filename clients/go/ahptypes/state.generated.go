@@ -586,8 +586,8 @@ type AgentCapabilities struct {
 	MultipleChats *MultipleChatsCapability `json:"multipleChats,omitempty"`
 	// The session's agent can be granted tool access to more than one working
 	// directory. The directories are treated as equal peers except where the
-	// agent advertises {@link MultipleWorkingDirectoriesCapability.immutablePrimary}
-	// (some backends pin their first directory as a fixed process root).
+	// agent advertises {@link MultipleWorkingDirectoriesCapability.requiresPrimary}
+	// (some backends need one directory designated as a primary root).
 	//
 	// When absent, clients MUST NOT mutate a session's or chat's working-directory
 	// set and MUST NOT set more than one entry in
@@ -605,17 +605,19 @@ type MultipleChatsCapability struct {
 
 // Options for the {@link AgentCapabilities.multipleWorkingDirectories} capability.
 type MultipleWorkingDirectoriesCapability struct {
-	// The agent's **first** working directory (index `0` of
-	// {@link CreateSessionParams.workingDirectories}) is an immutable primary:
-	// it is fixed for the lifetime of the session — clients MUST NOT remove or
-	// reorder it. Additional directories after it remain equal peers that can be
-	// added and removed freely.
+	// The agent requires exactly one of its working directories to be designated
+	// the **primary** — a distinguished root the agent centers on (e.g. its
+	// process root, the default location for relative paths). When `true`, a
+	// client SHOULD supply {@link CreateSessionParams.primaryWorkingDirectory}
+	// (and {@link CreateChatParams.primaryWorkingDirectory} for a chat that
+	// narrows the set); a host MAY reject creation that omits it, or fall back to
+	// the first entry of `workingDirectories`. The chosen primary is reported on
+	// {@link SessionState.primaryWorkingDirectory} /
+	// {@link ChatState.primaryWorkingDirectory}.
 	//
-	// Advertised by backends whose agent process is rooted at a single directory
-	// that cannot change once the session has started (e.g. the SDK's primary
-	// `workingDirectory`). When absent or `false`, all directories are equal
-	// peers and any of them may be removed.
-	ImmutablePrimary *bool `json:"immutablePrimary,omitempty"`
+	// When absent or `false`, the agent has no primary — all directories are
+	// equal peers and clients need not designate one.
+	RequiresPrimary *bool `json:"requiresPrimary,omitempty"`
 }
 
 type SessionModelInfo struct {
@@ -742,12 +744,18 @@ type SessionState struct {
 	// maintained by the `session/workingDirectorySet` /
 	// `session/workingDirectoryRemoved` actions. Directories are equal peers
 	// except when the agent advertises
-	// {@link MultipleWorkingDirectoriesCapability.immutablePrimary} (the first
-	// entry is then a fixed process root). Individual chats MAY restrict to a
-	// subset via {@link ChatSummary.workingDirectories | their own
-	// `workingDirectories`}; a chat that sets none operates against this full
-	// set.
+	// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}, in which case
+	// one of them is designated the primary (see {@link primaryWorkingDirectory}).
+	// Individual chats MAY restrict to a subset via
+	// {@link ChatSummary.workingDirectories | their own `workingDirectories`}; a
+	// chat that sets none operates against this full set.
 	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
+	// The session's primary working directory — the distinguished root the agent
+	// centers on. When set, it MUST be one of {@link workingDirectories}. Present
+	// when the agent advertises
+	// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; absent when
+	// the agent has no primary (all directories equal peers).
+	PrimaryWorkingDirectory *URI `json:"primaryWorkingDirectory,omitempty"`
 	// Lightweight summary of this session's inline annotations channel
 	// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
 	// annotation / entry counts without subscribing. Absent when the session
@@ -1008,12 +1016,18 @@ type SessionSummary struct {
 	// maintained by the `session/workingDirectorySet` /
 	// `session/workingDirectoryRemoved` actions. Directories are equal peers
 	// except when the agent advertises
-	// {@link MultipleWorkingDirectoriesCapability.immutablePrimary} (the first
-	// entry is then a fixed process root). Individual chats MAY restrict to a
-	// subset via {@link ChatSummary.workingDirectories | their own
-	// `workingDirectories`}; a chat that sets none operates against this full
-	// set.
+	// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}, in which case
+	// one of them is designated the primary (see {@link primaryWorkingDirectory}).
+	// Individual chats MAY restrict to a subset via
+	// {@link ChatSummary.workingDirectories | their own `workingDirectories`}; a
+	// chat that sets none operates against this full set.
 	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
+	// The session's primary working directory — the distinguished root the agent
+	// centers on. When set, it MUST be one of {@link workingDirectories}. Present
+	// when the agent advertises
+	// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; absent when
+	// the agent has no primary (all directories equal peers).
+	PrimaryWorkingDirectory *URI `json:"primaryWorkingDirectory,omitempty"`
 	// Lightweight summary of this session's inline annotations channel
 	// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
 	// annotation / entry counts without subscribing. Absent when the session
@@ -1092,6 +1106,14 @@ type ChatState struct {
 	// Dispatch `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` to
 	// update the subset on a running chat.
 	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
+	// The chat's primary working directory — the distinguished root this chat
+	// centers on. When set, it MUST be one of this chat's effective working
+	// directories ({@link workingDirectories}, or the session's set when that is
+	// absent). Present when the agent advertises
+	// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; when absent,
+	// the chat inherits {@link SessionState.primaryWorkingDirectory | the
+	// session's primary}.
+	PrimaryWorkingDirectory *URI `json:"primaryWorkingDirectory,omitempty"`
 	// Completed turns
 	Turns []Turn `json:"turns"`
 	// Cursor for loading older completed turns into this chat state.
@@ -1148,6 +1170,9 @@ type ChatSummary struct {
 	// The subset of the session's working directories this chat uses.
 	// See {@link ChatState.workingDirectories} for the full semantics.
 	WorkingDirectories []URI `json:"workingDirectories,omitempty"`
+	// The chat's primary working directory.
+	// See {@link ChatState.primaryWorkingDirectory} for the full semantics.
+	PrimaryWorkingDirectory *URI `json:"primaryWorkingDirectory,omitempty"`
 }
 
 // A message queued for future delivery to the agent.

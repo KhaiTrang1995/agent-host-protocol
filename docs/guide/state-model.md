@@ -74,6 +74,7 @@ SessionState {
   activity?: string
   project?: ProjectInfo
   workingDirectories?: URI[]   // equal-peer working directories
+  primaryWorkingDirectory?: URI  // designated primary (when requiresPrimary)
   annotations?: AnnotationsSummary
 
   lifecycle: 'creating' | 'ready' | 'creationFailed'
@@ -108,6 +109,7 @@ SessionSummary {
   modifiedAt: string  // ISO 8601
   project?: ProjectInfo
   workingDirectories?: URI[]   // equal-peer working directories
+  primaryWorkingDirectory?: URI  // designated primary (when requiresPrimary)
   annotations?: AnnotationsSummary
   changes?: ChangesSummary
 }
@@ -151,6 +153,7 @@ ChatState {
   modifiedAt: string
   origin?: ChatOrigin      // how the chat came to exist (user / fork / tool)
   workingDirectories?: URI[]      // subset of session's workingDirectories
+  primaryWorkingDirectory?: URI      // this chat's primary (inherits session's when absent)
 
   turns: Turn[]                       // completed turns
   turnsNextCursor?: string            // page older turns via fetchTurns
@@ -566,7 +569,9 @@ The forked session is an independent copy — subsequent changes to either sessi
 
 A session can be granted tool access to more than one working directory when the
 agent advertises the `multipleWorkingDirectories` capability. All directories are
-**equal peers** — there is no privileged "primary".
+**equal peers** — there is no privileged "primary" — unless the agent advertises
+`multipleWorkingDirectories.requiresPrimary`, in which case one directory is
+designated the **primary** (see below).
 
 ### Creating a multiroot session
 
@@ -580,6 +585,7 @@ createSession({
     'file:///workspace/frontend',
     'file:///workspace/backend',
   ],
+  primaryWorkingDirectory: 'file:///workspace/frontend',  // only when requiresPrimary
 });
 ```
 
@@ -587,12 +593,16 @@ A client MUST NOT pass more than one entry unless the agent advertises
 `multipleWorkingDirectories`. Servers without that capability treat only the
 first entry as the session's working directory and ignore the rest.
 
-The directories are equal peers unless the agent advertises
-`multipleWorkingDirectories.immutablePrimary`, in which case the first entry is a
-fixed process root that clients MUST NOT remove or reorder.
+When the agent advertises `multipleWorkingDirectories.requiresPrimary`, a client
+SHOULD supply `primaryWorkingDirectory` (which MUST be one of
+`workingDirectories`) to designate the distinguished root the agent centers on.
+A host MAY reject a creation that omits it, or fall back to the first entry. The
+chosen primary is reported on `SessionState.primaryWorkingDirectory`. When the
+agent has no primary, all directories are equal peers and no designation is
+needed.
 
-Forked sessions ignore `workingDirectories` — they inherit the working
-directories of the source session.
+Forked sessions ignore `workingDirectories` / `primaryWorkingDirectory` — they
+inherit the working directories (and primary) of the source session.
 
 ### Managing directories after creation
 
@@ -602,7 +612,7 @@ mutate it by **dispatching actions**, not by calling commands:
 | Action | Effect |
 | --- | --- |
 | `session/workingDirectorySet` | Adds `directory` to the set (creating it if absent). A no-op when the directory is already present. |
-| `session/workingDirectoryRemoved` | Removes `directory` from the set. A no-op when it is not present. There is no atomic backend "remove one" primitive — the host reconfigures its agent to the reduced set. A host MAY decline to apply the removal (e.g. an immutable primary), leaving the set unchanged. |
+| `session/workingDirectoryRemoved` | Removes `directory` from the set. A no-op when it is not present. There is no atomic backend "remove one" primitive — the host reconfigures its agent to the reduced set. A host MAY decline to apply the removal (e.g. the current primary of an agent that requires one), leaving the set unchanged. |
 
 Both are `@clientDispatchable`. The resulting set is observed on
 `SessionState.workingDirectories` like any other state — there is no separate
@@ -625,13 +635,15 @@ session set.
 #### Setting at create time
 
 Pass `workingDirectories` to `createChat`. Every entry must already exist in
-the session's `workingDirectories`:
+the session's `workingDirectories`. When the agent `requiresPrimary`, also pass
+`primaryWorkingDirectory` if the chat's primary differs from the session's:
 
 ```typescript
 createChat({
   channel: 'ahp-session:/<uuid>',
   chat: 'ahp-chat:/<uuid>',
   workingDirectories: ['file:///workspace/frontend'],  // subset
+  primaryWorkingDirectory: 'file:///workspace/frontend',  // optional; inherits session's when omitted
 });
 ```
 

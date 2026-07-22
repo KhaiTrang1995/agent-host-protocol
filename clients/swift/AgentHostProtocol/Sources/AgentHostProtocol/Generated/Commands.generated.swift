@@ -357,8 +357,9 @@ public struct CreateSessionParams: Codable, Sendable {
     /// The working directories the session's agent is granted tool access to.
     /// A session may span multiple directories; they are equal peers except when
     /// the agent advertises
-    /// {@link MultipleWorkingDirectoriesCapability.immutablePrimary} (in which case
-    /// the first entry is a fixed process root).
+    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}, in which case
+    /// one of them should be designated the primary via
+    /// {@link primaryWorkingDirectory}.
     ///
     /// A client MUST NOT supply more than one entry unless the agent advertises
     /// {@link AgentCapabilities.multipleWorkingDirectories}; a server without that
@@ -370,6 +371,14 @@ public struct CreateSessionParams: Codable, Sendable {
     /// Ignored for forked sessions — a fork inherits its working directories
     /// from the source session identified by `fork`.
     public var workingDirectories: [String]?
+    /// The session's primary working directory — the distinguished root the agent
+    /// centers on. When set, it MUST be one of {@link workingDirectories}. A client
+    /// SHOULD supply this when the agent advertises
+    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY
+    /// reject creation that omits it, or fall back to the first entry of
+    /// `workingDirectories`. Ignored for forked sessions (a fork inherits the
+    /// source session's primary).
+    public var primaryWorkingDirectory: String?
     /// Fork from an existing session. The new session is populated with content
     /// from the source session up to and including the specified turn's response.
     public var fork: SessionForkSource?
@@ -399,6 +408,7 @@ public struct CreateSessionParams: Codable, Sendable {
         channel: String,
         provider: String? = nil,
         workingDirectories: [String]? = nil,
+        primaryWorkingDirectory: String? = nil,
         fork: SessionForkSource? = nil,
         config: [String: AnyCodable]? = nil,
         activeClient: SessionActiveClient? = nil,
@@ -407,6 +417,7 @@ public struct CreateSessionParams: Codable, Sendable {
         self.channel = channel
         self.provider = provider
         self.workingDirectories = workingDirectories
+        self.primaryWorkingDirectory = primaryWorkingDirectory
         self.fork = fork
         self.config = config
         self.activeClient = activeClient
@@ -458,19 +469,29 @@ public struct CreateChatParams: Codable, Sendable {
     /// A client MUST NOT supply this field unless the agent advertises
     /// {@link AgentCapabilities.multipleWorkingDirectories}.
     public var workingDirectories: [String]?
+    /// The chat's primary working directory — the distinguished root this chat
+    /// centers on. When set, it MUST be one of the chat's effective working
+    /// directories ({@link workingDirectories}, or the session's set when that is
+    /// omitted). A client SHOULD supply this when the agent advertises
+    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary} and the chat
+    /// narrows to a subset that excludes the session's primary; when absent, the
+    /// chat inherits the session's primary. Ignored for forked chats.
+    public var primaryWorkingDirectory: String?
 
     public init(
         channel: String,
         chat: String,
         initialMessage: Message? = nil,
         source: ChatForkSource? = nil,
-        workingDirectories: [String]? = nil
+        workingDirectories: [String]? = nil,
+        primaryWorkingDirectory: String? = nil
     ) {
         self.channel = channel
         self.chat = chat
         self.initialMessage = initialMessage
         self.source = source
         self.workingDirectories = workingDirectories
+        self.primaryWorkingDirectory = primaryWorkingDirectory
     }
 }
 
