@@ -1414,15 +1414,6 @@ const RECONNECT_RESULT_UNION: UnionConfig = {
   ],
 };
 
-const CHAT_SOURCE_UNION: UnionConfig = {
-  name: 'ChatSource',
-  discriminantField: 'kind',
-  variants: [
-    { caseName: 'fork', structName: 'ForkChatSource', discriminantValue: 'fork' },
-    { caseName: 'sideChat', structName: 'SideChatSource', discriminantValue: 'sideChat' },
-  ],
-};
-
 function generateCommandsFile(project: Project): string {
   const lines: string[] = [GENERATED_HEADER];
 
@@ -1451,7 +1442,7 @@ function generateCommandsFile(project: Project): string {
   }
 
   lines.push('// MARK: - Command Unions\n');
-  lines.push(generateDiscriminatedUnion(CHAT_SOURCE_UNION));
+  lines.push(generateChatSourceSwift());
   lines.push('');
 
   lines.push('// MARK: - ReconnectResult Union\n');
@@ -1463,6 +1454,34 @@ function generateCommandsFile(project: Project): string {
   lines.push('');
 
   return lines.join('\n');
+}
+
+function generateChatSourceSwift(): string {
+  return `public enum ChatSource: Codable, Sendable {
+    case fork(ForkChatSource)
+    case sideChat(SideChatSource)
+
+    private enum DiscriminatorCodingKeys: String, CodingKey { case kind }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: DiscriminatorCodingKeys.self)
+        switch try container.decodeIfPresent(String.self, forKey: .kind) {
+        case "sideChat":
+            self = .sideChat(try SideChatSource(from: decoder))
+        case nil:
+            self = .fork(try ForkChatSource(from: decoder))
+        case .some(let discriminant):
+            throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "Unknown ChatSource discriminant: \\(discriminant)")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        switch self {
+        case .fork(let value): try value.encode(to: encoder)
+        case .sideChat(let value): try value.encode(to: encoder)
+        }
+    }
+}`;
 }
 
 function generateChangesetOperationTargetSwift(): string {

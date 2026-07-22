@@ -659,10 +659,10 @@ createChat({
 });
 ```
 
-Forked chats (`source.kind: "fork"`) inherit the source chat's
-`workingDirectories` and primary, so both fields are ignored for forks. Side
-chats can still choose their own subset and primary, whether they start from a
-completed source turn or an active-turn snapshot.
+Forked chats (those whose `source` uses the flat `{ chat, turnId }` shape)
+inherit the source chat's `workingDirectories` and primary, so both fields are
+ignored for forks. Side chats can still choose their own subset and primary,
+whether they start from a completed source turn or an active-turn snapshot.
 
 #### Managing the subset after creation
 

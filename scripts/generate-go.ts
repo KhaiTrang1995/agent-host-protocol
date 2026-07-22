@@ -1520,16 +1520,6 @@ const RECONNECT_RESULT_UNION: UnionConfig = {
   ],
 };
 
-const CHAT_SOURCE_UNION: UnionConfig = {
-  name: 'ChatSource',
-  discriminantField: 'kind',
-  doc: 'ChatSource identifies how a new chat uses a source chat.',
-  variants: [
-    { variantName: 'Fork', innerType: 'ForkChatSource', wireValue: 'fork' },
-    { variantName: 'SideChat', innerType: 'SideChatSource', wireValue: 'sideChat' },
-  ],
-};
-
 const CHAT_SOURCE_TURN_UNION: UnionConfig = {
   name: 'ChatSourceTurn',
   discriminantField: 'kind',
@@ -1603,6 +1593,55 @@ func (t ChangesetOperationTarget) MarshalJSON() ([]byte, error) {
 }`;
 }
 
+function generateChatSourceGo(): string {
+  return `// ChatSource identifies how a new chat uses a source chat.
+type ChatSource struct {
+	Value isChatSource
+}
+
+// isChatSource is the marker interface for chat source variants.
+type isChatSource interface{ isChatSource() }
+
+func (*ForkChatSource) isChatSource() {}
+func (*SideChatSource) isChatSource() {}
+
+// UnmarshalJSON decodes side-chat sources by \`kind: "sideChat"\`. Any other
+// object without a \`kind\` is treated as the legacy flat fork payload.
+func (s *ChatSource) UnmarshalJSON(data []byte) error {
+	disc, ok, err := readDiscriminator(data, "kind")
+	if err != nil {
+		return err
+	}
+	if ok {
+		switch disc {
+		case "sideChat":
+			var value SideChatSource
+			if err := json.Unmarshal(data, &value); err != nil {
+				return err
+			}
+			s.Value = &value
+			return nil
+		default:
+			return &json.UnmarshalTypeError{Value: "ChatSource kind " + disc, Type: nil}
+		}
+	}
+	var value ForkChatSource
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	s.Value = &value
+	return nil
+}
+
+// MarshalJSON encodes the active variant back to JSON.
+func (s ChatSource) MarshalJSON() ([]byte, error) {
+	if s.Value == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(s.Value)
+}`;
+}
+
 function generateCommandsFile(project: Project): string {
   const lines: string[] = [HEADER_WITH_IMPORTS];
 
@@ -1634,7 +1673,7 @@ function generateCommandsFile(project: Project): string {
   }
 
   lines.push('// ─── ChatSource Union ─────────────────────────────────────────────────\n');
-  lines.push(generateDiscriminatedUnion(CHAT_SOURCE_UNION));
+  lines.push(generateChatSourceGo());
   lines.push('');
 
   lines.push('// ─── ReconnectResult Union ────────────────────────────────────────────\n');

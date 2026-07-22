@@ -1491,15 +1491,6 @@ const RECONNECT_RESULT_UNION: UnionConfig = {
   ],
 };
 
-const CHAT_SOURCE_UNION: UnionConfig = {
-  name: 'ChatSource',
-  discriminantField: 'kind',
-  variants: [
-    { caseName: 'Fork', structName: 'ForkChatSource', discriminantValue: 'fork' },
-    { caseName: 'SideChat', structName: 'SideChatSource', discriminantValue: 'sideChat' },
-  ],
-};
-
 /**
  * ChangesetOperationTarget — TS discriminated union over `{ kind: "resource" }`
  * and `{ kind: "range" }`. The variant structs are inline-only in TS (not
@@ -1572,6 +1563,53 @@ internal object ChangesetOperationTargetSerializer : KSerializer<ChangesetOperat
 }`;
 }
 
+function generateChatSourceKotlin(): string {
+  return `@Serializable(with = ChatSourceSerializer::class)
+sealed interface ChatSource {
+}
+
+@JvmInline
+value class ChatSourceFork(val value: ForkChatSource) : ChatSource
+
+@JvmInline
+value class ChatSourceSideChat(val value: SideChatSource) : ChatSource
+
+internal object ChatSourceSerializer : KSerializer<ChatSource> {
+    override val descriptor: SerialDescriptor =
+        buildClassSerialDescriptor("ChatSource")
+
+    override fun deserialize(decoder: Decoder): ChatSource {
+        val input = decoder as? JsonDecoder
+            ?: error("ChatSource can only be deserialized from JSON")
+        val element = input.decodeJsonElement()
+        val obj = element as? JsonObject
+            ?: error("Expected JsonObject for ChatSource")
+        val kind = (obj["kind"] as? JsonPrimitive)?.contentOrNull
+        return when (kind) {
+            "sideChat" -> ChatSourceSideChat(
+                input.json.decodeFromJsonElement(SideChatSource.serializer(), element),
+            )
+            null -> ChatSourceFork(
+                input.json.decodeFromJsonElement(ForkChatSource.serializer(), element),
+            )
+            else -> error("Unknown ChatSource discriminator: $kind")
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: ChatSource) {
+        val output = encoder as? JsonEncoder
+            ?: error("ChatSource can only be serialized to JSON")
+        val element: JsonElement = when (value) {
+            is ChatSourceFork ->
+                output.json.encodeToJsonElement(ForkChatSource.serializer(), value.value)
+            is ChatSourceSideChat ->
+                output.json.encodeToJsonElement(SideChatSource.serializer(), value.value)
+        }
+        output.encodeJsonElement(element)
+    }
+}`;
+}
+
 function generateCommandsFile(project: Project): string {
   const lines: string[] = [GENERATED_HEADER];
 
@@ -1602,7 +1640,7 @@ function generateCommandsFile(project: Project): string {
 
   lines.push('// ─── ChatSource Union ───────────────────────────────────────────────────────');
   lines.push('');
-  lines.push(generateDiscriminatedUnion(CHAT_SOURCE_UNION));
+  lines.push(generateChatSourceKotlin());
   lines.push('');
 
   lines.push('// ─── ReconnectResult Union ──────────────────────────────────────────────────');

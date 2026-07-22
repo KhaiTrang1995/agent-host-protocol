@@ -4,13 +4,11 @@
   "description": "ChatSource preserves the 0.7.x flat fork wire format with a top-level turnId.",
   "type": "ChatSource",
   "input": {
-    "kind": "fork",
     "chat": "ahp-chat:/main",
     "turnId": "turn-12"
   },
   "acceptableOutputs": [
     {
-      "kind": "fork",
       "chat": "ahp-chat:/main",
       "turnId": "turn-12"
     }

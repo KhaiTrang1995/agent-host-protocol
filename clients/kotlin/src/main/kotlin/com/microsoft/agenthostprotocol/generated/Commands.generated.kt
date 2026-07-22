@@ -469,10 +469,6 @@ data class DisposeSessionParams(
 @Serializable
 data class ForkChatSource(
     /**
-     * Discriminant
-     */
-    val kind: ChatSourceKind,
-    /**
      * URI of the existing source chat.
      */
     val chat: String,
@@ -525,8 +521,8 @@ data class CreateChatParams(
     /**
      * Optional source chat and source turn.
      *
-     * The source chat MUST belong to this session. Clients MUST only request
-     * `kind: "fork"` when the selected agent advertises
+     * The source chat MUST belong to this session. Clients MUST only request the
+     * flat fork shape (`chat` + `turnId`) when the selected agent advertises
      * `capabilities.multipleChats.fork`, and
      * `kind: "sideChat"` when the selected agent advertises
      * `capabilities.multipleChats.sideChat`. Forks keep the legacy flat
@@ -539,8 +535,9 @@ data class CreateChatParams(
      * Initial working-directory subset for this chat. Every entry MUST be
      * present in the owning session's `workingDirectories`; the server MUST
      * reject any entry that is not. When absent, the chat inherits the full
-     * session set. Forked chats (`source.kind === "fork"`) inherit the source
-     * chat's `workingDirectories`; this field is ignored for forks.
+     * session set. Forked chats (those whose `source` uses the flat `chat` +
+     * `turnId` shape) inherit the source chat's `workingDirectories`; this field
+     * is ignored for forks.
      *
      * A client MUST NOT supply this field unless the agent advertises
      * {@link AgentCapabilities.multipleWorkingDirectories}.
@@ -554,8 +551,9 @@ data class CreateChatParams(
      * {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY
      * reject creation that omits it, or fall back to the first of the chat's
      * directories. Fixed at creation and reported (read-only) on
-     * {@link ChatState.primaryWorkingDirectory}. Ignored for forks (a
-     * `source.kind === "fork"` chat inherits the source chat's primary).
+     * {@link ChatState.primaryWorkingDirectory}. Ignored for forks (a chat whose
+     * `source` uses the flat `chat` + `turnId` shape inherits the source chat's
+     * primary).
      */
     val primaryWorkingDirectory: String? = null
 )
@@ -1299,10 +1297,12 @@ data class ChangesetOperationFollowUp(
 // ─── ChatSource Union ───────────────────────────────────────────────────────
 
 @Serializable(with = ChatSourceSerializer::class)
-sealed interface ChatSource
+sealed interface ChatSource {
+}
 
 @JvmInline
 value class ChatSourceFork(val value: ForkChatSource) : ChatSource
+
 @JvmInline
 value class ChatSourceSideChat(val value: SideChatSource) : ChatSource
 
@@ -1316,12 +1316,15 @@ internal object ChatSourceSerializer : KSerializer<ChatSource> {
         val element = input.decodeJsonElement()
         val obj = element as? JsonObject
             ?: error("Expected JsonObject for ChatSource")
-        val discriminant = (obj["kind"] as? JsonPrimitive)?.content
-            ?: error("Missing kind discriminator on ChatSource")
-        return when (discriminant) {
-            "fork" -> ChatSourceFork(input.json.decodeFromJsonElement(ForkChatSource.serializer(), element))
-            "sideChat" -> ChatSourceSideChat(input.json.decodeFromJsonElement(SideChatSource.serializer(), element))
-            else -> error("Unknown ChatSource discriminator: $discriminant")
+        val kind = (obj["kind"] as? JsonPrimitive)?.contentOrNull
+        return when (kind) {
+            "sideChat" -> ChatSourceSideChat(
+                input.json.decodeFromJsonElement(SideChatSource.serializer(), element),
+            )
+            null -> ChatSourceFork(
+                input.json.decodeFromJsonElement(ForkChatSource.serializer(), element),
+            )
+            else -> error("Unknown ChatSource discriminator: $kind")
         }
     }
 
@@ -1329,8 +1332,10 @@ internal object ChatSourceSerializer : KSerializer<ChatSource> {
         val output = encoder as? JsonEncoder
             ?: error("ChatSource can only be serialized to JSON")
         val element: JsonElement = when (value) {
-            is ChatSourceFork -> output.json.encodeToJsonElement(ForkChatSource.serializer(), value.value)
-            is ChatSourceSideChat -> output.json.encodeToJsonElement(SideChatSource.serializer(), value.value)
+            is ChatSourceFork ->
+                output.json.encodeToJsonElement(ForkChatSource.serializer(), value.value)
+            is ChatSourceSideChat ->
+                output.json.encodeToJsonElement(SideChatSource.serializer(), value.value)
         }
         output.encodeJsonElement(element)
     }

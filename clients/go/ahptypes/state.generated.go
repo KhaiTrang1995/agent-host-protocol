@@ -614,8 +614,8 @@ type AgentCapabilities struct {
 // Options for the {@link AgentCapabilities.multipleChats} capability.
 type MultipleChatsCapability struct {
 	// The agent can fork a chat from a specific turn. When absent or `false`,
-	// clients MUST NOT pass a {@link ChatSource} with `kind: "fork"` to
-	// `createChat`.
+	// clients MUST NOT pass a fork-shaped {@link ChatSource} (`chat` + `turnId`)
+	// to `createChat`.
 	// Forking always implies multi-chat support.
 	Fork *bool `json:"fork,omitempty"`
 	// The agent can create a side chat from a specific turn. When absent or

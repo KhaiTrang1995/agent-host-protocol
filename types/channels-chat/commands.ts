@@ -27,8 +27,6 @@ export const enum ChatSourceKind {
  * Copies source history through a completed turn into the new chat.
  */
 export interface ForkChatSource {
-  /** Discriminant */
-  kind: ChatSourceKind.Fork;
   /** URI of the existing source chat. */
   chat: URI;
   /**
@@ -88,8 +86,8 @@ export interface CreateChatParams extends BaseParams {
   /**
    * Optional source chat and source turn.
    *
-   * The source chat MUST belong to this session. Clients MUST only request
-   * `kind: "fork"` when the selected agent advertises
+   * The source chat MUST belong to this session. Clients MUST only request the
+   * flat fork shape (`chat` + `turnId`) when the selected agent advertises
    * `capabilities.multipleChats.fork`, and
    * `kind: "sideChat"` when the selected agent advertises
    * `capabilities.multipleChats.sideChat`. Forks keep the legacy flat
@@ -102,8 +100,9 @@ export interface CreateChatParams extends BaseParams {
    * Initial working-directory subset for this chat. Every entry MUST be
    * present in the owning session's `workingDirectories`; the server MUST
    * reject any entry that is not. When absent, the chat inherits the full
-   * session set. Forked chats (`source.kind === "fork"`) inherit the source
-   * chat's `workingDirectories`; this field is ignored for forks.
+   * session set. Forked chats (those whose `source` uses the flat `chat` +
+   * `turnId` shape) inherit the source chat's `workingDirectories`; this field
+   * is ignored for forks.
    *
    * A client MUST NOT supply this field unless the agent advertises
    * {@link AgentCapabilities.multipleWorkingDirectories}.
@@ -117,8 +116,9 @@ export interface CreateChatParams extends BaseParams {
    * {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY
    * reject creation that omits it, or fall back to the first of the chat's
    * directories. Fixed at creation and reported (read-only) on
-   * {@link ChatState.primaryWorkingDirectory}. Ignored for forks (a
-   * `source.kind === "fork"` chat inherits the source chat's primary).
+   * {@link ChatState.primaryWorkingDirectory}. Ignored for forks (a chat whose
+   * `source` uses the flat `chat` + `turnId` shape inherits the source chat's
+   * primary).
    */
   primaryWorkingDirectory?: URI;
 }

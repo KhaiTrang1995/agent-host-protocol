@@ -1556,16 +1556,6 @@ const RECONNECT_RESULT_UNION: UnionConfig = {
   ],
 };
 
-const CHAT_SOURCE_UNION: UnionConfig = {
-  name: 'ChatSource',
-  discriminantField: 'kind',
-  doc: 'How a new chat uses a source chat.',
-  variants: [
-    { variantName: 'Fork', innerType: 'ForkChatSource', wireValue: 'fork' },
-    { variantName: 'SideChat', innerType: 'SideChatSource', wireValue: 'sideChat' },
-  ],
-};
-
 function generateCommandsFile(project: Project): string {
   const lines: string[] = [GENERATED_HEADER];
   lines.push('#[allow(unused_imports)]');
@@ -1604,7 +1594,7 @@ function generateCommandsFile(project: Project): string {
   }
 
   lines.push('// ─── ChatSource Union ─────────────────────────────────────────────────\n');
-  lines.push(generateValueRoutedDiscriminatedUnion(CHAT_SOURCE_UNION));
+  lines.push(generateChatSource());
   lines.push('');
 
   lines.push('// ─── ReconnectResult Union ────────────────────────────────────────────\n');
@@ -1616,6 +1606,47 @@ function generateCommandsFile(project: Project): string {
   lines.push('');
 
   return lines.join('\n');
+}
+
+function generateChatSource(): string {
+  return `/// How a new chat uses a source chat.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "serde_json::Value", into = "serde_json::Value")]
+pub enum ChatSource {
+    /// Copies source history through a completed turn into the new chat.
+    Fork(ForkChatSource),
+    /// Supplies source context to a new side chat without copying it into the side chat's visible history.
+    SideChat(SideChatSource),
+}
+
+impl TryFrom<serde_json::Value> for ChatSource {
+    type Error = String;
+
+    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+        let Some(object) = value.as_object() else {
+            return Err("ChatSource must be a JSON object".to_string());
+        };
+
+        match object.get("kind").and_then(|field| field.as_str()) {
+            Some("sideChat") => serde_json::from_value(value)
+                .map(Self::SideChat)
+                .map_err(|error| error.to_string()),
+            Some(kind) => Err(format!("unknown kind: {kind}")),
+            None => serde_json::from_value(value)
+                .map(Self::Fork)
+                .map_err(|error| error.to_string()),
+        }
+    }
+}
+
+impl From<ChatSource> for serde_json::Value {
+    fn from(value: ChatSource) -> Self {
+        match value {
+            ChatSource::Fork(inner) => serde_json::to_value(inner).expect("serializing ChatSource::Fork"),
+            ChatSource::SideChat(inner) => serde_json::to_value(inner).expect("serializing ChatSource::SideChat"),
+        }
+    }
+}`;
 }
 
 function generateSubscribeParamsImplRust(): string {

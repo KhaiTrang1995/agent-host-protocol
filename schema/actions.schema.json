@@ -2737,7 +2737,7 @@
       "properties": {
         "fork": {
           "type": "boolean",
-          "description": "The agent can fork a chat from a specific turn. When absent or `false`,\nclients MUST NOT pass a {@link ChatSource} with `kind: \"fork\"` to\n`createChat`.\nForking always implies multi-chat support."
+          "description": "The agent can fork a chat from a specific turn. When absent or `false`,\nclients MUST NOT pass a fork-shaped {@link ChatSource} (`chat` + `turnId`)\nto `createChat`.\nForking always implies multi-chat support."
         },
         "sideChat": {
           "type": "boolean",

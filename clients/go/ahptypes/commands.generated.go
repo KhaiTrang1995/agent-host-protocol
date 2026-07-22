@@ -386,8 +386,6 @@ type DisposeSessionParams struct {
 
 // Copies source history through a completed turn into the new chat.
 type ForkChatSource struct {
-	// Discriminant
-	Kind ChatSourceKind `json:"kind"`
 	// URI of the existing source chat.
 	Chat URI `json:"chat"`
 	// Completed turn identifier in the source chat.
@@ -425,8 +423,8 @@ type CreateChatParams struct {
 	InitialMessage *Message `json:"initialMessage,omitempty"`
 	// Optional source chat and source turn.
 	//
-	// The source chat MUST belong to this session. Clients MUST only request
-	// `kind: "fork"` when the selected agent advertises
+	// The source chat MUST belong to this session. Clients MUST only request the
+	// flat fork shape (`chat` + `turnId`) when the selected agent advertises
 	// `capabilities.multipleChats.fork`, and
 	// `kind: "sideChat"` when the selected agent advertises
 	// `capabilities.multipleChats.sideChat`. Forks keep the legacy flat
@@ -437,8 +435,9 @@ type CreateChatParams struct {
 	// Initial working-directory subset for this chat. Every entry MUST be
 	// present in the owning session's `workingDirectories`; the server MUST
 	// reject any entry that is not. When absent, the chat inherits the full
-	// session set. Forked chats (`source.kind === "fork"`) inherit the source
-	// chat's `workingDirectories`; this field is ignored for forks.
+	// session set. Forked chats (those whose `source` uses the flat `chat` +
+	// `turnId` shape) inherit the source chat's `workingDirectories`; this field
+	// is ignored for forks.
 	//
 	// A client MUST NOT supply this field unless the agent advertises
 	// {@link AgentCapabilities.multipleWorkingDirectories}.
@@ -450,8 +449,9 @@ type CreateChatParams struct {
 	// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY
 	// reject creation that omits it, or fall back to the first of the chat's
 	// directories. Fixed at creation and reported (read-only) on
-	// {@link ChatState.primaryWorkingDirectory}. Ignored for forks (a
-	// `source.kind === "fork"` chat inherits the source chat's primary).
+	// {@link ChatState.primaryWorkingDirectory}. Ignored for forks (a chat whose
+	// `source` uses the flat `chat` + `turnId` shape inherits the source chat's
+	// primary).
 	PrimaryWorkingDirectory *URI `json:"primaryWorkingDirectory,omitempty"`
 }
 
@@ -1126,44 +1126,46 @@ type ChatSource struct {
 	Value isChatSource
 }
 
-// isChatSource is the marker interface implemented by every
-// concrete variant of ChatSource.
+// isChatSource is the marker interface for chat source variants.
 type isChatSource interface{ isChatSource() }
 
 func (*ForkChatSource) isChatSource() {}
 func (*SideChatSource) isChatSource() {}
 
-// UnmarshalJSON decodes the variant indicated by the "kind" discriminator.
-func (u *ChatSource) UnmarshalJSON(data []byte) error {
-	disc, _, err := readDiscriminator(data, "kind")
+// UnmarshalJSON decodes side-chat sources by `kind: "sideChat"`. Any other
+// object without a `kind` is treated as the legacy flat fork payload.
+func (s *ChatSource) UnmarshalJSON(data []byte) error {
+	disc, ok, err := readDiscriminator(data, "kind")
 	if err != nil {
 		return err
 	}
-	switch disc {
-	case "fork":
-		var value ForkChatSource
-		if err := json.Unmarshal(data, &value); err != nil {
-			return err
+	if ok {
+		switch disc {
+		case "sideChat":
+			var value SideChatSource
+			if err := json.Unmarshal(data, &value); err != nil {
+				return err
+			}
+			s.Value = &value
+			return nil
+		default:
+			return &json.UnmarshalTypeError{Value: "ChatSource kind " + disc, Type: nil}
 		}
-		u.Value = &value
-	case "sideChat":
-		var value SideChatSource
-		if err := json.Unmarshal(data, &value); err != nil {
-			return err
-		}
-		u.Value = &value
-	default:
-		return &json.UnmarshalTypeError{Value: "ChatSource", Type: nil}
 	}
+	var value ForkChatSource
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	s.Value = &value
 	return nil
 }
 
 // MarshalJSON encodes the active variant back to JSON.
-func (u ChatSource) MarshalJSON() ([]byte, error) {
-	if u.Value == nil {
+func (s ChatSource) MarshalJSON() ([]byte, error) {
+	if s.Value == nil {
 		return []byte("null"), nil
 	}
-	return json.Marshal(u.Value)
+	return json.Marshal(s.Value)
 }
 
 // ─── ReconnectResult Union ────────────────────────────────────────────

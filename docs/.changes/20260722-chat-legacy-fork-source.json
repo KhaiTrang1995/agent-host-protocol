@@ -1,0 +1,4 @@
+{
+  "type": "fixed",
+  "message": "`createChat.source` once again accepts the legacy flat fork payload without a `kind` property."
+}
