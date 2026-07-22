@@ -73,7 +73,7 @@ SessionState {
   status: number        // SessionStatus bitset
   activity?: string
   project?: ProjectInfo
-  workingDirectory?: URI
+  workingDirectories?: URI[]   // equal-peer working directories
   annotations?: AnnotationsSummary
 
   lifecycle: 'creating' | 'ready' | 'creationFailed'
@@ -107,7 +107,7 @@ SessionSummary {
   createdAt: string   // ISO 8601, e.g. "2025-03-10T18:42:03.123Z"
   modifiedAt: string  // ISO 8601
   project?: ProjectInfo
-  workingDirectory?: URI
+  workingDirectories?: URI[]   // equal-peer working directories
   annotations?: AnnotationsSummary
   changes?: ChangesSummary
 }
@@ -150,7 +150,8 @@ ChatState {
   activity?: string
   modifiedAt: string
   origin?: ChatOrigin      // how the chat came to exist (user / fork / tool)
-  workingDirectory?: URI
+  workingDirectories?: URI[]      // subset of session's workingDirectories
+  primaryWorkingDirectory?: URI      // this chat's primary, read-only (set at creation, when requiresPrimary)
 
   turns: Turn[]                       // completed turns
   turnsNextCursor?: string            // page older turns via fetchTurns
@@ -561,6 +562,120 @@ createSession({
 ```
 
 The forked session is an independent copy — subsequent changes to either session do not affect the other. The server broadcasts `root/sessionAdded` for the new session as usual.
+
+## Multiroot Sessions
+
+A session can be granted tool access to more than one working directory when the
+agent advertises the `multipleWorkingDirectories` capability. At the session
+level the directories are always **equal peers** — a session has no primary. A
+**primary** is a per-chat notion (see [below](#per-chat-working-directory-subsets));
+the session simply owns the set every chat draws from.
+
+### Creating a multiroot session
+
+Pass `workingDirectories` (plural) in `createSession`. When the agent
+`requiresPrimary`, also pass `primaryWorkingDirectory` — it seeds the primary of
+the session's **default chat** (the session itself stores no primary):
+
+```typescript
+createSession({
+  channel: 'ahp-session:/<uuid>',
+  provider: 'copilot',
+  workingDirectories: [
+    'file:///workspace/frontend',
+    'file:///workspace/backend',
+  ],
+  primaryWorkingDirectory: 'file:///workspace/frontend',  // seeds default chat, when requiresPrimary
+});
+```
+
+A client MUST NOT pass more than one entry unless the agent advertises
+`multipleWorkingDirectories`. Servers without that capability treat only the
+first entry as the session's working directory and ignore the rest.
+
+When the agent advertises `multipleWorkingDirectories.requiresPrimary`, a client
+SHOULD supply `primaryWorkingDirectory` (which MUST be one of
+`workingDirectories`); a host MAY reject a creation that omits it, or fall back
+to the first entry. It becomes the default chat's read-only
+`ChatState.primaryWorkingDirectory`.
+
+> **Why is `primaryWorkingDirectory` on `createSession` if the session has no
+> primary?** Because `createSession` implicitly creates the session's **default
+> chat**, and there is no separate `createChat` call to carry that chat's
+> create-time fields. This field is the only place to designate the default
+> chat's primary at birth. For any additional chat, pass its primary to
+> `createChat` instead.
+
+Forked sessions ignore `workingDirectories` / `primaryWorkingDirectory` — they
+inherit the working directories (and per-chat primaries) of the source session.
+
+### Managing directories after creation
+
+The directory set is state (`SessionState.workingDirectories`), so clients
+mutate it by **dispatching actions**, not by calling commands:
+
+| Action | Effect |
+| --- | --- |
+| `session/workingDirectorySet` | Adds `directory` to the set (creating it if absent). A no-op when the directory is already present. |
+| `session/workingDirectoryRemoved` | Removes `directory` from the set. A no-op when it is not present. There is no atomic backend "remove one" primitive — the host reconfigures its agent to the reduced set. A host MAY decline to apply the removal (e.g. a directory still designated as some chat's primary), leaving the set unchanged. |
+
+Both are `@clientDispatchable`. The resulting set is observed on
+`SessionState.workingDirectories` like any other state — there is no separate
+result payload.
+
+Before dispatching either action, a client MUST verify that the agent advertises
+`multipleWorkingDirectories`.
+
+### Per-chat working-directory subsets
+
+Each chat within a multiroot session may further restrict the directories it
+uses to a **subset** of the session's `workingDirectories`. This lets
+different chats in the same session each focus on a different part of the
+workspace — for example, a frontend chat and a backend chat.
+
+The effective set for a chat is recorded in `ChatState.workingDirectories` /
+`ChatSummary.workingDirectories`. When absent the chat inherits the full
+session set.
+
+A chat also designates its own **primary** working directory —
+`ChatState.primaryWorkingDirectory` (mirrored on `ChatSummary`). It is
+**read-only and fixed at chat creation**: there is no action to change it, and
+it does not participate in `session/chatUpdated`. Present only when the agent
+`requiresPrimary`. Each chat can pick a different primary from its own effective
+directories.
+
+#### Setting at create time
+
+Pass `workingDirectories` to `createChat`. Every entry must already exist in
+the session's `workingDirectories`. When the agent `requiresPrimary`, also pass
+`primaryWorkingDirectory` (one of the chat's effective directories):
+
+```typescript
+createChat({
+  channel: 'ahp-session:/<uuid>',
+  chat: 'ahp-chat:/<uuid>',
+  workingDirectories: ['file:///workspace/frontend'],  // subset
+  primaryWorkingDirectory: 'file:///workspace/frontend',  // this chat's primary, when requiresPrimary
+});
+```
+
+Forked chats (those with a `source`) inherit the source chat's
+`workingDirectories` and primary; both fields are ignored for them.
+
+#### Managing the subset after creation
+
+Two `@clientDispatchable` actions mutate a running chat's working-directory
+subset:
+
+| Action | Effect |
+| --- | --- |
+| `chat/workingDirectorySet` | Adds `directory` to the chat's subset. It MUST already be in the session's `workingDirectories`; a host MUST reject a directory that is not. A no-op when already in the chat's subset. |
+| `chat/workingDirectoryRemoved` | Removes `directory` from the chat's subset (idempotent). Only affects the chat — the directory stays in the session's set. |
+
+The subset is observed on `ChatState.workingDirectories`.
+
+A client MUST NOT dispatch these actions unless the agent advertises
+`multipleWorkingDirectories`.
 
 ## Next Steps
 

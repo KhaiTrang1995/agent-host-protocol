@@ -30,12 +30,16 @@ public enum ActionType: String, Codable, Sendable {
     case chatTurnCancelled = "chat/turnCancelled"
     case chatError = "chat/error"
     case chatActivityChanged = "chat/activityChanged"
+    case chatWorkingDirectorySet = "chat/workingDirectorySet"
+    case chatWorkingDirectoryRemoved = "chat/workingDirectoryRemoved"
     case sessionTitleChanged = "session/titleChanged"
     case chatUsage = "chat/usage"
     case chatReasoning = "chat/reasoning"
     case sessionServerToolsChanged = "session/serverToolsChanged"
     case sessionActiveClientSet = "session/activeClientSet"
     case sessionActiveClientRemoved = "session/activeClientRemoved"
+    case sessionWorkingDirectorySet = "session/workingDirectorySet"
+    case sessionWorkingDirectoryRemoved = "session/workingDirectoryRemoved"
     case sessionInputNeededSet = "session/inputNeededSet"
     case sessionInputNeededRemoved = "session/inputNeededRemoved"
     case chatPendingMessageSet = "chat/pendingMessageSet"
@@ -1112,6 +1116,62 @@ public struct SessionActiveClientRemovedAction: Codable, Sendable {
     }
 }
 
+public struct SessionWorkingDirectorySetAction: Codable, Sendable {
+    public var type: ActionType
+    /// The working directory to grant the session's agent tool access to.
+    public var directory: String
+
+    public init(
+        type: ActionType,
+        directory: String
+    ) {
+        self.type = type
+        self.directory = directory
+    }
+}
+
+public struct SessionWorkingDirectoryRemovedAction: Codable, Sendable {
+    public var type: ActionType
+    /// The working directory to revoke the session's agent tool access to.
+    public var directory: String
+
+    public init(
+        type: ActionType,
+        directory: String
+    ) {
+        self.type = type
+        self.directory = directory
+    }
+}
+
+public struct ChatWorkingDirectorySetAction: Codable, Sendable {
+    public var type: ActionType
+    /// The working directory to add to this chat's subset.
+    public var directory: String
+
+    public init(
+        type: ActionType,
+        directory: String
+    ) {
+        self.type = type
+        self.directory = directory
+    }
+}
+
+public struct ChatWorkingDirectoryRemovedAction: Codable, Sendable {
+    public var type: ActionType
+    /// The working directory to remove from this chat's subset.
+    public var directory: String
+
+    public init(
+        type: ActionType,
+        directory: String
+    ) {
+        self.type = type
+        self.directory = directory
+    }
+}
+
 public struct SessionInputNeededSetAction: Codable, Sendable {
     public var type: ActionType
     /// The input request to add or update, matched by `id`.
@@ -1916,12 +1976,12 @@ public struct PartialChatSummary: Codable, Sendable {
     /// Absence defaults to {@link ChatInteractivity.Full} for backward
     /// compatibility.
     public var interactivity: ChatInteractivity?
-    /// Optional per-chat working directory.
-    ///
-    /// If absent, the chat inherits
-    /// {@link SessionSummary.workingDirectory | the session's working directory}.
-    /// See {@link ChatState.workingDirectory} for usage notes.
-    public var workingDirectory: String?
+    /// The subset of the session's working directories this chat uses.
+    /// See {@link ChatState.workingDirectories} for the full semantics.
+    public var workingDirectories: [String]?
+    /// The chat's primary working directory.
+    /// See {@link ChatState.primaryWorkingDirectory} for the full semantics.
+    public var primaryWorkingDirectory: String?
 
     public init(
         resource: String? = nil,
@@ -1931,7 +1991,8 @@ public struct PartialChatSummary: Codable, Sendable {
         modifiedAt: String? = nil,
         origin: ChatOrigin? = nil,
         interactivity: ChatInteractivity? = nil,
-        workingDirectory: String? = nil
+        workingDirectories: [String]? = nil,
+        primaryWorkingDirectory: String? = nil
     ) {
         self.resource = resource
         self.title = title
@@ -1940,7 +2001,8 @@ public struct PartialChatSummary: Codable, Sendable {
         self.modifiedAt = modifiedAt
         self.origin = origin
         self.interactivity = interactivity
-        self.workingDirectory = workingDirectory
+        self.workingDirectories = workingDirectories
+        self.primaryWorkingDirectory = primaryWorkingDirectory
     }
 }
 
@@ -1982,6 +2044,10 @@ public enum StateAction: Codable, Sendable {
     case sessionServerToolsChanged(SessionServerToolsChangedAction)
     case sessionActiveClientSet(SessionActiveClientSetAction)
     case sessionActiveClientRemoved(SessionActiveClientRemovedAction)
+    case sessionWorkingDirectorySet(SessionWorkingDirectorySetAction)
+    case sessionWorkingDirectoryRemoved(SessionWorkingDirectoryRemovedAction)
+    case chatWorkingDirectorySet(ChatWorkingDirectorySetAction)
+    case chatWorkingDirectoryRemoved(ChatWorkingDirectoryRemovedAction)
     case sessionInputNeededSet(SessionInputNeededSetAction)
     case sessionInputNeededRemoved(SessionInputNeededRemovedAction)
     case chatPendingMessageSet(ChatPendingMessageSetAction)
@@ -2109,6 +2175,14 @@ public enum StateAction: Codable, Sendable {
             self = .sessionActiveClientSet(try SessionActiveClientSetAction(from: decoder))
         case "session/activeClientRemoved":
             self = .sessionActiveClientRemoved(try SessionActiveClientRemovedAction(from: decoder))
+        case "session/workingDirectorySet":
+            self = .sessionWorkingDirectorySet(try SessionWorkingDirectorySetAction(from: decoder))
+        case "session/workingDirectoryRemoved":
+            self = .sessionWorkingDirectoryRemoved(try SessionWorkingDirectoryRemovedAction(from: decoder))
+        case "chat/workingDirectorySet":
+            self = .chatWorkingDirectorySet(try ChatWorkingDirectorySetAction(from: decoder))
+        case "chat/workingDirectoryRemoved":
+            self = .chatWorkingDirectoryRemoved(try ChatWorkingDirectoryRemovedAction(from: decoder))
         case "session/inputNeededSet":
             self = .sessionInputNeededSet(try SessionInputNeededSetAction(from: decoder))
         case "session/inputNeededRemoved":
@@ -2244,6 +2318,10 @@ public enum StateAction: Codable, Sendable {
         case .sessionServerToolsChanged(let v): try v.encode(to: encoder)
         case .sessionActiveClientSet(let v): try v.encode(to: encoder)
         case .sessionActiveClientRemoved(let v): try v.encode(to: encoder)
+        case .sessionWorkingDirectorySet(let v): try v.encode(to: encoder)
+        case .sessionWorkingDirectoryRemoved(let v): try v.encode(to: encoder)
+        case .chatWorkingDirectorySet(let v): try v.encode(to: encoder)
+        case .chatWorkingDirectoryRemoved(let v): try v.encode(to: encoder)
         case .sessionInputNeededSet(let v): try v.encode(to: encoder)
         case .sessionInputNeededRemoved(let v): try v.encode(to: encoder)
         case .chatPendingMessageSet(let v): try v.encode(to: encoder)

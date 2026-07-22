@@ -627,6 +627,10 @@
         "multipleChats": {
           "$ref": "#/$defs/MultipleChatsCapability",
           "description": "The agent can host more than one concurrent chat per session. When absent,\nclients MUST NOT call `createChat` to open chats beyond the default one the\nsession starts with. An empty object `{}` advertises multi-chat without\nforking; set {@link MultipleChatsCapability.fork} to also allow forking."
+        },
+        "multipleWorkingDirectories": {
+          "$ref": "#/$defs/MultipleWorkingDirectoriesCapability",
+          "description": "The session's agent can be granted tool access to more than one working\ndirectory. The directories are treated as equal peers except where the\nagent advertises {@link MultipleWorkingDirectoriesCapability.requiresPrimary}\n(some backends need one directory designated as a primary root).\n\nWhen absent, clients MUST NOT mutate a session's or chat's working-directory\nset and MUST NOT set more than one entry in\n{@link CreateSessionParams.workingDirectories}."
         }
       }
     },
@@ -637,6 +641,16 @@
         "fork": {
           "type": "boolean",
           "description": "The agent can fork a chat from a specific turn. When absent or `false`,\nclients MUST NOT pass a {@link ChatForkSource} (`source`) to `createChat`.\nForking always implies multi-chat support."
+        }
+      }
+    },
+    "MultipleWorkingDirectoriesCapability": {
+      "type": "object",
+      "description": "Options for the {@link AgentCapabilities.multipleWorkingDirectories} capability.",
+      "properties": {
+        "requiresPrimary": {
+          "type": "boolean",
+          "description": "The agent requires each chat to designate one of its working directories as\nthe **primary** — a distinguished root the chat is centered on (e.g. the\nagent's process root for that chat, the default location for relative\npaths). Primary is a **per-chat** notion, fixed at chat creation. When\n`true`, a client SHOULD supply {@link CreateChatParams.primaryWorkingDirectory}\n(and {@link CreateSessionParams.primaryWorkingDirectory}, which seeds the\nsession's default chat); a host MAY reject creation that omits it, or fall\nback to the first entry of the chat's working directories. The chosen\nprimary is reported (read-only) on {@link ChatState.primaryWorkingDirectory}.\n\nWhen absent or `false`, the agent has no primary — all directories are\nequal peers and clients need not designate one."
         }
       }
     },
@@ -754,9 +768,12 @@
           "$ref": "#/$defs/ProjectInfo",
           "description": "Server-owned project for this session"
         },
-        "workingDirectory": {
-          "$ref": "#/$defs/URI",
-          "description": "The default working directory URI for this session. Individual chats\nMAY override via {@link ChatSummary.workingDirectory | their own\n`workingDirectory`}; this field acts as the fallback for any chat that\ndoes not."
+        "workingDirectories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The working directories the session's agent has tool access to, as\nmaintained by the `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` actions. Directories are **equal peers** —\nthe session has no primary. Individual chats MAY restrict to a subset via\n{@link ChatSummary.workingDirectories | their own `workingDirectories`} and\ndesignate one of their own directories as primary (see\n{@link ChatState.primaryWorkingDirectory}); a chat that sets no subset\noperates against this full set."
         },
         "annotations": {
           "$ref": "#/$defs/AnnotationsSummary",
@@ -793,9 +810,12 @@
           "$ref": "#/$defs/ProjectInfo",
           "description": "Server-owned project for this session"
         },
-        "workingDirectory": {
-          "$ref": "#/$defs/URI",
-          "description": "The default working directory URI for this session. Individual chats\nMAY override via {@link ChatSummary.workingDirectory | their own\n`workingDirectory`}; this field acts as the fallback for any chat that\ndoes not."
+        "workingDirectories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The working directories the session's agent has tool access to, as\nmaintained by the `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` actions. Directories are **equal peers** —\nthe session has no primary. Individual chats MAY restrict to a subset via\n{@link ChatSummary.workingDirectories | their own `workingDirectories`} and\ndesignate one of their own directories as primary (see\n{@link ChatState.primaryWorkingDirectory}); a chat that sets no subset\noperates against this full set."
         },
         "annotations": {
           "$ref": "#/$defs/AnnotationsSummary",
@@ -862,7 +882,7 @@
         "_meta": {
           "type": "object",
           "additionalProperties": {},
-          "description": "Additional provider-specific metadata for this session.\n\nClients MAY look for well-known keys here to provide enhanced UI.\nFor example, a `git` key may provide extra git metadata about the session's\nworkingDirectory."
+          "description": "Additional provider-specific metadata for this session.\n\nClients MAY look for well-known keys here to provide enhanced UI.\nFor example, a `git` key may provide extra git metadata about the session's\nworking directories."
         }
       },
       "required": [
@@ -1072,7 +1092,7 @@
     },
     "SessionSummary": {
       "type": "object",
-      "description": "Lightweight catalog entry summarizing one session. Surfaced via\n{@link RootChannelCommands.listSessions | `root/listSessions`} and\n`root/sessionAdded`/`root/sessionSummaryChanged` notifications.\n\n**Aggregation across chats.** Once a session contains more than one chat,\nseveral `SessionSummary` fields are derived from the underlying\n{@link SessionState.chats | chat catalog}. Producers SHOULD follow these\nrules so clients that only consume the session summary (e.g. a session\nlist) still see meaningful state:\n\n- `status`: take the activity bits (`Idle` / `InProgress` / `InputNeeded` /\n  `Error` — bits 0–4) from the\n  {@link SessionState.defaultChat | default chat} when present, else from\n  the most recently modified chat. **Promote** `InputNeeded` whenever any\n  chat in the session needs input, and **promote** `Error` whenever any\n  chat is in an error state — both override the default-chat bits. The\n  orthogonal flag bits (`IsRead`, `IsArchived`) remain session-scoped.\n- `activity`: mirror the activity string of the default chat, or of the\n  chat currently driving the promoted status bits when a non-default chat\n  wins (e.g. the chat that raised `InputNeeded`).\n- `modifiedAt`: the max of all chats' `modifiedAt`.\n- `workingDirectory`: the session-level **default**. Individual chats MAY\n  override via {@link ChatSummary.workingDirectory}; aggregating these up\n  is meaningless and SHOULD NOT be attempted.\n- `changes`: optional roll-up across all chats. Producers MAY sum the\n  per-chat changeset stats or report the most expensive chat's stats —\n  whichever is cheaper for the host to compute.\n\nSessions with a single chat trivially satisfy all of the above (the chat's\nvalues pass through unchanged). The rules only matter once a session\ncarries multiple chats.",
+      "description": "Lightweight catalog entry summarizing one session. Surfaced via\n{@link RootChannelCommands.listSessions | `root/listSessions`} and\n`root/sessionAdded`/`root/sessionSummaryChanged` notifications.\n\n**Aggregation across chats.** Once a session contains more than one chat,\nseveral `SessionSummary` fields are derived from the underlying\n{@link SessionState.chats | chat catalog}. Producers SHOULD follow these\nrules so clients that only consume the session summary (e.g. a session\nlist) still see meaningful state:\n\n- `status`: take the activity bits (`Idle` / `InProgress` / `InputNeeded` /\n  `Error` — bits 0–4) from the\n  {@link SessionState.defaultChat | default chat} when present, else from\n  the most recently modified chat. **Promote** `InputNeeded` whenever any\n  chat in the session needs input, and **promote** `Error` whenever any\n  chat is in an error state — both override the default-chat bits. The\n  orthogonal flag bits (`IsRead`, `IsArchived`) remain session-scoped.\n- `activity`: mirror the activity string of the default chat, or of the\n  chat currently driving the promoted status bits when a non-default chat\n  wins (e.g. the chat that raised `InputNeeded`).\n- `modifiedAt`: the max of all chats' `modifiedAt`.\n- `workingDirectories`: the session-level set. Individual chats MAY restrict\n  to a subset via {@link ChatSummary.workingDirectories}; aggregating these\n  up is meaningless and SHOULD NOT be attempted.\n- `changes`: optional roll-up across all chats. Producers MAY sum the\n  per-chat changeset stats or report the most expensive chat's stats —\n  whichever is cheaper for the host to compute.\n\nSessions with a single chat trivially satisfy all of the above (the chat's\nvalues pass through unchanged). The rules only matter once a session\ncarries multiple chats.",
       "properties": {
         "provider": {
           "type": "string",
@@ -1094,9 +1114,12 @@
           "$ref": "#/$defs/ProjectInfo",
           "description": "Server-owned project for this session"
         },
-        "workingDirectory": {
-          "$ref": "#/$defs/URI",
-          "description": "The default working directory URI for this session. Individual chats\nMAY override via {@link ChatSummary.workingDirectory | their own\n`workingDirectory`}; this field acts as the fallback for any chat that\ndoes not."
+        "workingDirectories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The working directories the session's agent has tool access to, as\nmaintained by the `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` actions. Directories are **equal peers** —\nthe session has no primary. Individual chats MAY restrict to a subset via\n{@link ChatSummary.workingDirectories | their own `workingDirectories`} and\ndesignate one of their own directories as primary (see\n{@link ChatState.primaryWorkingDirectory}); a chat that sets no subset\noperates against this full set."
         },
         "annotations": {
           "$ref": "#/$defs/AnnotationsSummary",
@@ -2376,9 +2399,16 @@
           "$ref": "#/$defs/ChatInteractivity",
           "description": "How the user can interact with this chat. See {@link ChatInteractivity}.\n\nSupports agent-team patterns where worker chats are read-only or hidden.\nAbsence defaults to {@link ChatInteractivity.Full} for backward\ncompatibility."
         },
-        "workingDirectory": {
+        "workingDirectories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The subset of the session's\n{@link SessionState.workingDirectories | `workingDirectories`} that this\nchat's agent has tool access to. Every entry MUST be present in the owning\nsession's `workingDirectories`; servers MUST reject a\n`chat/workingDirectorySet` action that violates this constraint.\n\nWhen absent, the chat inherits the full session set. When present but empty\n(not recommended), the chat has no working-directory tool access at all.\n\nDispatch `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` to\nupdate the subset on a running chat."
+        },
+        "primaryWorkingDirectory": {
           "$ref": "#/$defs/URI",
-          "description": "Optional per-chat working directory.\n\nIf absent, the chat inherits\n{@link SessionState.workingDirectory | the session's working directory}.\nHosts MAY override this for individual chats — for example, to give a\nsubordinate chat its own git worktree so multiple chats in a session can\nmake independent edits that the orchestrator later merges back."
+          "description": "The chat's primary working directory — the distinguished root this chat is\ncentered on (e.g. the agent's process root for this chat, the default\nlocation for relative paths). MUST be one of this chat's effective working\ndirectories ({@link workingDirectories}, or the session's set when that is\nabsent). Present when the agent advertises\n{@link MultipleWorkingDirectoriesCapability.requiresPrimary}.\n\n**Read-only and fixed at creation.** It is set from\n{@link CreateChatParams.primaryWorkingDirectory} (or, for the session's\ndefault chat, {@link CreateSessionParams.primaryWorkingDirectory}) and does\nnot change over the chat's lifetime — there is no action to mutate it, and\nit does not participate in `session/chatUpdated`."
         },
         "turns": {
           "type": "array",
@@ -2456,9 +2486,16 @@
           "$ref": "#/$defs/ChatInteractivity",
           "description": "How the user can interact with this chat. See {@link ChatInteractivity}.\n\nSupports agent-team patterns where worker chats are read-only or hidden.\nAbsence defaults to {@link ChatInteractivity.Full} for backward\ncompatibility."
         },
-        "workingDirectory": {
+        "workingDirectories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The subset of the session's working directories this chat uses.\nSee {@link ChatState.workingDirectories} for the full semantics."
+        },
+        "primaryWorkingDirectory": {
           "$ref": "#/$defs/URI",
-          "description": "Optional per-chat working directory.\n\nIf absent, the chat inherits\n{@link SessionSummary.workingDirectory | the session's working directory}.\nSee {@link ChatState.workingDirectory} for usage notes."
+          "description": "The chat's primary working directory.\nSee {@link ChatState.primaryWorkingDirectory} for the full semantics."
         }
       },
       "required": [
@@ -5836,9 +5873,16 @@
           "type": "string",
           "description": "Agent provider ID"
         },
-        "workingDirectory": {
+        "workingDirectories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "The working directories the session's agent is granted tool access to.\nA session may span multiple directories; they are equal peers except when\nthe agent advertises\n{@link MultipleWorkingDirectoriesCapability.requiresPrimary}, in which case\none of them should be designated the primary via\n{@link primaryWorkingDirectory}.\n\nA client MUST NOT supply more than one entry unless the agent advertises\n{@link AgentCapabilities.multipleWorkingDirectories}; a server without that\ncapability treats only the first entry as the session's working directory\nand ignores the rest. Dispatch `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` to change the set after the session has\nstarted.\n\nIgnored for forked sessions — a fork inherits its working directories\nfrom the source session identified by `fork`."
+        },
+        "primaryWorkingDirectory": {
           "$ref": "#/$defs/URI",
-          "description": "Working directory for the session"
+          "description": "The primary working directory for the session's **default chat**.\n\nA session has no primary of its own — primary is a per-chat notion (see\n{@link ChatState.primaryWorkingDirectory}). But `createSession` implicitly\ncreates the session's default chat, and there is no separate `createChat`\ncall to carry that chat's create-time fields. This field is therefore the\nonly place a client can designate the **default chat's** primary at birth;\nit is copied into that chat's read-only `primaryWorkingDirectory`. For any\nnon-default chat, pass {@link CreateChatParams.primaryWorkingDirectory}\ninstead.\n\nWhen set, it MUST be one of {@link workingDirectories}. A client SHOULD\nsupply this when the agent advertises\n{@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY\nreject creation that omits it, or fall back to the first entry of\n`workingDirectories`. Ignored for forked sessions (a fork inherits the\nsource session's chats and their primaries)."
         },
         "fork": {
           "$ref": "#/$defs/SessionForkSource",
@@ -6004,6 +6048,17 @@
         "source": {
           "$ref": "#/$defs/ChatForkSource",
           "description": "Optional source chat and turn to fork from."
+        },
+        "workingDirectories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/URI"
+          },
+          "description": "Initial working-directory subset for this chat. Every entry MUST be\npresent in the owning session's `workingDirectories`; the server MUST\nreject any entry that is not. When absent, the chat inherits the full\nsession set. Forked chats (`source`) inherit the source chat's\n`workingDirectories`; this field is ignored for forked chats.\n\nA client MUST NOT supply this field unless the agent advertises\n{@link AgentCapabilities.multipleWorkingDirectories}."
+        },
+        "primaryWorkingDirectory": {
+          "$ref": "#/$defs/URI",
+          "description": "The chat's primary working directory — the distinguished root this chat is\ncentered on. When set, it MUST be one of the chat's effective working\ndirectories ({@link workingDirectories}, or the session's set when that is\nomitted). A client SHOULD supply this when the agent advertises\n{@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY\nreject creation that omits it, or fall back to the first of the chat's\ndirectories. Fixed at creation and reported (read-only) on\n{@link ChatState.primaryWorkingDirectory}. Ignored for forked chats (a fork\ninherits the source chat's primary)."
         }
       },
       "required": [
@@ -6805,6 +6860,12 @@
           "$ref": "#/$defs/SessionActiveClientRemovedAction"
         },
         {
+          "$ref": "#/$defs/SessionWorkingDirectorySetAction"
+        },
+        {
+          "$ref": "#/$defs/SessionWorkingDirectoryRemovedAction"
+        },
+        {
           "$ref": "#/$defs/SessionInputNeededSetAction"
         },
         {
@@ -6896,6 +6957,12 @@
         },
         {
           "$ref": "#/$defs/ChatActivityChangedAction"
+        },
+        {
+          "$ref": "#/$defs/ChatWorkingDirectorySetAction"
+        },
+        {
+          "$ref": "#/$defs/ChatWorkingDirectoryRemovedAction"
         },
         {
           "$ref": "#/$defs/ChatUsageAction"
@@ -7286,9 +7353,16 @@
               "$ref": "#/$defs/ChatInteractivity",
               "description": "How the user can interact with this chat. See {@link ChatInteractivity}.\n\nSupports agent-team patterns where worker chats are read-only or hidden.\nAbsence defaults to {@link ChatInteractivity.Full} for backward\ncompatibility."
             },
-            "workingDirectory": {
+            "workingDirectories": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/URI"
+              },
+              "description": "The subset of the session's working directories this chat uses.\nSee {@link ChatState.workingDirectories} for the full semantics."
+            },
+            "primaryWorkingDirectory": {
               "$ref": "#/$defs/URI",
-              "description": "Optional per-chat working directory.\n\nIf absent, the chat inherits\n{@link SessionSummary.workingDirectory | the session's working directory}.\nSee {@link ChatState.workingDirectory} for usage notes."
+              "description": "The chat's primary working directory.\nSee {@link ChatState.primaryWorkingDirectory} for the full semantics."
             }
           },
           "description": "Mutable summary fields that changed; omitted fields are unchanged.\n\nIdentity fields (`resource`) never change and MUST be omitted by\nsenders; receivers SHOULD ignore them if present."
@@ -7385,6 +7459,40 @@
       "required": [
         "type",
         "clientId"
+      ]
+    },
+    "SessionWorkingDirectorySetAction": {
+      "type": "object",
+      "description": "A working directory was added to the session's\n{@link SessionState.workingDirectories} set.\n\nMembership semantics keyed by the directory URI: the reducer appends\n`directory` when the set does not already contain it (creating the set if\nabsent) and is a no-op when it is already present. Only valid when the agent\nadvertises {@link AgentCapabilities.multipleWorkingDirectories}.",
+      "properties": {
+        "type": {
+          "const": "session/workingDirectorySet"
+        },
+        "directory": {
+          "$ref": "#/$defs/URI",
+          "description": "The working directory to grant the session's agent tool access to."
+        }
+      },
+      "required": [
+        "type",
+        "directory"
+      ]
+    },
+    "SessionWorkingDirectoryRemovedAction": {
+      "type": "object",
+      "description": "A working directory was removed from the session's\n{@link SessionState.workingDirectories} set.\n\nRemoves `directory` from the set; a no-op when it is not present. There is no\natomic backend \"remove one\" primitive — a host reconfigures its agent to the\nreduced set — so this action is safe to model as idempotent. A host MAY\ndecline to apply the removal (e.g. a directory still designated as some\nchat's {@link ChatState.primaryWorkingDirectory | primary}); it then leaves\nthe set unchanged.",
+      "properties": {
+        "type": {
+          "const": "session/workingDirectoryRemoved"
+        },
+        "directory": {
+          "$ref": "#/$defs/URI",
+          "description": "The working directory to revoke the session's agent tool access to."
+        }
+      },
+      "required": [
+        "type",
+        "directory"
       ]
     },
     "SessionInputNeededSetAction": {
@@ -8188,6 +8296,40 @@
       },
       "required": [
         "type"
+      ]
+    },
+    "ChatWorkingDirectorySetAction": {
+      "type": "object",
+      "description": "A working directory was added to this chat's\n{@link ChatState.workingDirectories} subset.\n\nMembership semantics keyed by the directory URI: the reducer appends\n`directory` when the chat's subset does not already contain it (creating the\nsubset if absent) and is a no-op when it is already present. `directory` MUST\nbe one of the owning session's {@link SessionState.workingDirectories}; a host\nMUST reject a directory that is not. Only valid when the agent advertises\n{@link AgentCapabilities.multipleWorkingDirectories}.",
+      "properties": {
+        "type": {
+          "const": "chat/workingDirectorySet"
+        },
+        "directory": {
+          "$ref": "#/$defs/URI",
+          "description": "The working directory to add to this chat's subset."
+        }
+      },
+      "required": [
+        "type",
+        "directory"
+      ]
+    },
+    "ChatWorkingDirectoryRemovedAction": {
+      "type": "object",
+      "description": "A working directory was removed from this chat's\n{@link ChatState.workingDirectories} subset.\n\nRemoves `directory` from the chat's subset; a no-op when it is not present.\nIdempotent, mirroring `session/workingDirectoryRemoved`. Only affects the\nchat's subset — the directory remains in the session's set.",
+      "properties": {
+        "type": {
+          "const": "chat/workingDirectoryRemoved"
+        },
+        "directory": {
+          "$ref": "#/$defs/URI",
+          "description": "The working directory to remove from this chat's subset."
+        }
+      },
+      "required": [
+        "type",
+        "directory"
       ]
     },
     "ChatUsageAction": {

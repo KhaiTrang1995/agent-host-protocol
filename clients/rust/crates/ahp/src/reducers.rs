@@ -667,8 +667,8 @@ pub fn apply_action_to_session(state: &mut SessionState, action: &StateAction) -
             if let Some(origin) = &a.changes.origin {
                 chat.origin = Some(origin.clone());
             }
-            if let Some(working_directory) = &a.changes.working_directory {
-                chat.working_directory = Some(working_directory.clone());
+            if let Some(working_directories) = &a.changes.working_directories {
+                chat.working_directories = Some(working_directories.clone());
             }
             ReduceOutcome::Applied
         }
@@ -738,6 +738,24 @@ pub fn apply_action_to_session(state: &mut SessionState, action: &StateAction) -
                 return ReduceOutcome::NoOp;
             };
             state.active_clients.remove(idx);
+            ReduceOutcome::Applied
+        }
+        StateAction::SessionWorkingDirectorySet(a) => {
+            let list = state.working_directories.get_or_insert_with(Vec::new);
+            if list.contains(&a.directory) {
+                return ReduceOutcome::NoOp;
+            }
+            list.push(a.directory.clone());
+            ReduceOutcome::Applied
+        }
+        StateAction::SessionWorkingDirectoryRemoved(a) => {
+            let Some(list) = state.working_directories.as_mut() else {
+                return ReduceOutcome::NoOp;
+            };
+            let Some(idx) = list.iter().position(|d| *d == a.directory) else {
+                return ReduceOutcome::NoOp;
+            };
+            list.remove(idx);
             ReduceOutcome::Applied
         }
         StateAction::SessionInputNeededSet(a) => {
@@ -945,6 +963,24 @@ pub fn apply_action_to_chat(state: &mut ChatState, action: &StateAction) -> Redu
         ),
         StateAction::ChatActivityChanged(a) => {
             state.activity = a.activity.clone();
+            ReduceOutcome::Applied
+        }
+        StateAction::ChatWorkingDirectorySet(a) => {
+            let list = state.working_directories.get_or_insert_with(Vec::new);
+            if list.contains(&a.directory) {
+                return ReduceOutcome::NoOp;
+            }
+            list.push(a.directory.clone());
+            ReduceOutcome::Applied
+        }
+        StateAction::ChatWorkingDirectoryRemoved(a) => {
+            let Some(list) = state.working_directories.as_mut() else {
+                return ReduceOutcome::NoOp;
+            };
+            let Some(idx) = list.iter().position(|d| *d == a.directory) else {
+                return ReduceOutcome::NoOp;
+            };
+            list.remove(idx);
             ReduceOutcome::Applied
         }
         StateAction::ChatToolCallStart(a) => {
@@ -1912,7 +1948,7 @@ mod tests {
             status: SessionStatus::Idle.bits(),
             activity: None,
             project: None,
-            working_directory: None,
+            working_directories: None,
             annotations: None,
             lifecycle: SessionLifecycle::Creating,
             creation_error: None,
@@ -1937,7 +1973,8 @@ mod tests {
             modified_at: "1970-01-01T00:00:00.000Z".into(),
             origin: None,
             interactivity: None,
-            working_directory: None,
+            working_directories: None,
+            primary_working_directory: None,
             turns: Vec::new(),
             turns_next_cursor: None,
             active_turn: None,
@@ -2033,7 +2070,8 @@ mod tests {
             modified_at: "1970-01-01T00:00:00.000Z".into(),
             origin: None,
             interactivity: None,
-            working_directory: None,
+            working_directories: None,
+            primary_working_directory: None,
         };
         let added = StateAction::SessionChatAdded(ahp_types::actions::SessionChatAddedAction {
             summary: chat.clone(),

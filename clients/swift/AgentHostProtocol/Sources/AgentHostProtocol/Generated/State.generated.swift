@@ -632,11 +632,22 @@ public struct AgentCapabilities: Codable, Sendable {
     /// session starts with. An empty object `{}` advertises multi-chat without
     /// forking; set {@link MultipleChatsCapability.fork} to also allow forking.
     public var multipleChats: MultipleChatsCapability?
+    /// The session's agent can be granted tool access to more than one working
+    /// directory. The directories are treated as equal peers except where the
+    /// agent advertises {@link MultipleWorkingDirectoriesCapability.requiresPrimary}
+    /// (some backends need one directory designated as a primary root).
+    ///
+    /// When absent, clients MUST NOT mutate a session's or chat's working-directory
+    /// set and MUST NOT set more than one entry in
+    /// {@link CreateSessionParams.workingDirectories}.
+    public var multipleWorkingDirectories: MultipleWorkingDirectoriesCapability?
 
     public init(
-        multipleChats: MultipleChatsCapability? = nil
+        multipleChats: MultipleChatsCapability? = nil,
+        multipleWorkingDirectories: MultipleWorkingDirectoriesCapability? = nil
     ) {
         self.multipleChats = multipleChats
+        self.multipleWorkingDirectories = multipleWorkingDirectories
     }
 }
 
@@ -650,6 +661,28 @@ public struct MultipleChatsCapability: Codable, Sendable {
         fork: Bool? = nil
     ) {
         self.fork = fork
+    }
+}
+
+public struct MultipleWorkingDirectoriesCapability: Codable, Sendable {
+    /// The agent requires each chat to designate one of its working directories as
+    /// the **primary** — a distinguished root the chat is centered on (e.g. the
+    /// agent's process root for that chat, the default location for relative
+    /// paths). Primary is a **per-chat** notion, fixed at chat creation. When
+    /// `true`, a client SHOULD supply {@link CreateChatParams.primaryWorkingDirectory}
+    /// (and {@link CreateSessionParams.primaryWorkingDirectory}, which seeds the
+    /// session's default chat); a host MAY reject creation that omits it, or fall
+    /// back to the first entry of the chat's working directories. The chosen
+    /// primary is reported (read-only) on {@link ChatState.primaryWorkingDirectory}.
+    ///
+    /// When absent or `false`, the agent has no primary — all directories are
+    /// equal peers and clients need not designate one.
+    public var requiresPrimary: Bool?
+
+    public init(
+        requiresPrimary: Bool? = nil
+    ) {
+        self.requiresPrimary = requiresPrimary
     }
 }
 
@@ -869,14 +902,31 @@ public struct ChatState: Codable, Sendable {
     /// Absence defaults to {@link ChatInteractivity.Full} for backward
     /// compatibility.
     public var interactivity: ChatInteractivity?
-    /// Optional per-chat working directory.
+    /// The subset of the session's
+    /// {@link SessionState.workingDirectories | `workingDirectories`} that this
+    /// chat's agent has tool access to. Every entry MUST be present in the owning
+    /// session's `workingDirectories`; servers MUST reject a
+    /// `chat/workingDirectorySet` action that violates this constraint.
     ///
-    /// If absent, the chat inherits
-    /// {@link SessionState.workingDirectory | the session's working directory}.
-    /// Hosts MAY override this for individual chats — for example, to give a
-    /// subordinate chat its own git worktree so multiple chats in a session can
-    /// make independent edits that the orchestrator later merges back.
-    public var workingDirectory: String?
+    /// When absent, the chat inherits the full session set. When present but empty
+    /// (not recommended), the chat has no working-directory tool access at all.
+    ///
+    /// Dispatch `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` to
+    /// update the subset on a running chat.
+    public var workingDirectories: [String]?
+    /// The chat's primary working directory — the distinguished root this chat is
+    /// centered on (e.g. the agent's process root for this chat, the default
+    /// location for relative paths). MUST be one of this chat's effective working
+    /// directories ({@link workingDirectories}, or the session's set when that is
+    /// absent). Present when the agent advertises
+    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}.
+    ///
+    /// **Read-only and fixed at creation.** It is set from
+    /// {@link CreateChatParams.primaryWorkingDirectory} (or, for the session's
+    /// default chat, {@link CreateSessionParams.primaryWorkingDirectory}) and does
+    /// not change over the chat's lifetime — there is no action to mutate it, and
+    /// it does not participate in `session/chatUpdated`.
+    public var primaryWorkingDirectory: String?
     /// Completed turns
     public var turns: [Turn]
     /// Cursor for loading older completed turns into this chat state.
@@ -915,7 +965,8 @@ public struct ChatState: Codable, Sendable {
         case modifiedAt
         case origin
         case interactivity
-        case workingDirectory
+        case workingDirectories
+        case primaryWorkingDirectory
         case turns
         case turnsNextCursor
         case activeTurn
@@ -933,7 +984,8 @@ public struct ChatState: Codable, Sendable {
         modifiedAt: String,
         origin: ChatOrigin? = nil,
         interactivity: ChatInteractivity? = nil,
-        workingDirectory: String? = nil,
+        workingDirectories: [String]? = nil,
+        primaryWorkingDirectory: String? = nil,
         turns: [Turn],
         turnsNextCursor: String? = nil,
         activeTurn: ActiveTurn? = nil,
@@ -949,7 +1001,8 @@ public struct ChatState: Codable, Sendable {
         self.modifiedAt = modifiedAt
         self.origin = origin
         self.interactivity = interactivity
-        self.workingDirectory = workingDirectory
+        self.workingDirectories = workingDirectories
+        self.primaryWorkingDirectory = primaryWorkingDirectory
         self.turns = turns
         self.turnsNextCursor = turnsNextCursor
         self.activeTurn = activeTurn
@@ -979,12 +1032,12 @@ public struct ChatSummary: Codable, Sendable {
     /// Absence defaults to {@link ChatInteractivity.Full} for backward
     /// compatibility.
     public var interactivity: ChatInteractivity?
-    /// Optional per-chat working directory.
-    ///
-    /// If absent, the chat inherits
-    /// {@link SessionSummary.workingDirectory | the session's working directory}.
-    /// See {@link ChatState.workingDirectory} for usage notes.
-    public var workingDirectory: String?
+    /// The subset of the session's working directories this chat uses.
+    /// See {@link ChatState.workingDirectories} for the full semantics.
+    public var workingDirectories: [String]?
+    /// The chat's primary working directory.
+    /// See {@link ChatState.primaryWorkingDirectory} for the full semantics.
+    public var primaryWorkingDirectory: String?
 
     public init(
         resource: String,
@@ -994,7 +1047,8 @@ public struct ChatSummary: Codable, Sendable {
         modifiedAt: String,
         origin: ChatOrigin? = nil,
         interactivity: ChatInteractivity? = nil,
-        workingDirectory: String? = nil
+        workingDirectories: [String]? = nil,
+        primaryWorkingDirectory: String? = nil
     ) {
         self.resource = resource
         self.title = title
@@ -1003,7 +1057,8 @@ public struct ChatSummary: Codable, Sendable {
         self.modifiedAt = modifiedAt
         self.origin = origin
         self.interactivity = interactivity
-        self.workingDirectory = workingDirectory
+        self.workingDirectories = workingDirectories
+        self.primaryWorkingDirectory = primaryWorkingDirectory
     }
 }
 
@@ -1018,11 +1073,15 @@ public struct SessionState: Codable, Sendable {
     public var activity: String?
     /// Server-owned project for this session
     public var project: ProjectInfo?
-    /// The default working directory URI for this session. Individual chats
-    /// MAY override via {@link ChatSummary.workingDirectory | their own
-    /// `workingDirectory`}; this field acts as the fallback for any chat that
-    /// does not.
-    public var workingDirectory: String?
+    /// The working directories the session's agent has tool access to, as
+    /// maintained by the `session/workingDirectorySet` /
+    /// `session/workingDirectoryRemoved` actions. Directories are **equal peers** —
+    /// the session has no primary. Individual chats MAY restrict to a subset via
+    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`} and
+    /// designate one of their own directories as primary (see
+    /// {@link ChatState.primaryWorkingDirectory}); a chat that sets no subset
+    /// operates against this full set.
+    public var workingDirectories: [String]?
     /// Lightweight summary of this session's inline annotations channel
     /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
     /// annotation / entry counts without subscribing. Absent when the session
@@ -1098,7 +1157,7 @@ public struct SessionState: Codable, Sendable {
     ///
     /// Clients MAY look for well-known keys here to provide enhanced UI.
     /// For example, a `git` key may provide extra git metadata about the session's
-    /// workingDirectory.
+    /// working directories.
     public var meta: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
@@ -1107,7 +1166,7 @@ public struct SessionState: Codable, Sendable {
         case status
         case activity
         case project
-        case workingDirectory
+        case workingDirectories
         case annotations
         case lifecycle
         case creationError
@@ -1128,7 +1187,7 @@ public struct SessionState: Codable, Sendable {
         status: SessionStatus,
         activity: String? = nil,
         project: ProjectInfo? = nil,
-        workingDirectory: String? = nil,
+        workingDirectories: [String]? = nil,
         annotations: AnnotationsSummary? = nil,
         lifecycle: SessionLifecycle,
         creationError: ErrorInfo? = nil,
@@ -1147,7 +1206,7 @@ public struct SessionState: Codable, Sendable {
         self.status = status
         self.activity = activity
         self.project = project
-        self.workingDirectory = workingDirectory
+        self.workingDirectories = workingDirectories
         self.annotations = annotations
         self.lifecycle = lifecycle
         self.creationError = creationError
@@ -1333,11 +1392,15 @@ public struct SessionSummary: Codable, Sendable {
     public var activity: String?
     /// Server-owned project for this session
     public var project: ProjectInfo?
-    /// The default working directory URI for this session. Individual chats
-    /// MAY override via {@link ChatSummary.workingDirectory | their own
-    /// `workingDirectory`}; this field acts as the fallback for any chat that
-    /// does not.
-    public var workingDirectory: String?
+    /// The working directories the session's agent has tool access to, as
+    /// maintained by the `session/workingDirectorySet` /
+    /// `session/workingDirectoryRemoved` actions. Directories are **equal peers** —
+    /// the session has no primary. Individual chats MAY restrict to a subset via
+    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`} and
+    /// designate one of their own directories as primary (see
+    /// {@link ChatState.primaryWorkingDirectory}); a chat that sets no subset
+    /// operates against this full set.
+    public var workingDirectories: [String]?
     /// Lightweight summary of this session's inline annotations channel
     /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
     /// annotation / entry counts without subscribing. Absent when the session
@@ -1366,7 +1429,7 @@ public struct SessionSummary: Codable, Sendable {
         case status
         case activity
         case project
-        case workingDirectory
+        case workingDirectories
         case annotations
         case resource
         case createdAt
@@ -1381,7 +1444,7 @@ public struct SessionSummary: Codable, Sendable {
         status: SessionStatus,
         activity: String? = nil,
         project: ProjectInfo? = nil,
-        workingDirectory: String? = nil,
+        workingDirectories: [String]? = nil,
         annotations: AnnotationsSummary? = nil,
         resource: String,
         createdAt: String,
@@ -1394,7 +1457,7 @@ public struct SessionSummary: Codable, Sendable {
         self.status = status
         self.activity = activity
         self.project = project
-        self.workingDirectory = workingDirectory
+        self.workingDirectories = workingDirectories
         self.annotations = annotations
         self.resource = resource
         self.createdAt = createdAt

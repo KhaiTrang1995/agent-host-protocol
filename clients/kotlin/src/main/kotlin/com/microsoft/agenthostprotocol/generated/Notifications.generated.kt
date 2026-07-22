@@ -196,12 +196,16 @@ data class PartialSessionSummary(
      */
     val project: ProjectInfo? = null,
     /**
-     * The default working directory URI for this session. Individual chats
-     * MAY override via {@link ChatSummary.workingDirectory | their own
-     * `workingDirectory`}; this field acts as the fallback for any chat that
-     * does not.
+     * The working directories the session's agent has tool access to, as
+     * maintained by the `session/workingDirectorySet` /
+     * `session/workingDirectoryRemoved` actions. Directories are **equal peers** —
+     * the session has no primary. Individual chats MAY restrict to a subset via
+     * {@link ChatSummary.workingDirectories | their own `workingDirectories`} and
+     * designate one of their own directories as primary (see
+     * {@link ChatState.primaryWorkingDirectory}); a chat that sets no subset
+     * operates against this full set.
      */
-    val workingDirectory: String? = null,
+    val workingDirectories: List<String>? = null,
     /**
      * Lightweight summary of this session's inline annotations channel
      * (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render

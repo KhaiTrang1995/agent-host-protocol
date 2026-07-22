@@ -248,12 +248,16 @@ pub struct PartialSessionSummary {
     /// Server-owned project for this session
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<ProjectInfo>,
-    /// The default working directory URI for this session. Individual chats
-    /// MAY override via {@link ChatSummary.workingDirectory | their own
-    /// `workingDirectory`}; this field acts as the fallback for any chat that
-    /// does not.
+    /// The working directories the session's agent has tool access to, as
+    /// maintained by the `session/workingDirectorySet` /
+    /// `session/workingDirectoryRemoved` actions. Directories are **equal peers** —
+    /// the session has no primary. Individual chats MAY restrict to a subset via
+    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`} and
+    /// designate one of their own directories as primary (see
+    /// {@link ChatState.primaryWorkingDirectory}); a chat that sets no subset
+    /// operates against this full set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub working_directory: Option<Uri>,
+    pub working_directories: Option<Vec<Uri>>,
     /// Lightweight summary of this session's inline annotations channel
     /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
     /// annotation / entry counts without subscribing. Absent when the session

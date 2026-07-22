@@ -879,7 +879,7 @@ function applySummaryChange(
   if (changes.activity !== undefined) merged.activity = changes.activity;
   if (changes.modifiedAt !== undefined) merged.modifiedAt = changes.modifiedAt;
   if (changes.project !== undefined) merged.project = changes.project;
-  if (changes.workingDirectory !== undefined) merged.workingDirectory = changes.workingDirectory;
+  if (changes.workingDirectories !== undefined) merged.workingDirectories = changes.workingDirectories;
   if (changes._meta !== undefined) merged._meta = changes._meta;
   cache.set(params.session, merged);
 }

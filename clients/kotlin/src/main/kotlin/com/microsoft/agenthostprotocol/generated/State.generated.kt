@@ -952,7 +952,18 @@ data class AgentCapabilities(
      * session starts with. An empty object `{}` advertises multi-chat without
      * forking; set {@link MultipleChatsCapability.fork} to also allow forking.
      */
-    val multipleChats: MultipleChatsCapability? = null
+    val multipleChats: MultipleChatsCapability? = null,
+    /**
+     * The session's agent can be granted tool access to more than one working
+     * directory. The directories are treated as equal peers except where the
+     * agent advertises {@link MultipleWorkingDirectoriesCapability.requiresPrimary}
+     * (some backends need one directory designated as a primary root).
+     *
+     * When absent, clients MUST NOT mutate a session's or chat's working-directory
+     * set and MUST NOT set more than one entry in
+     * {@link CreateSessionParams.workingDirectories}.
+     */
+    val multipleWorkingDirectories: MultipleWorkingDirectoriesCapability? = null
 )
 
 @Serializable
@@ -963,6 +974,25 @@ data class MultipleChatsCapability(
      * Forking always implies multi-chat support.
      */
     val fork: Boolean? = null
+)
+
+@Serializable
+data class MultipleWorkingDirectoriesCapability(
+    /**
+     * The agent requires each chat to designate one of its working directories as
+     * the **primary** — a distinguished root the chat is centered on (e.g. the
+     * agent's process root for that chat, the default location for relative
+     * paths). Primary is a **per-chat** notion, fixed at chat creation. When
+     * `true`, a client SHOULD supply {@link CreateChatParams.primaryWorkingDirectory}
+     * (and {@link CreateSessionParams.primaryWorkingDirectory}, which seeds the
+     * session's default chat); a host MAY reject creation that omits it, or fall
+     * back to the first entry of the chat's working directories. The chosen
+     * primary is reported (read-only) on {@link ChatState.primaryWorkingDirectory}.
+     *
+     * When absent or `false`, the agent has no primary — all directories are
+     * equal peers and clients need not designate one.
+     */
+    val requiresPrimary: Boolean? = null
 )
 
 @Serializable
@@ -1152,15 +1182,34 @@ data class ChatState(
      */
     val interactivity: ChatInteractivity? = null,
     /**
-     * Optional per-chat working directory.
+     * The subset of the session's
+     * {@link SessionState.workingDirectories | `workingDirectories`} that this
+     * chat's agent has tool access to. Every entry MUST be present in the owning
+     * session's `workingDirectories`; servers MUST reject a
+     * `chat/workingDirectorySet` action that violates this constraint.
      *
-     * If absent, the chat inherits
-     * {@link SessionState.workingDirectory | the session's working directory}.
-     * Hosts MAY override this for individual chats — for example, to give a
-     * subordinate chat its own git worktree so multiple chats in a session can
-     * make independent edits that the orchestrator later merges back.
+     * When absent, the chat inherits the full session set. When present but empty
+     * (not recommended), the chat has no working-directory tool access at all.
+     *
+     * Dispatch `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` to
+     * update the subset on a running chat.
      */
-    val workingDirectory: String? = null,
+    val workingDirectories: List<String>? = null,
+    /**
+     * The chat's primary working directory — the distinguished root this chat is
+     * centered on (e.g. the agent's process root for this chat, the default
+     * location for relative paths). MUST be one of this chat's effective working
+     * directories ({@link workingDirectories}, or the session's set when that is
+     * absent). Present when the agent advertises
+     * {@link MultipleWorkingDirectoriesCapability.requiresPrimary}.
+     *
+     * **Read-only and fixed at creation.** It is set from
+     * {@link CreateChatParams.primaryWorkingDirectory} (or, for the session's
+     * default chat, {@link CreateSessionParams.primaryWorkingDirectory}) and does
+     * not change over the chat's lifetime — there is no action to mutate it, and
+     * it does not participate in `session/chatUpdated`.
+     */
+    val primaryWorkingDirectory: String? = null,
     /**
      * Completed turns
      */
@@ -1242,13 +1291,15 @@ data class ChatSummary(
      */
     val interactivity: ChatInteractivity? = null,
     /**
-     * Optional per-chat working directory.
-     *
-     * If absent, the chat inherits
-     * {@link SessionSummary.workingDirectory | the session's working directory}.
-     * See {@link ChatState.workingDirectory} for usage notes.
+     * The subset of the session's working directories this chat uses.
+     * See {@link ChatState.workingDirectories} for the full semantics.
      */
-    val workingDirectory: String? = null
+    val workingDirectories: List<String>? = null,
+    /**
+     * The chat's primary working directory.
+     * See {@link ChatState.primaryWorkingDirectory} for the full semantics.
+     */
+    val primaryWorkingDirectory: String? = null
 )
 
 @Serializable
@@ -1274,12 +1325,16 @@ data class SessionState(
      */
     val project: ProjectInfo? = null,
     /**
-     * The default working directory URI for this session. Individual chats
-     * MAY override via {@link ChatSummary.workingDirectory | their own
-     * `workingDirectory`}; this field acts as the fallback for any chat that
-     * does not.
+     * The working directories the session's agent has tool access to, as
+     * maintained by the `session/workingDirectorySet` /
+     * `session/workingDirectoryRemoved` actions. Directories are **equal peers** —
+     * the session has no primary. Individual chats MAY restrict to a subset via
+     * {@link ChatSummary.workingDirectories | their own `workingDirectories`} and
+     * designate one of their own directories as primary (see
+     * {@link ChatState.primaryWorkingDirectory}); a chat that sets no subset
+     * operates against this full set.
      */
-    val workingDirectory: String? = null,
+    val workingDirectories: List<String>? = null,
     /**
      * Lightweight summary of this session's inline annotations channel
      * (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
@@ -1378,7 +1433,7 @@ data class SessionState(
      *
      * Clients MAY look for well-known keys here to provide enhanced UI.
      * For example, a `git` key may provide extra git metadata about the session's
-     * workingDirectory.
+     * working directories.
      */
     @SerialName("_meta")
     val meta: Map<String, JsonElement>? = null
@@ -1543,12 +1598,16 @@ data class SessionSummary(
      */
     val project: ProjectInfo? = null,
     /**
-     * The default working directory URI for this session. Individual chats
-     * MAY override via {@link ChatSummary.workingDirectory | their own
-     * `workingDirectory`}; this field acts as the fallback for any chat that
-     * does not.
+     * The working directories the session's agent has tool access to, as
+     * maintained by the `session/workingDirectorySet` /
+     * `session/workingDirectoryRemoved` actions. Directories are **equal peers** —
+     * the session has no primary. Individual chats MAY restrict to a subset via
+     * {@link ChatSummary.workingDirectories | their own `workingDirectories`} and
+     * designate one of their own directories as primary (see
+     * {@link ChatState.primaryWorkingDirectory}); a chat that sets no subset
+     * operates against this full set.
      */
-    val workingDirectory: String? = null,
+    val workingDirectories: List<String>? = null,
     /**
      * Lightweight summary of this session's inline annotations channel
      * (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render

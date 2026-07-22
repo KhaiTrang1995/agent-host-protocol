@@ -545,7 +545,7 @@ public fun sessionReducer(state: SessionState, action: StateAction): SessionStat
                 activity = c.activity ?: prior.activity,
                 modifiedAt = c.modifiedAt ?: prior.modifiedAt,
                 origin = c.origin ?: prior.origin,
-                workingDirectory = c.workingDirectory ?: prior.workingDirectory,
+                workingDirectories = c.workingDirectories ?: prior.workingDirectories,
             )
             val updated = state.chats.toMutableList()
             updated[idx] = updatedSummary
@@ -602,6 +602,27 @@ public fun sessionReducer(state: SessionState, action: StateAction): SessionStat
             val updated = state.activeClients.toMutableList()
             updated.removeAt(idx)
             state.copy(activeClients = updated)
+        }
+    }
+
+    is StateActionSessionWorkingDirectorySet -> {
+        val list = state.workingDirectories ?: emptyList()
+        if (list.contains(action.value.directory)) {
+            state
+        } else {
+            state.copy(workingDirectories = list + action.value.directory)
+        }
+    }
+
+    is StateActionSessionWorkingDirectoryRemoved -> {
+        val list = state.workingDirectories
+        val idx = list?.indexOf(action.value.directory) ?: -1
+        if (list == null || idx < 0) {
+            state
+        } else {
+            val updated = list.toMutableList()
+            updated.removeAt(idx)
+            state.copy(workingDirectories = updated)
         }
     }
 
@@ -842,6 +863,27 @@ public fun chatReducer(state: ChatState, action: StateAction): ChatState = when 
 
     is StateActionChatActivityChanged ->
         state.copy(activity = action.value.activity)
+
+    is StateActionChatWorkingDirectorySet -> {
+        val list = state.workingDirectories ?: emptyList()
+        if (list.contains(action.value.directory)) {
+            state
+        } else {
+            state.copy(workingDirectories = list + action.value.directory)
+        }
+    }
+
+    is StateActionChatWorkingDirectoryRemoved -> {
+        val list = state.workingDirectories
+        val idx = list?.indexOf(action.value.directory) ?: -1
+        if (list == null || idx < 0) {
+            state
+        } else {
+            val updated = list.toMutableList()
+            updated.removeAt(idx)
+            state.copy(workingDirectories = updated)
+        }
+    }
 
     // ── Tool Call State Machine ───────────────────────────────────────────
 

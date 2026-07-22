@@ -1039,7 +1039,7 @@ fn make_summary(uri: &str, title: &str, modified_at: i64) -> ahp_types::state::S
         created_at: "1970-01-01T00:00:00.000Z".into(),
         modified_at: modified,
         project: None,
-        working_directory: None,
+        working_directories: None,
         changes: None,
         annotations: None,
         meta: None,

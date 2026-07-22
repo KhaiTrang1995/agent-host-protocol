@@ -354,8 +354,41 @@ public struct CreateSessionParams: Codable, Sendable {
     public var channel: String
     /// Agent provider ID
     public var provider: String?
-    /// Working directory for the session
-    public var workingDirectory: String?
+    /// The working directories the session's agent is granted tool access to.
+    /// A session may span multiple directories; they are equal peers except when
+    /// the agent advertises
+    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}, in which case
+    /// one of them should be designated the primary via
+    /// {@link primaryWorkingDirectory}.
+    ///
+    /// A client MUST NOT supply more than one entry unless the agent advertises
+    /// {@link AgentCapabilities.multipleWorkingDirectories}; a server without that
+    /// capability treats only the first entry as the session's working directory
+    /// and ignores the rest. Dispatch `session/workingDirectorySet` /
+    /// `session/workingDirectoryRemoved` to change the set after the session has
+    /// started.
+    ///
+    /// Ignored for forked sessions — a fork inherits its working directories
+    /// from the source session identified by `fork`.
+    public var workingDirectories: [String]?
+    /// The primary working directory for the session's **default chat**.
+    ///
+    /// A session has no primary of its own — primary is a per-chat notion (see
+    /// {@link ChatState.primaryWorkingDirectory}). But `createSession` implicitly
+    /// creates the session's default chat, and there is no separate `createChat`
+    /// call to carry that chat's create-time fields. This field is therefore the
+    /// only place a client can designate the **default chat's** primary at birth;
+    /// it is copied into that chat's read-only `primaryWorkingDirectory`. For any
+    /// non-default chat, pass {@link CreateChatParams.primaryWorkingDirectory}
+    /// instead.
+    ///
+    /// When set, it MUST be one of {@link workingDirectories}. A client SHOULD
+    /// supply this when the agent advertises
+    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY
+    /// reject creation that omits it, or fall back to the first entry of
+    /// `workingDirectories`. Ignored for forked sessions (a fork inherits the
+    /// source session's chats and their primaries).
+    public var primaryWorkingDirectory: String?
     /// Fork from an existing session. The new session is populated with content
     /// from the source session up to and including the specified turn's response.
     public var fork: SessionForkSource?
@@ -384,7 +417,8 @@ public struct CreateSessionParams: Codable, Sendable {
     public init(
         channel: String,
         provider: String? = nil,
-        workingDirectory: String? = nil,
+        workingDirectories: [String]? = nil,
+        primaryWorkingDirectory: String? = nil,
         fork: SessionForkSource? = nil,
         config: [String: AnyCodable]? = nil,
         activeClient: SessionActiveClient? = nil,
@@ -392,7 +426,8 @@ public struct CreateSessionParams: Codable, Sendable {
     ) {
         self.channel = channel
         self.provider = provider
-        self.workingDirectory = workingDirectory
+        self.workingDirectories = workingDirectories
+        self.primaryWorkingDirectory = primaryWorkingDirectory
         self.fork = fork
         self.config = config
         self.activeClient = activeClient
@@ -435,17 +470,40 @@ public struct CreateChatParams: Codable, Sendable {
     public var initialMessage: Message?
     /// Optional source chat and turn to fork from.
     public var source: ChatForkSource?
+    /// Initial working-directory subset for this chat. Every entry MUST be
+    /// present in the owning session's `workingDirectories`; the server MUST
+    /// reject any entry that is not. When absent, the chat inherits the full
+    /// session set. Forked chats (`source`) inherit the source chat's
+    /// `workingDirectories`; this field is ignored for forked chats.
+    ///
+    /// A client MUST NOT supply this field unless the agent advertises
+    /// {@link AgentCapabilities.multipleWorkingDirectories}.
+    public var workingDirectories: [String]?
+    /// The chat's primary working directory — the distinguished root this chat is
+    /// centered on. When set, it MUST be one of the chat's effective working
+    /// directories ({@link workingDirectories}, or the session's set when that is
+    /// omitted). A client SHOULD supply this when the agent advertises
+    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY
+    /// reject creation that omits it, or fall back to the first of the chat's
+    /// directories. Fixed at creation and reported (read-only) on
+    /// {@link ChatState.primaryWorkingDirectory}. Ignored for forked chats (a fork
+    /// inherits the source chat's primary).
+    public var primaryWorkingDirectory: String?
 
     public init(
         channel: String,
         chat: String,
         initialMessage: Message? = nil,
-        source: ChatForkSource? = nil
+        source: ChatForkSource? = nil,
+        workingDirectories: [String]? = nil,
+        primaryWorkingDirectory: String? = nil
     ) {
         self.channel = channel
         self.chat = chat
         self.initialMessage = initialMessage
         self.source = source
+        self.workingDirectories = workingDirectories
+        self.primaryWorkingDirectory = primaryWorkingDirectory
     }
 }
 

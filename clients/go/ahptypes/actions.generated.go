@@ -43,12 +43,16 @@ const (
 	ActionTypeChatTurnCancelled                 ActionType = "chat/turnCancelled"
 	ActionTypeChatError                         ActionType = "chat/error"
 	ActionTypeChatActivityChanged               ActionType = "chat/activityChanged"
+	ActionTypeChatWorkingDirectorySet           ActionType = "chat/workingDirectorySet"
+	ActionTypeChatWorkingDirectoryRemoved       ActionType = "chat/workingDirectoryRemoved"
 	ActionTypeSessionTitleChanged               ActionType = "session/titleChanged"
 	ActionTypeChatUsage                         ActionType = "chat/usage"
 	ActionTypeChatReasoning                     ActionType = "chat/reasoning"
 	ActionTypeSessionServerToolsChanged         ActionType = "session/serverToolsChanged"
 	ActionTypeSessionActiveClientSet            ActionType = "session/activeClientSet"
 	ActionTypeSessionActiveClientRemoved        ActionType = "session/activeClientRemoved"
+	ActionTypeSessionWorkingDirectorySet        ActionType = "session/workingDirectorySet"
+	ActionTypeSessionWorkingDirectoryRemoved    ActionType = "session/workingDirectoryRemoved"
 	ActionTypeSessionInputNeededSet             ActionType = "session/inputNeededSet"
 	ActionTypeSessionInputNeededRemoved         ActionType = "session/inputNeededRemoved"
 	ActionTypeChatPendingMessageSet             ActionType = "chat/pendingMessageSet"
@@ -875,6 +879,61 @@ type SessionActiveClientRemovedAction struct {
 	ClientId string `json:"clientId"`
 }
 
+// A working directory was added to the session's
+// {@link SessionState.workingDirectories} set.
+//
+// Membership semantics keyed by the directory URI: the reducer appends
+// `directory` when the set does not already contain it (creating the set if
+// absent) and is a no-op when it is already present. Only valid when the agent
+// advertises {@link AgentCapabilities.multipleWorkingDirectories}.
+type SessionWorkingDirectorySetAction struct {
+	Type ActionType `json:"type"`
+	// The working directory to grant the session's agent tool access to.
+	Directory URI `json:"directory"`
+}
+
+// A working directory was removed from the session's
+// {@link SessionState.workingDirectories} set.
+//
+// Removes `directory` from the set; a no-op when it is not present. There is no
+// atomic backend "remove one" primitive — a host reconfigures its agent to the
+// reduced set — so this action is safe to model as idempotent. A host MAY
+// decline to apply the removal (e.g. a directory still designated as some
+// chat's {@link ChatState.primaryWorkingDirectory | primary}); it then leaves
+// the set unchanged.
+type SessionWorkingDirectoryRemovedAction struct {
+	Type ActionType `json:"type"`
+	// The working directory to revoke the session's agent tool access to.
+	Directory URI `json:"directory"`
+}
+
+// A working directory was added to this chat's
+// {@link ChatState.workingDirectories} subset.
+//
+// Membership semantics keyed by the directory URI: the reducer appends
+// `directory` when the chat's subset does not already contain it (creating the
+// subset if absent) and is a no-op when it is already present. `directory` MUST
+// be one of the owning session's {@link SessionState.workingDirectories}; a host
+// MUST reject a directory that is not. Only valid when the agent advertises
+// {@link AgentCapabilities.multipleWorkingDirectories}.
+type ChatWorkingDirectorySetAction struct {
+	Type ActionType `json:"type"`
+	// The working directory to add to this chat's subset.
+	Directory URI `json:"directory"`
+}
+
+// A working directory was removed from this chat's
+// {@link ChatState.workingDirectories} subset.
+//
+// Removes `directory` from the chat's subset; a no-op when it is not present.
+// Idempotent, mirroring `session/workingDirectoryRemoved`. Only affects the
+// chat's subset — the directory remains in the session's set.
+type ChatWorkingDirectoryRemovedAction struct {
+	Type ActionType `json:"type"`
+	// The working directory to remove from this chat's subset.
+	Directory URI `json:"directory"`
+}
+
 // A session-level input request was added or updated.
 //
 // Upsert semantics keyed by {@link SessionInputRequest.id | `request.id`}: the
@@ -1470,6 +1529,10 @@ func (*SessionChangesetsChangedAction) isStateAction()          {}
 func (*SessionServerToolsChangedAction) isStateAction()         {}
 func (*SessionActiveClientSetAction) isStateAction()            {}
 func (*SessionActiveClientRemovedAction) isStateAction()        {}
+func (*SessionWorkingDirectorySetAction) isStateAction()        {}
+func (*SessionWorkingDirectoryRemovedAction) isStateAction()    {}
+func (*ChatWorkingDirectorySetAction) isStateAction()           {}
+func (*ChatWorkingDirectoryRemovedAction) isStateAction()       {}
 func (*SessionInputNeededSetAction) isStateAction()             {}
 func (*SessionInputNeededRemovedAction) isStateAction()         {}
 func (*SessionCustomizationsChangedAction) isStateAction()      {}
@@ -1782,6 +1845,30 @@ func (u *StateAction) UnmarshalJSON(data []byte) error {
 		u.Value = &value
 	case "session/activeClientRemoved":
 		var value SessionActiveClientRemovedAction
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	case "session/workingDirectorySet":
+		var value SessionWorkingDirectorySetAction
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	case "session/workingDirectoryRemoved":
+		var value SessionWorkingDirectoryRemovedAction
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	case "chat/workingDirectorySet":
+		var value ChatWorkingDirectorySetAction
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	case "chat/workingDirectoryRemoved":
+		var value ChatWorkingDirectoryRemovedAction
 		if err := json.Unmarshal(data, &value); err != nil {
 			return err
 		}

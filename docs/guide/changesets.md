@@ -55,6 +55,20 @@ unknown variables.
 | `{turnId}`                                | Per-turn slice. Expand with a `Turn.id` from one of the session's chats.     |
 | `{originalTurnId}` and `{modifiedTurnId}` | Diff between two turns. Both must be present.                                |
 
+### Multiroot Sessions
+
+A changeset is not scoped to a single working directory — a per-turn or
+session-wide changeset naturally spans every directory the agent touched. A
+client that wants to present changes grouped by directory does so itself, by
+matching each file's URI against the session's
+[`workingDirectories`](/guide/state-model#multiroot-sessions) (a list the
+client already has); a client that does not care simply renders one tree.
+
+A host MAY *also* advertise dedicated per-directory changesets — one catalogue
+entry per working directory — for clients that prefer server-scoped views. This
+needs no extra field: the `changesets` catalogue is already a list, so a host
+lists one entry per directory alongside the spanning ones.
+
 ### Changeset State
 
 Each concrete (expanded) changeset URI is its own subscribable resource.

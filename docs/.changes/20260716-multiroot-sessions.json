@@ -1,0 +1,5 @@
+{
+  "type": "added",
+  "message": "Multiroot session support: `AgentCapabilities.multipleWorkingDirectories` capability (with `requiresPrimary`), `CreateSessionParams.workingDirectories` and `SessionMetadata.workingDirectories` (an equal-peer set, mirrored onto `SessionState`/`SessionSummary`), `CreateChatParams.workingDirectories` and `ChatState`/`ChatSummary.workingDirectories` (a subset of the session's set), a per-chat read-only `ChatState`/`ChatSummary.primaryWorkingDirectory` (fixed at chat creation; set via `CreateChatParams.primaryWorkingDirectory`, or `CreateSessionParams.primaryWorkingDirectory` for the default chat), and the client-dispatchable `session/workingDirectorySet` / `session/workingDirectoryRemoved` and `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` actions for mutating those sets.",
+  "issues": [337]
+}

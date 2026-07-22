@@ -26,6 +26,8 @@ import type {
   SessionServerToolsChangedAction,
   SessionActiveClientSetAction,
   SessionActiveClientRemovedAction,
+  SessionWorkingDirectorySetAction,
+  SessionWorkingDirectoryRemovedAction,
   SessionInputNeededSetAction,
   SessionInputNeededRemovedAction,
   SessionCustomizationsChangedAction,
@@ -60,6 +62,8 @@ import type {
   ChatTurnCancelledAction,
   ChatErrorAction,
   ChatActivityChangedAction,
+  ChatWorkingDirectorySetAction,
+  ChatWorkingDirectoryRemovedAction,
   ChatUsageAction,
   ChatReasoningAction,
   ChatPendingMessageSetAction,
@@ -142,12 +146,16 @@ export const enum ActionType {
   ChatTurnCancelled = 'chat/turnCancelled',
   ChatError = 'chat/error',
   ChatActivityChanged = 'chat/activityChanged',
+  ChatWorkingDirectorySet = 'chat/workingDirectorySet',
+  ChatWorkingDirectoryRemoved = 'chat/workingDirectoryRemoved',
   SessionTitleChanged = 'session/titleChanged',
   ChatUsage = 'chat/usage',
   ChatReasoning = 'chat/reasoning',
   SessionServerToolsChanged = 'session/serverToolsChanged',
   SessionActiveClientSet = 'session/activeClientSet',
   SessionActiveClientRemoved = 'session/activeClientRemoved',
+  SessionWorkingDirectorySet = 'session/workingDirectorySet',
+  SessionWorkingDirectoryRemoved = 'session/workingDirectoryRemoved',
   SessionInputNeededSet = 'session/inputNeededSet',
   SessionInputNeededRemoved = 'session/inputNeededRemoved',
   ChatPendingMessageSet = 'chat/pendingMessageSet',
@@ -249,6 +257,8 @@ export type StateAction =
   | SessionServerToolsChangedAction
   | SessionActiveClientSetAction
   | SessionActiveClientRemovedAction
+  | SessionWorkingDirectorySetAction
+  | SessionWorkingDirectoryRemovedAction
   | SessionInputNeededSetAction
   | SessionInputNeededRemovedAction
   | SessionCustomizationsChangedAction
@@ -280,6 +290,8 @@ export type StateAction =
   | ChatTurnCancelledAction
   | ChatErrorAction
   | ChatActivityChangedAction
+  | ChatWorkingDirectorySetAction
+  | ChatWorkingDirectoryRemovedAction
   | ChatUsageAction
   | ChatReasoningAction
   | ChatPendingMessageSetAction
