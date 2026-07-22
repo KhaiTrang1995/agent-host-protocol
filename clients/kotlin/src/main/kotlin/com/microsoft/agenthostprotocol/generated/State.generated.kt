@@ -3029,6 +3029,8 @@ data class ToolResultTerminalContent(
     val output: String? = null,
     /**
      * Whether this terminal-style resource is backed by a pseudoterminal.
+     * When `false`, output is plain text and clients do not need to parse
+     * VT sequences.
      */
     val isPty: Boolean? = null
 )
@@ -4049,6 +4051,8 @@ data class TerminalState(
     val supportsCommandDetection: Boolean? = null,
     /**
      * Whether this terminal-style resource is backed by a pseudoterminal.
+     * When `false`, output is plain text and clients do not need to parse
+     * VT sequences.
      */
     val isPty: Boolean? = null
 )

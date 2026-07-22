@@ -2691,6 +2691,8 @@ pub struct ToolResultTerminalContent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,
     /// Whether this terminal-style resource is backed by a pseudoterminal.
+    /// When `false`, output is plain text and clients do not need to parse
+    /// VT sequences.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub is_pty: Option<bool>,
 }
@@ -3660,6 +3662,8 @@ pub struct TerminalState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_command_detection: Option<bool>,
     /// Whether this terminal-style resource is backed by a pseudoterminal.
+    /// When `false`, output is plain text and clients do not need to parse
+    /// VT sequences.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub is_pty: Option<bool>,
 }

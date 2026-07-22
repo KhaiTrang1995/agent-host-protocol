@@ -1412,7 +1412,11 @@ export interface ToolResultTerminalContent {
    * results retain output via {@link ToolResultTerminalCompleteContent}.
    */
   output?: string;
-  /** Whether this terminal-style resource is backed by a pseudoterminal. */
+  /**
+   * Whether this terminal-style resource is backed by a pseudoterminal.
+   * When `false`, output is plain text and clients do not need to parse
+   * VT sequences.
+   */
   isPty?: boolean;
 }
 

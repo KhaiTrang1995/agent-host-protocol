@@ -3226,6 +3226,8 @@ public struct ToolResultTerminalContent: Codable, Sendable {
     /// results retain output via {@link ToolResultTerminalCompleteContent}.
     public var output: String?
     /// Whether this terminal-style resource is backed by a pseudoterminal.
+    /// When `false`, output is plain text and clients do not need to parse
+    /// VT sequences.
     public var isPty: Bool?
 
     public init(
@@ -4494,6 +4496,8 @@ public struct TerminalState: Codable, Sendable {
     /// are absent in the normal idle state.
     public var supportsCommandDetection: Bool?
     /// Whether this terminal-style resource is backed by a pseudoterminal.
+    /// When `false`, output is plain text and clients do not need to parse
+    /// VT sequences.
     public var isPty: Bool?
 
     public init(

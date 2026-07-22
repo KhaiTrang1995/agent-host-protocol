@@ -2171,6 +2171,8 @@ type ToolResultTerminalContent struct {
 	// results retain output via {@link ToolResultTerminalCompleteContent}.
 	Output *string `json:"output,omitempty"`
 	// Whether this terminal-style resource is backed by a pseudoterminal.
+	// When `false`, output is plain text and clients do not need to parse
+	// VT sequences.
 	IsPty *bool `json:"isPty,omitempty"`
 }
 
@@ -3021,6 +3023,8 @@ type TerminalState struct {
 	// are absent in the normal idle state.
 	SupportsCommandDetection *bool `json:"supportsCommandDetection,omitempty"`
 	// Whether this terminal-style resource is backed by a pseudoterminal.
+	// When `false`, output is plain text and clients do not need to parse
+	// VT sequences.
 	IsPty *bool `json:"isPty,omitempty"`
 }
 

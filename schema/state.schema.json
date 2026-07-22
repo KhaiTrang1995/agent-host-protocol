@@ -4205,7 +4205,7 @@
         },
         "isPty": {
           "type": "boolean",
-          "description": "Whether this terminal-style resource is backed by a pseudoterminal."
+          "description": "Whether this terminal-style resource is backed by a pseudoterminal.\nWhen `false`, output is plain text and clients do not need to parse\nVT sequences."
         }
       },
       "required": [
@@ -4386,7 +4386,7 @@
         },
         "isPty": {
           "type": "boolean",
-          "description": "Whether this terminal-style resource is backed by a pseudoterminal."
+          "description": "Whether this terminal-style resource is backed by a pseudoterminal.\nWhen `false`, output is plain text and clients do not need to parse\nVT sequences."
         }
       },
       "required": [
