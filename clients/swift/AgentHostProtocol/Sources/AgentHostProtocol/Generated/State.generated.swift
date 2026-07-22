@@ -3222,7 +3222,8 @@ public struct ToolResultTerminalContent: Codable, Sendable {
     public var title: String?
     /// Inline snapshot of output produced so far. A replacement snapshot, not a
     /// delta: each `chat/toolCallContentChanged` action supersedes the previous
-    /// snapshot.
+    /// snapshot. Meant for live updates while the tool call runs; completed
+    /// results retain output via {@link ToolResultTerminalCompleteContent}.
     public var output: String?
     /// Whether this terminal-style resource is backed by a pseudoterminal.
     public var isPty: Bool?

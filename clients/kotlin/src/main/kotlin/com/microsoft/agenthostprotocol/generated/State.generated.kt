@@ -3023,7 +3023,8 @@ data class ToolResultTerminalContent(
     /**
      * Inline snapshot of output produced so far. A replacement snapshot, not a
      * delta: each `chat/toolCallContentChanged` action supersedes the previous
-     * snapshot.
+     * snapshot. Meant for live updates while the tool call runs; completed
+     * results retain output via {@link ToolResultTerminalCompleteContent}.
      */
     val output: String? = null,
     /**

@@ -4450,7 +4450,7 @@
         },
         "output": {
           "type": "string",
-          "description": "Inline snapshot of output produced so far. A replacement snapshot, not a\ndelta: each `chat/toolCallContentChanged` action supersedes the previous\nsnapshot."
+          "description": "Inline snapshot of output produced so far. A replacement snapshot, not a\ndelta: each `chat/toolCallContentChanged` action supersedes the previous\nsnapshot. Meant for live updates while the tool call runs; completed\nresults retain output via {@link ToolResultTerminalCompleteContent}."
         },
         "isPty": {
           "type": "boolean",
