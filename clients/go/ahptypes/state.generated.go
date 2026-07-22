@@ -2151,10 +2151,10 @@ type ToolResultFileEditContent struct {
 // Clients can subscribe to the terminal's URI to stream its output in real
 // time, providing live feedback while a tool is executing.
 //
-// When the command exits, `exitCode`, `preview`, and `truncated` may be
-// filled in on the completed result, retaining the outcome for clients that
-// did not subscribe. This records the command's exit, not the terminal's —
-// the terminal may keep running afterwards.
+// When the command exits, {@link result} is filled in on the completed
+// result, retaining the outcome for clients that did not subscribe. This
+// records the command's exit, not the terminal's — the terminal may keep
+// running afterwards.
 type ToolResultTerminalContent struct {
 	Type ToolResultContentType `json:"type"`
 	// Terminal URI (subscribable for full terminal state)
@@ -2165,13 +2165,8 @@ type ToolResultTerminalContent struct {
 	// When `false`, output is plain text and clients do not need to parse
 	// VT sequences.
 	IsPty *bool `json:"isPty,omitempty"`
-	// Exit code from the completed command, if reported by the runtime
-	ExitCode *int64 `json:"exitCode,omitempty"`
-	// Preview of the command's output, for clients that are not subscribed
-	// to the terminal or that arrive after it is disposed
-	Preview *string `json:"preview,omitempty"`
-	// Whether `preview` is known to be incomplete or truncated
-	Truncated *bool `json:"truncated,omitempty"`
+	// Outcome of the command, present once it has exited.
+	Result *TerminalCommandResult `json:"result,omitempty"`
 }
 
 // A reference, embedded in a tool result, to a worker chat spawned by the tool
@@ -2933,6 +2928,20 @@ type FileEdit struct {
 	After *json.RawMessage `json:"after,omitempty"`
 	// Optional diff display metadata
 	Diff *json.RawMessage `json:"diff,omitempty"`
+}
+
+// Outcome of a command run in a terminal-style tool, filled in on
+// {@link ToolResultTerminalContent.result} once the command exits.
+type TerminalCommandResult struct {
+	// Exit code from the completed command, if reported by the runtime
+	ExitCode *int64 `json:"exitCode,omitempty"`
+	// Preview of the command's output, for clients that are not subscribed
+	// to the terminal or that arrive after it is disposed. When `isPty` is
+	// `true` the preview may contain VT sequences; when `false` it is plain
+	// text.
+	Preview *string `json:"preview,omitempty"`
+	// Whether `preview` is known to be incomplete or truncated
+	Truncated *bool `json:"truncated,omitempty"`
 }
 
 // Lightweight terminal metadata exposed on the root state.

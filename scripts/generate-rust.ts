@@ -788,6 +788,7 @@ const STATE_STRUCTS: { name: string; omitDiscriminants?: boolean; rustName?: str
   { name: 'ToolCallClientContributor', omitDiscriminants: true },
   { name: 'ToolCallMcpContributor', omitDiscriminants: true },
   { name: 'FileEdit' },
+  { name: 'TerminalCommandResult' },
   { name: 'TerminalInfo' },
   { name: 'TerminalClientClaim', omitDiscriminants: true },
   { name: 'TerminalSessionClaim', omitDiscriminants: true },

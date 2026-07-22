@@ -2666,10 +2666,10 @@ pub struct ToolResultFileEditContent {
 /// Clients can subscribe to the terminal's URI to stream its output in real
 /// time, providing live feedback while a tool is executing.
 ///
-/// When the command exits, `exitCode`, `preview`, and `truncated` may be
-/// filled in on the completed result, retaining the outcome for clients that
-/// did not subscribe. This records the command's exit, not the terminal's —
-/// the terminal may keep running afterwards.
+/// When the command exits, {@link result} is filled in on the completed
+/// result, retaining the outcome for clients that did not subscribe. This
+/// records the command's exit, not the terminal's — the terminal may keep
+/// running afterwards.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolResultTerminalContent {
@@ -2682,16 +2682,9 @@ pub struct ToolResultTerminalContent {
     /// VT sequences.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub is_pty: Option<bool>,
-    /// Exit code from the completed command, if reported by the runtime
+    /// Outcome of the command, present once it has exited.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub exit_code: Option<i64>,
-    /// Preview of the command's output, for clients that are not subscribed
-    /// to the terminal or that arrive after it is disposed
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preview: Option<String>,
-    /// Whether `preview` is known to be incomplete or truncated
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub truncated: Option<bool>,
+    pub result: Option<TerminalCommandResult>,
 }
 
 /// A reference, embedded in a tool result, to a worker chat spawned by the tool
@@ -3553,6 +3546,25 @@ pub struct FileEdit {
     /// Optional diff display metadata
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diff: Option<AnyValue>,
+}
+
+/// Outcome of a command run in a terminal-style tool, filled in on
+/// {@link ToolResultTerminalContent.result} once the command exits.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalCommandResult {
+    /// Exit code from the completed command, if reported by the runtime
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i64>,
+    /// Preview of the command's output, for clients that are not subscribed
+    /// to the terminal or that arrive after it is disposed. When `isPty` is
+    /// `true` the preview may contain VT sequences; when `false` it is plain
+    /// text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
+    /// Whether `preview` is known to be incomplete or truncated
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub truncated: Option<bool>,
 }
 
 /// Lightweight terminal metadata exposed on the root state.

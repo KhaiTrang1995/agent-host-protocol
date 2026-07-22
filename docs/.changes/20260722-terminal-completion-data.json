@@ -1,5 +1,5 @@
 {
   "type": "added",
-  "message": "`exitCode`, `preview`, and `truncated` on `ToolResultTerminalContent`, filled in on the completed result when the command exits.",
+  "message": "`result` on `ToolResultTerminalContent` (`exitCode`, `preview`, `truncated`), present once the command exits.",
   "issues": [323]
 }

@@ -3223,30 +3223,21 @@ public struct ToolResultTerminalContent: Codable, Sendable {
     /// When `false`, output is plain text and clients do not need to parse
     /// VT sequences.
     public var isPty: Bool?
-    /// Exit code from the completed command, if reported by the runtime
-    public var exitCode: Int?
-    /// Preview of the command's output, for clients that are not subscribed
-    /// to the terminal or that arrive after it is disposed
-    public var preview: String?
-    /// Whether `preview` is known to be incomplete or truncated
-    public var truncated: Bool?
+    /// Outcome of the command, present once it has exited.
+    public var result: TerminalCommandResult?
 
     public init(
         type: ToolResultContentType,
         resource: String,
         title: String,
         isPty: Bool? = nil,
-        exitCode: Int? = nil,
-        preview: String? = nil,
-        truncated: Bool? = nil
+        result: TerminalCommandResult? = nil
     ) {
         self.type = type
         self.resource = resource
         self.title = title
         self.isPty = isPty
-        self.exitCode = exitCode
-        self.preview = preview
-        self.truncated = truncated
+        self.result = result
     }
 }
 
@@ -4378,6 +4369,28 @@ public struct FileEdit: Codable, Sendable {
         self.before = before
         self.after = after
         self.diff = diff
+    }
+}
+
+public struct TerminalCommandResult: Codable, Sendable {
+    /// Exit code from the completed command, if reported by the runtime
+    public var exitCode: Int?
+    /// Preview of the command's output, for clients that are not subscribed
+    /// to the terminal or that arrive after it is disposed. When `isPty` is
+    /// `true` the preview may contain VT sequences; when `false` it is plain
+    /// text.
+    public var preview: String?
+    /// Whether `preview` is known to be incomplete or truncated
+    public var truncated: Bool?
+
+    public init(
+        exitCode: Int? = nil,
+        preview: String? = nil,
+        truncated: Bool? = nil
+    ) {
+        self.exitCode = exitCode
+        self.preview = preview
+        self.truncated = truncated
     }
 }
 

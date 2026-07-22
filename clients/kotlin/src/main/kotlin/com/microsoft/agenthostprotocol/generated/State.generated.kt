@@ -3025,18 +3025,9 @@ data class ToolResultTerminalContent(
      */
     val isPty: Boolean? = null,
     /**
-     * Exit code from the completed command, if reported by the runtime
+     * Outcome of the command, present once it has exited.
      */
-    val exitCode: Long? = null,
-    /**
-     * Preview of the command's output, for clients that are not subscribed
-     * to the terminal or that arrive after it is disposed
-     */
-    val preview: String? = null,
-    /**
-     * Whether `preview` is known to be incomplete or truncated
-     */
-    val truncated: Boolean? = null
+    val result: TerminalCommandResult? = null
 )
 
 @Serializable
@@ -3929,6 +3920,25 @@ data class FileEdit(
      * Optional diff display metadata
      */
     val diff: JsonElement? = null
+)
+
+@Serializable
+data class TerminalCommandResult(
+    /**
+     * Exit code from the completed command, if reported by the runtime
+     */
+    val exitCode: Long? = null,
+    /**
+     * Preview of the command's output, for clients that are not subscribed
+     * to the terminal or that arrive after it is disposed. When `isPty` is
+     * `true` the preview may contain VT sequences; when `false` it is plain
+     * text.
+     */
+    val preview: String? = null,
+    /**
+     * Whether `preview` is known to be incomplete or truncated
+     */
+    val truncated: Boolean? = null
 )
 
 @Serializable

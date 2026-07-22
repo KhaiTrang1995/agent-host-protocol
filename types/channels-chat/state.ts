@@ -1388,10 +1388,10 @@ export interface ToolResultFileEditContent extends FileEdit {
  * Clients can subscribe to the terminal's URI to stream its output in real
  * time, providing live feedback while a tool is executing.
  *
- * When the command exits, `exitCode`, `preview`, and `truncated` may be
- * filled in on the completed result, retaining the outcome for clients that
- * did not subscribe. This records the command's exit, not the terminal's —
- * the terminal may keep running afterwards.
+ * When the command exits, {@link result} is filled in on the completed
+ * result, retaining the outcome for clients that did not subscribe. This
+ * records the command's exit, not the terminal's — the terminal may keep
+ * running afterwards.
  *
  * @category Tool Result Content
  */
@@ -1407,11 +1407,24 @@ export interface ToolResultTerminalContent {
    * VT sequences.
    */
   isPty?: boolean;
+  /** Outcome of the command, present once it has exited. */
+  result?: TerminalCommandResult;
+}
+
+/**
+ * Outcome of a command run in a terminal-style tool, filled in on
+ * {@link ToolResultTerminalContent.result} once the command exits.
+ *
+ * @category Tool Result Content
+ */
+export interface TerminalCommandResult {
   /** Exit code from the completed command, if reported by the runtime */
   exitCode?: number;
   /**
    * Preview of the command's output, for clients that are not subscribed
-   * to the terminal or that arrive after it is disposed
+   * to the terminal or that arrive after it is disposed. When `isPty` is
+   * `true` the preview may contain VT sequences; when `false` it is plain
+   * text.
    */
   preview?: string;
   /** Whether `preview` is known to be incomplete or truncated */

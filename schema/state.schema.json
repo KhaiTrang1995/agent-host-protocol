@@ -4186,7 +4186,7 @@
     },
     "ToolResultTerminalContent": {
       "type": "object",
-      "description": "A reference to a terminal whose output is relevant to this tool result.\n\nClients can subscribe to the terminal's URI to stream its output in real\ntime, providing live feedback while a tool is executing.\n\nWhen the command exits, `exitCode`, `preview`, and `truncated` may be\nfilled in on the completed result, retaining the outcome for clients that\ndid not subscribe. This records the command's exit, not the terminal's —\nthe terminal may keep running afterwards.",
+      "description": "A reference to a terminal whose output is relevant to this tool result.\n\nClients can subscribe to the terminal's URI to stream its output in real\ntime, providing live feedback while a tool is executing.\n\nWhen the command exits, {@link result} is filled in on the completed\nresult, retaining the outcome for clients that did not subscribe. This\nrecords the command's exit, not the terminal's — the terminal may keep\nrunning afterwards.",
       "properties": {
         "type": {
           "const": "terminal"
@@ -4203,17 +4203,9 @@
           "type": "boolean",
           "description": "Whether this terminal-style resource is backed by a pseudoterminal.\nWhen `false`, output is plain text and clients do not need to parse\nVT sequences."
         },
-        "exitCode": {
-          "type": "number",
-          "description": "Exit code from the completed command, if reported by the runtime"
-        },
-        "preview": {
-          "type": "string",
-          "description": "Preview of the command's output, for clients that are not subscribed\nto the terminal or that arrive after it is disposed"
-        },
-        "truncated": {
-          "type": "boolean",
-          "description": "Whether `preview` is known to be incomplete or truncated"
+        "result": {
+          "$ref": "#/$defs/TerminalCommandResult",
+          "description": "Outcome of the command, present once it has exited."
         }
       },
       "required": [
@@ -4221,6 +4213,24 @@
         "resource",
         "title"
       ]
+    },
+    "TerminalCommandResult": {
+      "type": "object",
+      "description": "Outcome of a command run in a terminal-style tool, filled in on\n{@link ToolResultTerminalContent.result} once the command exits.",
+      "properties": {
+        "exitCode": {
+          "type": "number",
+          "description": "Exit code from the completed command, if reported by the runtime"
+        },
+        "preview": {
+          "type": "string",
+          "description": "Preview of the command's output, for clients that are not subscribed\nto the terminal or that arrive after it is disposed. When `isPty` is\n`true` the preview may contain VT sequences; when `false` it is plain\ntext."
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "Whether `preview` is known to be incomplete or truncated"
+        }
+      }
     },
     "ToolResultSubagentContent": {
       "type": "object",

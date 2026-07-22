@@ -1,7 +1,7 @@
 {
   "name": "terminal-content-completed",
   "group": "A",
-  "description": "ActionEnvelope carries a terminal block with completion data filled in after the command exited: exit code, bounded preview, and truncation marker.",
+  "description": "ActionEnvelope carries a terminal block whose result object is present after the command exited, with exit code, bounded preview, and truncation marker.",
   "type": "ActionEnvelope",
   "input": {
     "channel": "ahp-chat:/s1/c1",
@@ -15,9 +15,11 @@
           "resource": "ahp-terminal:/s1/t1",
           "title": "npm test",
           "isPty": false,
-          "exitCode": 1,
-          "preview": "line 2\nline 3\n",
-          "truncated": true
+          "result": {
+            "exitCode": 1,
+            "preview": "line 2\nline 3\n",
+            "truncated": true
+          }
         }
       ]
     },
@@ -28,12 +30,14 @@
       "action": {
         "content": [
           {
-            "exitCode": 1,
             "isPty": false,
-            "preview": "line 2\nline 3\n",
             "resource": "ahp-terminal:/s1/t1",
+            "result": {
+              "exitCode": 1,
+              "preview": "line 2\nline 3\n",
+              "truncated": true
+            },
             "title": "npm test",
-            "truncated": true,
             "type": "terminal"
           }
         ],
