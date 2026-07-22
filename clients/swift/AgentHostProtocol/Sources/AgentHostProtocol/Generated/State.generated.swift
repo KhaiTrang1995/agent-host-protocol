@@ -665,15 +665,15 @@ public struct MultipleChatsCapability: Codable, Sendable {
 }
 
 public struct MultipleWorkingDirectoriesCapability: Codable, Sendable {
-    /// The agent requires exactly one of its working directories to be designated
-    /// the **primary** — a distinguished root the agent centers on (e.g. its
-    /// process root, the default location for relative paths). When `true`, a
-    /// client SHOULD supply {@link CreateSessionParams.primaryWorkingDirectory}
-    /// (and {@link CreateChatParams.primaryWorkingDirectory} for a chat that
-    /// narrows the set); a host MAY reject creation that omits it, or fall back to
-    /// the first entry of `workingDirectories`. The chosen primary is reported on
-    /// {@link SessionState.primaryWorkingDirectory} /
-    /// {@link ChatState.primaryWorkingDirectory}.
+    /// The agent requires each chat to designate one of its working directories as
+    /// the **primary** — a distinguished root the chat is centered on (e.g. the
+    /// agent's process root for that chat, the default location for relative
+    /// paths). Primary is a **per-chat** notion, fixed at chat creation. When
+    /// `true`, a client SHOULD supply {@link CreateChatParams.primaryWorkingDirectory}
+    /// (and {@link CreateSessionParams.primaryWorkingDirectory}, which seeds the
+    /// session's default chat); a host MAY reject creation that omits it, or fall
+    /// back to the first entry of the chat's working directories. The chosen
+    /// primary is reported (read-only) on {@link ChatState.primaryWorkingDirectory}.
     ///
     /// When absent or `false`, the agent has no primary — all directories are
     /// equal peers and clients need not designate one.
@@ -914,13 +914,18 @@ public struct ChatState: Codable, Sendable {
     /// Dispatch `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` to
     /// update the subset on a running chat.
     public var workingDirectories: [String]?
-    /// The chat's primary working directory — the distinguished root this chat
-    /// centers on. When set, it MUST be one of this chat's effective working
+    /// The chat's primary working directory — the distinguished root this chat is
+    /// centered on (e.g. the agent's process root for this chat, the default
+    /// location for relative paths). MUST be one of this chat's effective working
     /// directories ({@link workingDirectories}, or the session's set when that is
     /// absent). Present when the agent advertises
-    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; when absent,
-    /// the chat inherits {@link SessionState.primaryWorkingDirectory | the
-    /// session's primary}.
+    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}.
+    ///
+    /// **Read-only and fixed at creation.** It is set from
+    /// {@link CreateChatParams.primaryWorkingDirectory} (or, for the session's
+    /// default chat, {@link CreateSessionParams.primaryWorkingDirectory}) and does
+    /// not change over the chat's lifetime — there is no action to mutate it, and
+    /// it does not participate in `session/chatUpdated`.
     public var primaryWorkingDirectory: String?
     /// Completed turns
     public var turns: [Turn]
@@ -1070,20 +1075,13 @@ public struct SessionState: Codable, Sendable {
     public var project: ProjectInfo?
     /// The working directories the session's agent has tool access to, as
     /// maintained by the `session/workingDirectorySet` /
-    /// `session/workingDirectoryRemoved` actions. Directories are equal peers
-    /// except when the agent advertises
-    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}, in which case
-    /// one of them is designated the primary (see {@link primaryWorkingDirectory}).
-    /// Individual chats MAY restrict to a subset via
-    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`}; a
-    /// chat that sets none operates against this full set.
+    /// `session/workingDirectoryRemoved` actions. Directories are **equal peers** —
+    /// the session has no primary. Individual chats MAY restrict to a subset via
+    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`} and
+    /// designate one of their own directories as primary (see
+    /// {@link ChatState.primaryWorkingDirectory}); a chat that sets no subset
+    /// operates against this full set.
     public var workingDirectories: [String]?
-    /// The session's primary working directory — the distinguished root the agent
-    /// centers on. When set, it MUST be one of {@link workingDirectories}. Present
-    /// when the agent advertises
-    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; absent when
-    /// the agent has no primary (all directories equal peers).
-    public var primaryWorkingDirectory: String?
     /// Lightweight summary of this session's inline annotations channel
     /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
     /// annotation / entry counts without subscribing. Absent when the session
@@ -1169,7 +1167,6 @@ public struct SessionState: Codable, Sendable {
         case activity
         case project
         case workingDirectories
-        case primaryWorkingDirectory
         case annotations
         case lifecycle
         case creationError
@@ -1191,7 +1188,6 @@ public struct SessionState: Codable, Sendable {
         activity: String? = nil,
         project: ProjectInfo? = nil,
         workingDirectories: [String]? = nil,
-        primaryWorkingDirectory: String? = nil,
         annotations: AnnotationsSummary? = nil,
         lifecycle: SessionLifecycle,
         creationError: ErrorInfo? = nil,
@@ -1211,7 +1207,6 @@ public struct SessionState: Codable, Sendable {
         self.activity = activity
         self.project = project
         self.workingDirectories = workingDirectories
-        self.primaryWorkingDirectory = primaryWorkingDirectory
         self.annotations = annotations
         self.lifecycle = lifecycle
         self.creationError = creationError
@@ -1399,20 +1394,13 @@ public struct SessionSummary: Codable, Sendable {
     public var project: ProjectInfo?
     /// The working directories the session's agent has tool access to, as
     /// maintained by the `session/workingDirectorySet` /
-    /// `session/workingDirectoryRemoved` actions. Directories are equal peers
-    /// except when the agent advertises
-    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}, in which case
-    /// one of them is designated the primary (see {@link primaryWorkingDirectory}).
-    /// Individual chats MAY restrict to a subset via
-    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`}; a
-    /// chat that sets none operates against this full set.
+    /// `session/workingDirectoryRemoved` actions. Directories are **equal peers** —
+    /// the session has no primary. Individual chats MAY restrict to a subset via
+    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`} and
+    /// designate one of their own directories as primary (see
+    /// {@link ChatState.primaryWorkingDirectory}); a chat that sets no subset
+    /// operates against this full set.
     public var workingDirectories: [String]?
-    /// The session's primary working directory — the distinguished root the agent
-    /// centers on. When set, it MUST be one of {@link workingDirectories}. Present
-    /// when the agent advertises
-    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; absent when
-    /// the agent has no primary (all directories equal peers).
-    public var primaryWorkingDirectory: String?
     /// Lightweight summary of this session's inline annotations channel
     /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
     /// annotation / entry counts without subscribing. Absent when the session
@@ -1442,7 +1430,6 @@ public struct SessionSummary: Codable, Sendable {
         case activity
         case project
         case workingDirectories
-        case primaryWorkingDirectory
         case annotations
         case resource
         case createdAt
@@ -1458,7 +1445,6 @@ public struct SessionSummary: Codable, Sendable {
         activity: String? = nil,
         project: ProjectInfo? = nil,
         workingDirectories: [String]? = nil,
-        primaryWorkingDirectory: String? = nil,
         annotations: AnnotationsSummary? = nil,
         resource: String,
         createdAt: String,
@@ -1472,7 +1458,6 @@ public struct SessionSummary: Codable, Sendable {
         self.activity = activity
         self.project = project
         self.workingDirectories = workingDirectories
-        self.primaryWorkingDirectory = primaryWorkingDirectory
         self.annotations = annotations
         self.resource = resource
         self.createdAt = createdAt

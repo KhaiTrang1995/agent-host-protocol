@@ -1040,7 +1040,6 @@ fn make_summary(uri: &str, title: &str, modified_at: i64) -> ahp_types::state::S
         modified_at: modified,
         project: None,
         working_directories: None,
-        primary_working_directory: None,
         changes: None,
         annotations: None,
         meta: None,

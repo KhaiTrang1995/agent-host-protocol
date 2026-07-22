@@ -670,9 +670,6 @@ pub fn apply_action_to_session(state: &mut SessionState, action: &StateAction) -
             if let Some(working_directories) = &a.changes.working_directories {
                 chat.working_directories = Some(working_directories.clone());
             }
-            if let Some(primary_working_directory) = &a.changes.primary_working_directory {
-                chat.primary_working_directory = Some(primary_working_directory.clone());
-            }
             ReduceOutcome::Applied
         }
         StateAction::SessionDefaultChatChanged(a) => {
@@ -1952,7 +1949,6 @@ mod tests {
             activity: None,
             project: None,
             working_directories: None,
-            primary_working_directory: None,
             annotations: None,
             lifecycle: SessionLifecycle::Creating,
             creation_error: None,

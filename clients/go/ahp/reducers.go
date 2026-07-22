@@ -770,9 +770,6 @@ func mergeChatSummaryPartial(summary *ahptypes.ChatSummary, changes ahptypes.Par
 	if changes.WorkingDirectories != nil {
 		summary.WorkingDirectories = changes.WorkingDirectories
 	}
-	if changes.PrimaryWorkingDirectory != nil {
-		summary.PrimaryWorkingDirectory = changes.PrimaryWorkingDirectory
-	}
 }
 
 // ─── Session Reducer ───────────────────────────────────────────────────

@@ -74,7 +74,6 @@ SessionState {
   activity?: string
   project?: ProjectInfo
   workingDirectories?: URI[]   // equal-peer working directories
-  primaryWorkingDirectory?: URI  // designated primary (when requiresPrimary)
   annotations?: AnnotationsSummary
 
   lifecycle: 'creating' | 'ready' | 'creationFailed'
@@ -109,7 +108,6 @@ SessionSummary {
   modifiedAt: string  // ISO 8601
   project?: ProjectInfo
   workingDirectories?: URI[]   // equal-peer working directories
-  primaryWorkingDirectory?: URI  // designated primary (when requiresPrimary)
   annotations?: AnnotationsSummary
   changes?: ChangesSummary
 }
@@ -153,7 +151,7 @@ ChatState {
   modifiedAt: string
   origin?: ChatOrigin      // how the chat came to exist (user / fork / tool)
   workingDirectories?: URI[]      // subset of session's workingDirectories
-  primaryWorkingDirectory?: URI      // this chat's primary (inherits session's when absent)
+  primaryWorkingDirectory?: URI      // this chat's primary, read-only (set at creation, when requiresPrimary)
 
   turns: Turn[]                       // completed turns
   turnsNextCursor?: string            // page older turns via fetchTurns
@@ -568,14 +566,16 @@ The forked session is an independent copy — subsequent changes to either sessi
 ## Multiroot Sessions
 
 A session can be granted tool access to more than one working directory when the
-agent advertises the `multipleWorkingDirectories` capability. All directories are
-**equal peers** — there is no privileged "primary" — unless the agent advertises
-`multipleWorkingDirectories.requiresPrimary`, in which case one directory is
-designated the **primary** (see below).
+agent advertises the `multipleWorkingDirectories` capability. At the session
+level the directories are always **equal peers** — a session has no primary. A
+**primary** is a per-chat notion (see [below](#per-chat-working-directory-subsets));
+the session simply owns the set every chat draws from.
 
 ### Creating a multiroot session
 
-Pass `workingDirectories` (plural) in `createSession`:
+Pass `workingDirectories` (plural) in `createSession`. When the agent
+`requiresPrimary`, also pass `primaryWorkingDirectory` — it seeds the primary of
+the session's **default chat** (the session itself stores no primary):
 
 ```typescript
 createSession({
@@ -585,7 +585,7 @@ createSession({
     'file:///workspace/frontend',
     'file:///workspace/backend',
   ],
-  primaryWorkingDirectory: 'file:///workspace/frontend',  // only when requiresPrimary
+  primaryWorkingDirectory: 'file:///workspace/frontend',  // seeds default chat, when requiresPrimary
 });
 ```
 
@@ -595,14 +595,12 @@ first entry as the session's working directory and ignore the rest.
 
 When the agent advertises `multipleWorkingDirectories.requiresPrimary`, a client
 SHOULD supply `primaryWorkingDirectory` (which MUST be one of
-`workingDirectories`) to designate the distinguished root the agent centers on.
-A host MAY reject a creation that omits it, or fall back to the first entry. The
-chosen primary is reported on `SessionState.primaryWorkingDirectory`. When the
-agent has no primary, all directories are equal peers and no designation is
-needed.
+`workingDirectories`); a host MAY reject a creation that omits it, or fall back
+to the first entry. It becomes the default chat's read-only
+`ChatState.primaryWorkingDirectory`.
 
 Forked sessions ignore `workingDirectories` / `primaryWorkingDirectory` — they
-inherit the working directories (and primary) of the source session.
+inherit the working directories (and per-chat primaries) of the source session.
 
 ### Managing directories after creation
 
@@ -612,7 +610,7 @@ mutate it by **dispatching actions**, not by calling commands:
 | Action | Effect |
 | --- | --- |
 | `session/workingDirectorySet` | Adds `directory` to the set (creating it if absent). A no-op when the directory is already present. |
-| `session/workingDirectoryRemoved` | Removes `directory` from the set. A no-op when it is not present. There is no atomic backend "remove one" primitive — the host reconfigures its agent to the reduced set. A host MAY decline to apply the removal (e.g. the current primary of an agent that requires one), leaving the set unchanged. |
+| `session/workingDirectoryRemoved` | Removes `directory` from the set. A no-op when it is not present. There is no atomic backend "remove one" primitive — the host reconfigures its agent to the reduced set. A host MAY decline to apply the removal (e.g. a directory still designated as some chat's primary), leaving the set unchanged. |
 
 Both are `@clientDispatchable`. The resulting set is observed on
 `SessionState.workingDirectories` like any other state — there is no separate
@@ -632,23 +630,30 @@ The effective set for a chat is recorded in `ChatState.workingDirectories` /
 `ChatSummary.workingDirectories`. When absent the chat inherits the full
 session set.
 
+A chat also designates its own **primary** working directory —
+`ChatState.primaryWorkingDirectory` (mirrored on `ChatSummary`). It is
+**read-only and fixed at chat creation**: there is no action to change it, and
+it does not participate in `session/chatUpdated`. Present only when the agent
+`requiresPrimary`. Each chat can pick a different primary from its own effective
+directories.
+
 #### Setting at create time
 
 Pass `workingDirectories` to `createChat`. Every entry must already exist in
 the session's `workingDirectories`. When the agent `requiresPrimary`, also pass
-`primaryWorkingDirectory` if the chat's primary differs from the session's:
+`primaryWorkingDirectory` (one of the chat's effective directories):
 
 ```typescript
 createChat({
   channel: 'ahp-session:/<uuid>',
   chat: 'ahp-chat:/<uuid>',
   workingDirectories: ['file:///workspace/frontend'],  // subset
-  primaryWorkingDirectory: 'file:///workspace/frontend',  // optional; inherits session's when omitted
+  primaryWorkingDirectory: 'file:///workspace/frontend',  // this chat's primary, when requiresPrimary
 });
 ```
 
 Forked chats (those with a `source`) inherit the source chat's
-`workingDirectories`; the field is ignored for them.
+`workingDirectories` and primary; both fields are ignored for them.
 
 #### Managing the subset after creation
 

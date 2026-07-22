@@ -371,13 +371,15 @@ public struct CreateSessionParams: Codable, Sendable {
     /// Ignored for forked sessions — a fork inherits its working directories
     /// from the source session identified by `fork`.
     public var workingDirectories: [String]?
-    /// The session's primary working directory — the distinguished root the agent
-    /// centers on. When set, it MUST be one of {@link workingDirectories}. A client
-    /// SHOULD supply this when the agent advertises
-    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY
-    /// reject creation that omits it, or fall back to the first entry of
+    /// The primary working directory for the session's **default chat** — the
+    /// distinguished root that chat is centered on (see
+    /// {@link ChatState.primaryWorkingDirectory}). A session has no primary of its
+    /// own; this seeds the default chat's primary. When set, it MUST be one of
+    /// {@link workingDirectories}. A client SHOULD supply this when the agent
+    /// advertises {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a
+    /// host MAY reject creation that omits it, or fall back to the first entry of
     /// `workingDirectories`. Ignored for forked sessions (a fork inherits the
-    /// source session's primary).
+    /// source session's chats and their primaries).
     public var primaryWorkingDirectory: String?
     /// Fork from an existing session. The new session is populated with content
     /// from the source session up to and including the specified turn's response.
@@ -469,13 +471,15 @@ public struct CreateChatParams: Codable, Sendable {
     /// A client MUST NOT supply this field unless the agent advertises
     /// {@link AgentCapabilities.multipleWorkingDirectories}.
     public var workingDirectories: [String]?
-    /// The chat's primary working directory — the distinguished root this chat
-    /// centers on. When set, it MUST be one of the chat's effective working
+    /// The chat's primary working directory — the distinguished root this chat is
+    /// centered on. When set, it MUST be one of the chat's effective working
     /// directories ({@link workingDirectories}, or the session's set when that is
     /// omitted). A client SHOULD supply this when the agent advertises
-    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary} and the chat
-    /// narrows to a subset that excludes the session's primary; when absent, the
-    /// chat inherits the session's primary. Ignored for forked chats.
+    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY
+    /// reject creation that omits it, or fall back to the first of the chat's
+    /// directories. Fixed at creation and reported (read-only) on
+    /// {@link ChatState.primaryWorkingDirectory}. Ignored for forked chats (a fork
+    /// inherits the source chat's primary).
     public var primaryWorkingDirectory: String?
 
     public init(

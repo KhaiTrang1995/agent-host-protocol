@@ -930,7 +930,6 @@ private func mergeChatSummaryChanges(_ summary: inout ChatSummary, changes: Part
     if let modifiedAt = changes.modifiedAt { summary.modifiedAt = modifiedAt }
     if let origin = changes.origin { summary.origin = origin }
     if let workingDirectories = changes.workingDirectories { summary.workingDirectories = workingDirectories }
-    if let primaryWorkingDirectory = changes.primaryWorkingDirectory { summary.primaryWorkingDirectory = primaryWorkingDirectory }
 }
 
 private func chatSummaryStatus(_ state: ChatState, terminalStatus: SessionStatus? = nil) -> SessionStatus {

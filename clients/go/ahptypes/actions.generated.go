@@ -898,9 +898,9 @@ type SessionWorkingDirectorySetAction struct {
 // Removes `directory` from the set; a no-op when it is not present. There is no
 // atomic backend "remove one" primitive — a host reconfigures its agent to the
 // reduced set — so this action is safe to model as idempotent. A host MAY
-// decline to apply the removal (e.g. the current primary directory of an agent
-// that {@link MultipleWorkingDirectoriesCapability.requiresPrimary | requires a
-// primary}); it then leaves the set unchanged.
+// decline to apply the removal (e.g. a directory still designated as some
+// chat's {@link ChatState.primaryWorkingDirectory | primary}); it then leaves
+// the set unchanged.
 type SessionWorkingDirectoryRemovedAction struct {
 	Type ActionType `json:"type"`
 	// The working directory to revoke the session's agent tool access to.

@@ -561,7 +561,7 @@
       "properties": {
         "requiresPrimary": {
           "type": "boolean",
-          "description": "The agent requires exactly one of its working directories to be designated\nthe **primary** — a distinguished root the agent centers on (e.g. its\nprocess root, the default location for relative paths). When `true`, a\nclient SHOULD supply {@link CreateSessionParams.primaryWorkingDirectory}\n(and {@link CreateChatParams.primaryWorkingDirectory} for a chat that\nnarrows the set); a host MAY reject creation that omits it, or fall back to\nthe first entry of `workingDirectories`. The chosen primary is reported on\n{@link SessionState.primaryWorkingDirectory} /\n{@link ChatState.primaryWorkingDirectory}.\n\nWhen absent or `false`, the agent has no primary — all directories are\nequal peers and clients need not designate one."
+          "description": "The agent requires each chat to designate one of its working directories as\nthe **primary** — a distinguished root the chat is centered on (e.g. the\nagent's process root for that chat, the default location for relative\npaths). Primary is a **per-chat** notion, fixed at chat creation. When\n`true`, a client SHOULD supply {@link CreateChatParams.primaryWorkingDirectory}\n(and {@link CreateSessionParams.primaryWorkingDirectory}, which seeds the\nsession's default chat); a host MAY reject creation that omits it, or fall\nback to the first entry of the chat's working directories. The chosen\nprimary is reported (read-only) on {@link ChatState.primaryWorkingDirectory}.\n\nWhen absent or `false`, the agent has no primary — all directories are\nequal peers and clients need not designate one."
         }
       }
     },
@@ -684,11 +684,7 @@
           "items": {
             "$ref": "#/$defs/URI"
           },
-          "description": "The working directories the session's agent has tool access to, as\nmaintained by the `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` actions. Directories are equal peers\nexcept when the agent advertises\n{@link MultipleWorkingDirectoriesCapability.requiresPrimary}, in which case\none of them is designated the primary (see {@link primaryWorkingDirectory}).\nIndividual chats MAY restrict to a subset via\n{@link ChatSummary.workingDirectories | their own `workingDirectories`}; a\nchat that sets none operates against this full set."
-        },
-        "primaryWorkingDirectory": {
-          "$ref": "#/$defs/URI",
-          "description": "The session's primary working directory — the distinguished root the agent\ncenters on. When set, it MUST be one of {@link workingDirectories}. Present\nwhen the agent advertises\n{@link MultipleWorkingDirectoriesCapability.requiresPrimary}; absent when\nthe agent has no primary (all directories equal peers)."
+          "description": "The working directories the session's agent has tool access to, as\nmaintained by the `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` actions. Directories are **equal peers** —\nthe session has no primary. Individual chats MAY restrict to a subset via\n{@link ChatSummary.workingDirectories | their own `workingDirectories`} and\ndesignate one of their own directories as primary (see\n{@link ChatState.primaryWorkingDirectory}); a chat that sets no subset\noperates against this full set."
         },
         "annotations": {
           "$ref": "#/$defs/AnnotationsSummary",
@@ -730,11 +726,7 @@
           "items": {
             "$ref": "#/$defs/URI"
           },
-          "description": "The working directories the session's agent has tool access to, as\nmaintained by the `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` actions. Directories are equal peers\nexcept when the agent advertises\n{@link MultipleWorkingDirectoriesCapability.requiresPrimary}, in which case\none of them is designated the primary (see {@link primaryWorkingDirectory}).\nIndividual chats MAY restrict to a subset via\n{@link ChatSummary.workingDirectories | their own `workingDirectories`}; a\nchat that sets none operates against this full set."
-        },
-        "primaryWorkingDirectory": {
-          "$ref": "#/$defs/URI",
-          "description": "The session's primary working directory — the distinguished root the agent\ncenters on. When set, it MUST be one of {@link workingDirectories}. Present\nwhen the agent advertises\n{@link MultipleWorkingDirectoriesCapability.requiresPrimary}; absent when\nthe agent has no primary (all directories equal peers)."
+          "description": "The working directories the session's agent has tool access to, as\nmaintained by the `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` actions. Directories are **equal peers** —\nthe session has no primary. Individual chats MAY restrict to a subset via\n{@link ChatSummary.workingDirectories | their own `workingDirectories`} and\ndesignate one of their own directories as primary (see\n{@link ChatState.primaryWorkingDirectory}); a chat that sets no subset\noperates against this full set."
         },
         "annotations": {
           "$ref": "#/$defs/AnnotationsSummary",
@@ -1038,11 +1030,7 @@
           "items": {
             "$ref": "#/$defs/URI"
           },
-          "description": "The working directories the session's agent has tool access to, as\nmaintained by the `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` actions. Directories are equal peers\nexcept when the agent advertises\n{@link MultipleWorkingDirectoriesCapability.requiresPrimary}, in which case\none of them is designated the primary (see {@link primaryWorkingDirectory}).\nIndividual chats MAY restrict to a subset via\n{@link ChatSummary.workingDirectories | their own `workingDirectories`}; a\nchat that sets none operates against this full set."
-        },
-        "primaryWorkingDirectory": {
-          "$ref": "#/$defs/URI",
-          "description": "The session's primary working directory — the distinguished root the agent\ncenters on. When set, it MUST be one of {@link workingDirectories}. Present\nwhen the agent advertises\n{@link MultipleWorkingDirectoriesCapability.requiresPrimary}; absent when\nthe agent has no primary (all directories equal peers)."
+          "description": "The working directories the session's agent has tool access to, as\nmaintained by the `session/workingDirectorySet` /\n`session/workingDirectoryRemoved` actions. Directories are **equal peers** —\nthe session has no primary. Individual chats MAY restrict to a subset via\n{@link ChatSummary.workingDirectories | their own `workingDirectories`} and\ndesignate one of their own directories as primary (see\n{@link ChatState.primaryWorkingDirectory}); a chat that sets no subset\noperates against this full set."
         },
         "annotations": {
           "$ref": "#/$defs/AnnotationsSummary",
@@ -2331,7 +2319,7 @@
         },
         "primaryWorkingDirectory": {
           "$ref": "#/$defs/URI",
-          "description": "The chat's primary working directory — the distinguished root this chat\ncenters on. When set, it MUST be one of this chat's effective working\ndirectories ({@link workingDirectories}, or the session's set when that is\nabsent). Present when the agent advertises\n{@link MultipleWorkingDirectoriesCapability.requiresPrimary}; when absent,\nthe chat inherits {@link SessionState.primaryWorkingDirectory | the\nsession's primary}."
+          "description": "The chat's primary working directory — the distinguished root this chat is\ncentered on (e.g. the agent's process root for this chat, the default\nlocation for relative paths). MUST be one of this chat's effective working\ndirectories ({@link workingDirectories}, or the session's set when that is\nabsent). Present when the agent advertises\n{@link MultipleWorkingDirectoriesCapability.requiresPrimary}.\n\n**Read-only and fixed at creation.** It is set from\n{@link CreateChatParams.primaryWorkingDirectory} (or, for the session's\ndefault chat, {@link CreateSessionParams.primaryWorkingDirectory}) and does\nnot change over the chat's lifetime — there is no action to mutate it, and\nit does not participate in `session/chatUpdated`."
         },
         "turns": {
           "type": "array",
