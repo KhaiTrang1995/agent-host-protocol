@@ -599,6 +599,13 @@ SHOULD supply `primaryWorkingDirectory` (which MUST be one of
 to the first entry. It becomes the default chat's read-only
 `ChatState.primaryWorkingDirectory`.
 
+> **Why is `primaryWorkingDirectory` on `createSession` if the session has no
+> primary?** Because `createSession` implicitly creates the session's **default
+> chat**, and there is no separate `createChat` call to carry that chat's
+> create-time fields. This field is the only place to designate the default
+> chat's primary at birth. For any additional chat, pass its primary to
+> `createChat` instead.
+
 Forked sessions ignore `workingDirectories` / `primaryWorkingDirectory` — they
 inherit the working directories (and per-chat primaries) of the source session.
 
