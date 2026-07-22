@@ -3025,7 +3025,20 @@ data class ToolResultTerminalContent(
      * When `false`, output is plain text and clients do not need to parse
      * VT sequences.
      */
-    val isPty: Boolean? = null
+    val isPty: Boolean? = null,
+    /**
+     * Exit code from the completed command, if reported by the runtime
+     */
+    val exitCode: Long? = null,
+    /**
+     * Preview of the command's output, for clients that are not subscribed
+     * to the terminal or that arrive after it is disposed
+     */
+    val preview: String? = null,
+    /**
+     * Whether `preview` is known to be incomplete or truncated
+     */
+    val truncated: Boolean? = null
 )
 
 @Serializable

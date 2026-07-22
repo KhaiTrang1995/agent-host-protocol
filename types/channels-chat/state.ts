@@ -1389,9 +1389,10 @@ export interface ToolResultFileEditContent extends FileEdit {
  * Clients can subscribe to the terminal's URI to stream its output in real
  * time, providing live feedback while a tool is executing.
  *
- * This block does not signal command completion: check for a
- * {@link ToolResultTerminalCompleteContent} block, which retains completion
- * metadata such as the exit code.
+ * When the command exits, `exitCode`, `preview`, and `truncated` are filled
+ * in on the completed result, retaining the outcome for clients that did
+ * not subscribe. This records the command's exit, not the terminal's — the
+ * terminal may keep running afterwards.
  *
  * @category Tool Result Content
  */
@@ -1407,6 +1408,15 @@ export interface ToolResultTerminalContent {
    * VT sequences.
    */
   isPty?: boolean;
+  /** Exit code from the completed command, if reported by the runtime */
+  exitCode?: number;
+  /**
+   * Preview of the command's output, for clients that are not subscribed
+   * to the terminal or that arrive after it is disposed
+   */
+  preview?: string;
+  /** Whether `preview` is known to be incomplete or truncated */
+  truncated?: boolean;
 }
 
 /**
@@ -1420,6 +1430,9 @@ export interface ToolResultTerminalContent {
  * {@link ToolResultTerminalContent} block in the same tool result),
  * {@link resource} identifies that channel; otherwise this block stands alone
  * as the retained command result.
+ *
+ * @deprecated Completion metadata is now filled in on the
+ * {@link ToolResultTerminalContent} block in the completed result.
  *
  * @category Tool Result Content
  */

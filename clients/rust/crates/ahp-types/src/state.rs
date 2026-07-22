@@ -2668,9 +2668,10 @@ pub struct ToolResultFileEditContent {
 /// Clients can subscribe to the terminal's URI to stream its output in real
 /// time, providing live feedback while a tool is executing.
 ///
-/// This block does not signal command completion: check for a
-/// {@link ToolResultTerminalCompleteContent} block, which retains completion
-/// metadata such as the exit code.
+/// When the command exits, `exitCode`, `preview`, and `truncated` are filled
+/// in on the completed result, retaining the outcome for clients that did
+/// not subscribe. This records the command's exit, not the terminal's — the
+/// terminal may keep running afterwards.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolResultTerminalContent {
@@ -2683,6 +2684,16 @@ pub struct ToolResultTerminalContent {
     /// VT sequences.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub is_pty: Option<bool>,
+    /// Exit code from the completed command, if reported by the runtime
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i64>,
+    /// Preview of the command's output, for clients that are not subscribed
+    /// to the terminal or that arrive after it is disposed
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
+    /// Whether `preview` is known to be incomplete or truncated
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub truncated: Option<bool>,
 }
 
 /// Record of a command executed by a terminal-style tool (e.g. a shell tool),

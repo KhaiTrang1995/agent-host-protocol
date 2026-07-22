@@ -2152,9 +2152,10 @@ type ToolResultFileEditContent struct {
 // Clients can subscribe to the terminal's URI to stream its output in real
 // time, providing live feedback while a tool is executing.
 //
-// This block does not signal command completion: check for a
-// {@link ToolResultTerminalCompleteContent} block, which retains completion
-// metadata such as the exit code.
+// When the command exits, `exitCode`, `preview`, and `truncated` are filled
+// in on the completed result, retaining the outcome for clients that did
+// not subscribe. This records the command's exit, not the terminal's — the
+// terminal may keep running afterwards.
 type ToolResultTerminalContent struct {
 	Type ToolResultContentType `json:"type"`
 	// Terminal URI (subscribable for full terminal state)
@@ -2165,6 +2166,13 @@ type ToolResultTerminalContent struct {
 	// When `false`, output is plain text and clients do not need to parse
 	// VT sequences.
 	IsPty *bool `json:"isPty,omitempty"`
+	// Exit code from the completed command, if reported by the runtime
+	ExitCode *int64 `json:"exitCode,omitempty"`
+	// Preview of the command's output, for clients that are not subscribed
+	// to the terminal or that arrive after it is disposed
+	Preview *string `json:"preview,omitempty"`
+	// Whether `preview` is known to be incomplete or truncated
+	Truncated *bool `json:"truncated,omitempty"`
 }
 
 // Record of a command executed by a terminal-style tool (e.g. a shell tool),
