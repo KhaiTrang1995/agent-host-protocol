@@ -26,10 +26,7 @@
         "origin": {
           "kind": "fork",
           "chat": "ahp-chat:/c1",
-          "turn": {
-            "kind": "completed",
-            "turnId": "t1"
-          }
+          "turnId": "t1"
         }
       }
     ],
@@ -57,10 +54,7 @@
         "origin": {
           "kind": "fork",
           "chat": "ahp-chat:/c1",
-          "turn": {
-            "kind": "completed",
-            "turnId": "t1"
-          }
+          "turnId": "t1"
         }
       }
     ]

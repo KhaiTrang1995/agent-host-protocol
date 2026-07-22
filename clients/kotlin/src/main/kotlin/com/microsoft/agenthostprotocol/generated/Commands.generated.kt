@@ -477,10 +477,13 @@ data class ForkChatSource(
      */
     val chat: String,
     /**
-     * Completed turn in the source chat. Content through this turn is copied into
-     * the new chat's visible `turns`.
+     * Completed turn identifier in the source chat.
+     *
+     * Content through this turn is copied into the new chat's visible `turns`.
+     * This preserves the existing 0.7.x flat fork wire format (`chat` +
+     * `turnId`).
      */
-    val turn: CompletedChatSourceTurn
+    val turnId: String
 )
 
 @Serializable
@@ -526,9 +529,10 @@ data class CreateChatParams(
      * `kind: "fork"` when the selected agent advertises
      * `capabilities.multipleChats.fork`, and
      * `kind: "sideChat"` when the selected agent advertises
-     * `capabilities.multipleChats.sideChat`. Forks require
-     * `source.turn.kind: "completed"`. Side chats accept either a completed turn
-     * or the source chat's current active turn.
+     * `capabilities.multipleChats.sideChat`. Forks keep the legacy flat
+     * `chat` + `turnId` shape and therefore only target completed turns. Side
+     * chats use `source.turn.kind` to distinguish a completed source turn from
+     * the source chat's current active turn.
      */
     val source: ChatSource? = null,
     /**

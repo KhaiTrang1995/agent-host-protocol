@@ -487,9 +487,12 @@ pub struct ForkChatSource {
     pub kind: ChatSourceKind,
     /// URI of the existing source chat.
     pub chat: Uri,
-    /// Completed turn in the source chat. Content through this turn is copied into
-    /// the new chat's visible `turns`.
-    pub turn: CompletedChatSourceTurn,
+    /// Completed turn identifier in the source chat.
+    ///
+    /// Content through this turn is copied into the new chat's visible `turns`.
+    /// This preserves the existing 0.7.x flat fork wire format (`chat` +
+    /// `turnId`).
+    pub turn_id: String,
 }
 
 /// Supplies source context to a new side chat without copying it into the side
@@ -528,9 +531,10 @@ pub struct CreateChatParams {
     /// `kind: "fork"` when the selected agent advertises
     /// `capabilities.multipleChats.fork`, and
     /// `kind: "sideChat"` when the selected agent advertises
-    /// `capabilities.multipleChats.sideChat`. Forks require
-    /// `source.turn.kind: "completed"`. Side chats accept either a completed turn
-    /// or the source chat's current active turn.
+    /// `capabilities.multipleChats.sideChat`. Forks keep the legacy flat
+    /// `chat` + `turnId` shape and therefore only target completed turns. Side
+    /// chats use `source.turn.kind` to distinguish a completed source turn from
+    /// the source chat's current active turn.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<ChatSource>,
     /// Initial working-directory subset for this chat. Every entry MUST be

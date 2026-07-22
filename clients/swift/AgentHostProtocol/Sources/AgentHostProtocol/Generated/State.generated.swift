@@ -5277,12 +5277,12 @@ public struct ChatOriginUser: Codable, Sendable {
 public struct ChatOriginFork: Codable, Sendable {
     public var kind: ChatOriginKind
     public var chat: String
-    public var turn: CompletedChatSourceTurn
+    public var turnId: String
 
-    public init(kind: ChatOriginKind = .fork, chat: String, turn: CompletedChatSourceTurn) {
+    public init(kind: ChatOriginKind = .fork, chat: String, turnId: String) {
         self.kind = kind
         self.chat = chat
-        self.turn = turn
+        self.turnId = turnId
     }
 }
 

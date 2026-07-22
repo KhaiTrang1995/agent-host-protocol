@@ -76,7 +76,8 @@ Absence or `false` means the corresponding source kind is unsupported. The host
 MUST reject an unsupported source kind. It MUST also reject a source chat outside
 the target session, an unknown source chat or turn, or a source that names the
 chat being created. For `source.kind: "fork"`, the host MUST additionally reject
-`source.turn.kind: "active"` — forks only target completed turns.
+any source that does not use the legacy flat `chat` + `turnId` fork shape —
+forks only target completed turns.
 
 Forks and side chats use the source differently:
 

@@ -4880,9 +4880,9 @@ type ChatUserOrigin struct {
 func (*ChatUserOrigin) isChatOrigin() {}
 
 type ChatForkOrigin struct {
-	Kind ChatOriginKind          `json:"kind"`
-	Chat URI                     `json:"chat"`
-	Turn CompletedChatSourceTurn `json:"turn"`
+	Kind   ChatOriginKind `json:"kind"`
+	Chat   URI            `json:"chat"`
+	TurnId string         `json:"turnId"`
 }
 
 func (*ChatForkOrigin) isChatOrigin() {}

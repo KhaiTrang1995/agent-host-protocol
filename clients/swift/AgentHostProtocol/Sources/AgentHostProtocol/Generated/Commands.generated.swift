@@ -459,18 +459,21 @@ public struct ForkChatSource: Codable, Sendable {
     public var kind: ChatSourceKind
     /// URI of the existing source chat.
     public var chat: String
-    /// Completed turn in the source chat. Content through this turn is copied into
-    /// the new chat's visible `turns`.
-    public var turn: CompletedChatSourceTurn
+    /// Completed turn identifier in the source chat.
+    ///
+    /// Content through this turn is copied into the new chat's visible `turns`.
+    /// This preserves the existing 0.7.x flat fork wire format (`chat` +
+    /// `turnId`).
+    public var turnId: String
 
     public init(
         kind: ChatSourceKind,
         chat: String,
-        turn: CompletedChatSourceTurn
+        turnId: String
     ) {
         self.kind = kind
         self.chat = chat
-        self.turn = turn
+        self.turnId = turnId
     }
 }
 
@@ -512,9 +515,10 @@ public struct CreateChatParams: Codable, Sendable {
     /// `kind: "fork"` when the selected agent advertises
     /// `capabilities.multipleChats.fork`, and
     /// `kind: "sideChat"` when the selected agent advertises
-    /// `capabilities.multipleChats.sideChat`. Forks require
-    /// `source.turn.kind: "completed"`. Side chats accept either a completed turn
-    /// or the source chat's current active turn.
+    /// `capabilities.multipleChats.sideChat`. Forks keep the legacy flat
+    /// `chat` + `turnId` shape and therefore only target completed turns. Side
+    /// chats use `source.turn.kind` to distinguish a completed source turn from
+    /// the source chat's current active turn.
     public var source: ChatSource?
     /// Initial working-directory subset for this chat. Every entry MUST be
     /// present in the owning session's `workingDirectories`; the server MUST

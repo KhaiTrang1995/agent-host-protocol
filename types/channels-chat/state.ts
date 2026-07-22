@@ -237,6 +237,10 @@ export type ChatSourceTurn =
  * How a chat came into existence. Clients MAY use it to render
  * contextual UI (parent indicators, fork markers, "spawned by tool" badges).
  *
+ * Fork origins preserve the existing flat `chat` + `turnId` wire shape. Side
+ * chat origins use `turn.kind` to distinguish completed-turn provenance from
+ * active-turn snapshot provenance.
+ *
  * The `tool` variant records a tool-spawned worker from the worker's side: its
  * `chat`/`toolCallId` identify the spawning tool call in the parent chat. This
  * is the canonical record of the spawn relationship. The same edge is surfaced
@@ -247,7 +251,7 @@ export type ChatSourceTurn =
  */
 export type ChatOrigin =
   | { kind: ChatOriginKind.User }
-  | { kind: ChatOriginKind.Fork; chat: URI; turn: CompletedChatSourceTurn }
+  | { kind: ChatOriginKind.Fork; chat: URI; turnId: string }
   | { kind: ChatOriginKind.SideChat; chat: URI; turn: ChatSourceTurn }
   | { kind: ChatOriginKind.Tool; chat: URI; toolCallId: string };
 

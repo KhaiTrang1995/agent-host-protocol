@@ -942,7 +942,7 @@ data class ChatOriginUser(
 data class ChatOriginFork(
     val kind: ChatOriginKind = ChatOriginKind.FORK,
     val chat: String,
-    val turn: CompletedChatSourceTurn,
+    val turnId: String,
 )
 
 @Serializable

@@ -390,9 +390,12 @@ type ForkChatSource struct {
 	Kind ChatSourceKind `json:"kind"`
 	// URI of the existing source chat.
 	Chat URI `json:"chat"`
-	// Completed turn in the source chat. Content through this turn is copied into
-	// the new chat's visible `turns`.
-	Turn CompletedChatSourceTurn `json:"turn"`
+	// Completed turn identifier in the source chat.
+	//
+	// Content through this turn is copied into the new chat's visible `turns`.
+	// This preserves the existing 0.7.x flat fork wire format (`chat` +
+	// `turnId`).
+	TurnId string `json:"turnId"`
 }
 
 // Supplies source context to a new side chat without copying it into the side
@@ -426,9 +429,10 @@ type CreateChatParams struct {
 	// `kind: "fork"` when the selected agent advertises
 	// `capabilities.multipleChats.fork`, and
 	// `kind: "sideChat"` when the selected agent advertises
-	// `capabilities.multipleChats.sideChat`. Forks require
-	// `source.turn.kind: "completed"`. Side chats accept either a completed turn
-	// or the source chat's current active turn.
+	// `capabilities.multipleChats.sideChat`. Forks keep the legacy flat
+	// `chat` + `turnId` shape and therefore only target completed turns. Side
+	// chats use `source.turn.kind` to distinguish a completed source turn from
+	// the source chat's current active turn.
 	Source *ChatSource `json:"source,omitempty"`
 	// Initial working-directory subset for this chat. Every entry MUST be
 	// present in the owning session's `workingDirectories`; the server MUST

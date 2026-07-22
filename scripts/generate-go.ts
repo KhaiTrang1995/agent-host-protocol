@@ -1027,7 +1027,7 @@ func (*ChatUserOrigin) isChatOrigin() {}
 type ChatForkOrigin struct {
 \tKind   ChatOriginKind \`json:"kind"\`
 \tChat   URI            \`json:"chat"\`
-\tTurn   CompletedChatSourceTurn \`json:"turn"\`
+\tTurnId string         \`json:"turnId"\`
 }
 
 func (*ChatForkOrigin) isChatOrigin() {}

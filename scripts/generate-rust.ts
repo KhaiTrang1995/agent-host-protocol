@@ -1140,8 +1140,9 @@ pub enum ChatOrigin {
     Fork {
         /// URI of the chat this one was forked from.
         chat: Uri,
-        /// Completed source-turn snapshot the fork was taken from.
-        turn: CompletedChatSourceTurn,
+        /// Completed source-turn identifier the fork was taken from.
+        #[serde(rename = "turnId")]
+        turn_id: String,
     },
     /// Independent side conversation created from a specific turn.
     #[serde(rename = "sideChat")]
