@@ -1388,10 +1388,10 @@ export interface ToolResultFileEditContent extends FileEdit {
  * Clients can subscribe to the terminal's URI to stream its output in real
  * time, providing live feedback while a tool is executing.
  *
- * When the command exits, `exitCode`, `preview`, and `truncated` are filled
- * in on the completed result, retaining the outcome for clients that did
- * not subscribe. This records the command's exit, not the terminal's — the
- * terminal may keep running afterwards.
+ * When the command exits, `exitCode`, `preview`, and `truncated` may be
+ * filled in on the completed result, retaining the outcome for clients that
+ * did not subscribe. This records the command's exit, not the terminal's —
+ * the terminal may keep running afterwards.
  *
  * @category Tool Result Content
  */

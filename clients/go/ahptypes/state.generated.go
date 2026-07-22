@@ -2151,10 +2151,10 @@ type ToolResultFileEditContent struct {
 // Clients can subscribe to the terminal's URI to stream its output in real
 // time, providing live feedback while a tool is executing.
 //
-// When the command exits, `exitCode`, `preview`, and `truncated` are filled
-// in on the completed result, retaining the outcome for clients that did
-// not subscribe. This records the command's exit, not the terminal's — the
-// terminal may keep running afterwards.
+// When the command exits, `exitCode`, `preview`, and `truncated` may be
+// filled in on the completed result, retaining the outcome for clients that
+// did not subscribe. This records the command's exit, not the terminal's —
+// the terminal may keep running afterwards.
 type ToolResultTerminalContent struct {
 	Type ToolResultContentType `json:"type"`
 	// Terminal URI (subscribable for full terminal state)

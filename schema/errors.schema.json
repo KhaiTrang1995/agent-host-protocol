@@ -4275,7 +4275,7 @@
     },
     "ToolResultTerminalContent": {
       "type": "object",
-      "description": "A reference to a terminal whose output is relevant to this tool result.\n\nClients can subscribe to the terminal's URI to stream its output in real\ntime, providing live feedback while a tool is executing.\n\nWhen the command exits, `exitCode`, `preview`, and `truncated` are filled\nin on the completed result, retaining the outcome for clients that did\nnot subscribe. This records the command's exit, not the terminal's — the\nterminal may keep running afterwards.",
+      "description": "A reference to a terminal whose output is relevant to this tool result.\n\nClients can subscribe to the terminal's URI to stream its output in real\ntime, providing live feedback while a tool is executing.\n\nWhen the command exits, `exitCode`, `preview`, and `truncated` may be\nfilled in on the completed result, retaining the outcome for clients that\ndid not subscribe. This records the command's exit, not the terminal's —\nthe terminal may keep running afterwards.",
       "properties": {
         "type": {
           "const": "terminal"
