@@ -2153,12 +2153,12 @@ type ToolResultFileEditContent struct {
 //
 // Clients can subscribe to the terminal's URI to stream its output in real
 // time, providing live feedback while a tool is executing. When both
-// `resource` and `output` are present the resource is authoritative —
-// `output` offers a bounded snapshot for clients that do not subscribe.
+// `resource` and `output` are present, `output` is a snapshot for clients
+// that do not subscribe.
 //
-// A {@link ToolResultTerminalCompleteContent} block can retain completion
-// metadata for a command associated with this terminal and reference the same
-// resource.
+// This block does not signal command completion: check for a
+// {@link ToolResultTerminalCompleteContent} block, which retains completion
+// metadata such as the exit code.
 type ToolResultTerminalContent struct {
 	Type ToolResultContentType `json:"type"`
 	// Terminal URI (subscribable for full terminal state)
