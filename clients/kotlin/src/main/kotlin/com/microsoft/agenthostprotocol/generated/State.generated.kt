@@ -3015,18 +3015,11 @@ data class ToolResultTerminalContent(
     /**
      * Terminal URI (subscribable for full terminal state)
      */
-    val resource: String? = null,
+    val resource: String,
     /**
      * Display title for the terminal content
      */
-    val title: String? = null,
-    /**
-     * Inline snapshot of output produced so far. A replacement snapshot, not a
-     * delta: each `chat/toolCallContentChanged` action supersedes the previous
-     * snapshot. Meant for live updates while the tool call runs; completed
-     * results retain output via {@link ToolResultTerminalCompleteContent}.
-     */
-    val output: String? = null,
+    val title: String,
     /**
      * Whether this terminal-style resource is backed by a pseudoterminal.
      * When `false`, output is plain text and clients do not need to parse

@@ -1,5 +1,5 @@
 {
-  "type": "changed",
-  "message": "`ToolResultTerminalContent` now carries optional inline `output` snapshots and optional `isPty` metadata, with `resource` and `title` now optional; `TerminalState` gains matching `isPty` metadata.",
-  "issues": [322, 323]
+  "type": "added",
+  "message": "Optional `isPty` metadata on `ToolResultTerminalContent` and `TerminalState` indicating whether a terminal resource is PTY-backed.",
+  "issues": [322]
 }

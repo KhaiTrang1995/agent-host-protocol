@@ -3217,14 +3217,9 @@ public struct ToolResultFileEditContent: Codable, Sendable {
 public struct ToolResultTerminalContent: Codable, Sendable {
     public var type: ToolResultContentType
     /// Terminal URI (subscribable for full terminal state)
-    public var resource: String?
+    public var resource: String
     /// Display title for the terminal content
-    public var title: String?
-    /// Inline snapshot of output produced so far. A replacement snapshot, not a
-    /// delta: each `chat/toolCallContentChanged` action supersedes the previous
-    /// snapshot. Meant for live updates while the tool call runs; completed
-    /// results retain output via {@link ToolResultTerminalCompleteContent}.
-    public var output: String?
+    public var title: String
     /// Whether this terminal-style resource is backed by a pseudoterminal.
     /// When `false`, output is plain text and clients do not need to parse
     /// VT sequences.
@@ -3232,15 +3227,13 @@ public struct ToolResultTerminalContent: Codable, Sendable {
 
     public init(
         type: ToolResultContentType,
-        resource: String? = nil,
-        title: String? = nil,
-        output: String? = nil,
+        resource: String,
+        title: String,
         isPty: Bool? = nil
     ) {
         self.type = type
         self.resource = resource
         self.title = title
-        self.output = output
         self.isPty = isPty
     }
 }

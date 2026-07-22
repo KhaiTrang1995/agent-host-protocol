@@ -2147,14 +2147,10 @@ type ToolResultFileEditContent struct {
 	Type ToolResultContentType `json:"type"`
 }
 
-// A reference to a terminal whose output is relevant to this tool result,
-// or an inline terminal-style output snapshot. At least one of
-// {@link resource} or {@link output} SHOULD be present.
+// A reference to a terminal whose output is relevant to this tool result.
 //
 // Clients can subscribe to the terminal's URI to stream its output in real
-// time, providing live feedback while a tool is executing. When both
-// `resource` and `output` are present, `output` is a snapshot for clients
-// that do not subscribe.
+// time, providing live feedback while a tool is executing.
 //
 // This block does not signal command completion: check for a
 // {@link ToolResultTerminalCompleteContent} block, which retains completion
@@ -2162,14 +2158,9 @@ type ToolResultFileEditContent struct {
 type ToolResultTerminalContent struct {
 	Type ToolResultContentType `json:"type"`
 	// Terminal URI (subscribable for full terminal state)
-	Resource *URI `json:"resource,omitempty"`
+	Resource URI `json:"resource"`
 	// Display title for the terminal content
-	Title *string `json:"title,omitempty"`
-	// Inline snapshot of output produced so far. A replacement snapshot, not a
-	// delta: each `chat/toolCallContentChanged` action supersedes the previous
-	// snapshot. Meant for live updates while the tool call runs; completed
-	// results retain output via {@link ToolResultTerminalCompleteContent}.
-	Output *string `json:"output,omitempty"`
+	Title string `json:"title"`
 	// Whether this terminal-style resource is backed by a pseudoterminal.
 	// When `false`, output is plain text and clients do not need to parse
 	// VT sequences.
