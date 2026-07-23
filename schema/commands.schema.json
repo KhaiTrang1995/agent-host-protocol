@@ -8656,7 +8656,18 @@
     "ChatSource": {
       "oneOf": [
         {
-          "$ref": "#/$defs/ForkChatSource"
+          "allOf": [
+            {
+              "$ref": "#/$defs/ForkChatSource"
+            },
+            {
+              "not": {
+                "required": [
+                  "kind"
+                ]
+              }
+            }
+          ]
         },
         {
           "$ref": "#/$defs/SideChatSource"

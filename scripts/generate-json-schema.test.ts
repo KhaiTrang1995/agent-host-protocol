@@ -43,6 +43,8 @@ function collectRefTargets(node: JsonNode, acc: Set<string>): void {
       const m = ref.match(/^#\/\$defs\/(.+)$/);
       if (m) acc.add(m[1]);
     }
+    const not = (node as Record<string, unknown>).not;
+    if (not) collectRefTargets(not as JsonNode, acc);
     for (const value of Object.values(node)) collectRefTargets(value as JsonNode, acc);
   }
 }
@@ -64,6 +66,84 @@ function countEmptyOneOfBranches(node: JsonNode): number {
     for (const value of Object.values(node)) count += countEmptyOneOfBranches(value as JsonNode);
   }
   return count;
+}
+
+function dereferenceSchema(
+  root: Record<string, unknown>,
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
+  const ref = schema.$ref;
+  if (typeof ref !== 'string') {
+    return schema;
+  }
+  const match = ref.match(/^#\/\$defs\/(.+)$/);
+  assert.ok(match, `unsupported schema ref: ${ref}`);
+  const defs = root.$defs as Record<string, Record<string, unknown>>;
+  const resolved = defs[match[1]];
+  assert.ok(resolved, `missing schema def for ${ref}`);
+  return resolved;
+}
+
+function schemaAccepts(
+  root: Record<string, unknown>,
+  node: JsonNode,
+  value: unknown,
+): boolean {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) {
+    return true;
+  }
+
+  const schema = dereferenceSchema(root, node as Record<string, unknown>);
+  const oneOf = schema.oneOf;
+  if (Array.isArray(oneOf)) {
+    return oneOf.filter(branch => schemaAccepts(root, branch as JsonNode, value)).length === 1;
+  }
+
+  const allOf = schema.allOf;
+  if (Array.isArray(allOf)) {
+    return allOf.every(branch => schemaAccepts(root, branch as JsonNode, value));
+  }
+
+  if (schema.not) {
+    return !schemaAccepts(root, schema.not as JsonNode, value);
+  }
+
+  if ('const' in schema) {
+    return value === schema.const;
+  }
+
+  if (schema.type === 'object' || schema.required || schema.properties) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return false;
+    }
+    const record = value as Record<string, unknown>;
+    const required = Array.isArray(schema.required) ? schema.required : [];
+    if (required.some((property) => !(property in record))) {
+      return false;
+    }
+    const properties = (schema.properties as Record<string, JsonNode> | undefined) ?? {};
+    return Object.entries(properties).every(([name, propertySchema]) => {
+      if (!(name in record)) {
+        return true;
+      }
+      return schemaAccepts(root, propertySchema, record[name]);
+    });
+  }
+
+  switch (schema.type) {
+    case 'string':
+      return typeof value === 'string';
+    case 'number':
+      return typeof value === 'number';
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'null':
+      return value === null;
+    case 'array':
+      return Array.isArray(value);
+  }
+
+  return true;
 }
 
 describe('generated JSON schemas', () => {
@@ -146,6 +226,38 @@ describe('generated JSON schemas', () => {
             undefined,
           );
         }
+      });
+
+      it('validates ChatSource kind disambiguation', () => {
+        const defs = schema.$defs as Record<string, Record<string, unknown>>;
+        const chatSource = defs.ChatSource;
+        if (!chatSource) {
+          return;
+        }
+
+        assert.equal(
+          schemaAccepts(schema, chatSource, {
+            kind: 'sideChat',
+            chat: 'ahp-chat:/source',
+            turnId: 'turn-1',
+          }),
+          true,
+        );
+        assert.equal(
+          schemaAccepts(schema, chatSource, {
+            chat: 'ahp-chat:/source',
+            turnId: 'turn-1',
+          }),
+          true,
+        );
+        assert.equal(
+          schemaAccepts(schema, chatSource, {
+            kind: 'fork',
+            chat: 'ahp-chat:/source',
+            turnId: 'turn-1',
+          }),
+          false,
+        );
       });
     });
   }
