@@ -97,15 +97,6 @@ public enum ChatOriginKind: String, Codable, Sendable {
     case tool = "tool"
 }
 
-/// Discriminant for {@link ChatSourceTurn} — which kind of source-turn snapshot
-/// a fork or side chat was created from.
-public enum ChatSourceTurnKind: String, Codable, Sendable {
-    /// A completed turn retained in the source chat's `turns`.
-    case completed = "completed"
-    /// The source chat's current in-progress `activeTurn`.
-    case active = "active"
-}
-
 /// How a user can interact with a chat.
 ///
 /// - `Full` — user can send messages and watch (default when absent)
@@ -676,10 +667,11 @@ public struct MultipleChatsCapability: Codable, Sendable {
     /// `kind: "sideChat"` to `createChat`.
     ///
     /// A side chat receives the source turn as context without copying the source
-    /// transcript into its own visible history. The source may be a completed turn
-    /// or the source chat's current active turn; when active, the host snapshots
-    /// the available partial assistant response at creation time. Side-chat
-    /// support always implies multi-chat support.
+    /// transcript into its own visible history. The source is identified by a
+    /// stable `turnId`, which the host resolves against the source chat's current
+    /// `activeTurn` or retained history. When it names the current active turn,
+    /// the host snapshots the available partial assistant response at creation
+    /// time. Side-chat support always implies multi-chat support.
     public var sideChat: Bool?
 
     public init(
@@ -1086,36 +1078,6 @@ public struct ChatSummary: Codable, Sendable {
         self.interactivity = interactivity
         self.workingDirectories = workingDirectories
         self.primaryWorkingDirectory = primaryWorkingDirectory
-    }
-}
-
-public struct CompletedChatSourceTurn: Codable, Sendable {
-    /// Discriminant
-    public var kind: ChatSourceTurnKind
-    /// Turn identifier in the source chat.
-    public var turnId: String
-
-    public init(
-        kind: ChatSourceTurnKind,
-        turnId: String
-    ) {
-        self.kind = kind
-        self.turnId = turnId
-    }
-}
-
-public struct ActiveChatSourceTurn: Codable, Sendable {
-    /// Discriminant
-    public var kind: ChatSourceTurnKind
-    /// Active turn identifier in the source chat.
-    public var turnId: String
-
-    public init(
-        kind: ChatSourceTurnKind,
-        turnId: String
-    ) {
-        self.kind = kind
-        self.turnId = turnId
     }
 }
 
@@ -5237,35 +5199,6 @@ public struct ResourceChange: Codable, Sendable {
 
 // MARK: - Discriminated Unions
 
-public enum ChatSourceTurn: Codable, Sendable {
-    case completed(CompletedChatSourceTurn)
-    case active(ActiveChatSourceTurn)
-
-    private enum DiscriminantKey: String, CodingKey {
-        case discriminant = "kind"
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: DiscriminantKey.self)
-        let discriminant = try container.decode(String.self, forKey: .discriminant)
-        switch discriminant {
-        case "completed":
-            self = .completed(try CompletedChatSourceTurn(from: decoder))
-        case "active":
-            self = .active(try ActiveChatSourceTurn(from: decoder))
-        default:
-            throw DecodingError.dataCorruptedError(forKey: .discriminant, in: container, debugDescription: "Unknown ChatSourceTurn discriminant: \(discriminant)")
-        }
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        switch self {
-        case .completed(let value): try value.encode(to: encoder)
-        case .active(let value): try value.encode(to: encoder)
-        }
-    }
-}
-
 public struct ChatOriginUser: Codable, Sendable {
     public var kind: ChatOriginKind
 
@@ -5301,12 +5234,12 @@ public struct ChatOriginTool: Codable, Sendable {
 public struct ChatOriginSideChat: Codable, Sendable {
     public var kind: ChatOriginKind
     public var chat: String
-    public var turn: ChatSourceTurn
+    public var turnId: String
 
-    public init(kind: ChatOriginKind = .sideChat, chat: String, turn: ChatSourceTurn) {
+    public init(kind: ChatOriginKind = .sideChat, chat: String, turnId: String) {
         self.kind = kind
         self.chat = chat
-        self.turn = turn
+        self.turnId = turnId
     }
 }
 

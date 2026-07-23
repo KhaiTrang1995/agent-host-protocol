@@ -64,7 +64,7 @@ Clients MAY periodically sync their local input state into the draft by dispatch
 - an `initialMessage` to start the first turn immediately — carrying its own [`model`](/reference/chat#message) / [`agent`](/reference/chat#message) selection — and
 - a `source` of type [`ChatSource`](/reference/chat#chatsource), which is
   either the legacy flat fork payload `{ chat, turnId }` or a side-chat payload
-  with `kind: "sideChat"` selecting a specific source turn.
+  `{ kind: "sideChat", chat, turnId }` selecting a specific source turn.
 
 The server allocates the chat URI and adds the chat to the session's catalog (`session/chatAdded` on the session channel) before returning.
 
@@ -80,18 +80,25 @@ being created. For forks, the host MUST additionally reject any source that does
 not use the legacy flat `chat` + `turnId` fork shape — forks only target
 completed turns.
 
+For side chats, `turnId` is a stable identity, not a lifecycle snapshot. Hosts
+and clients resolve it against the source chat's current `activeTurn` or its
+retained `turns` as needed. This keeps `/btw`-style side chats from the
+currently active turn working even though that same turn later moves into
+historical `turns` when it completes.
+
 Forks and side chats use the source differently:
 
 - A **fork** copies source history through the referenced turn into the new
   chat's visible `turns`, after which the chats diverge.
 - A **side chat** starts with its own empty visible history. The host supplies
   source history through the referenced turn as agent context, but does not copy
-  that history into the side chat's `turns`. When `source.turn.kind` is
-  `"active"`, the host snapshots the source chat's retained history plus the
-  active turn's current user message and whatever assistant response parts are
-  already available when accepting `createChat`; later source-turn deltas do not
-  retroactively change the side chat's starting context. An `initialMessage`,
-  when supplied, becomes the side chat's first visible turn.
+  that history into the side chat's `turns`. When the referenced `turnId`
+  resolves to the source chat's current `activeTurn`, the host snapshots the
+  source chat's retained history plus the active turn's current user message and
+  whatever assistant response parts are already available when accepting
+  `createChat`; later source-turn deltas do not retroactively change the side
+  chat's starting context. An `initialMessage`, when supplied, becomes the side
+  chat's first visible turn.
 
 ### Origin
 
@@ -100,8 +107,8 @@ Each chat advertises how it came into existence via [`ChatOrigin`](/reference/ch
 | Kind | Meaning |
 |---|---|
 | `user` | User created the chat explicitly (e.g. via the host UI). |
-| `fork` | Forked from an existing chat at a specific completed turn — payload references the source chat URI and source-turn snapshot. |
-| `sideChat` | Created as an independent side conversation using context through a specific source turn — payload references the source chat URI and source-turn snapshot (completed or active). |
+| `fork` | Forked from an existing chat at a specific completed turn — payload references the source chat URI and stable source `turnId`. |
+| `sideChat` | Created as an independent side conversation using context through a specific source turn — payload references the source chat URI and stable source `turnId`, which may have been active or historical when the chat was created. |
 | `tool` | Spawned by a tool call running in another chat — payload references the source chat URI and tool call id (e.g. a sub-agent delegation). |
 
 Clients MAY use the origin to render contextual UI (parent indicators, fork markers, "spawned by tool" badges), but origin is **not** a hierarchy — every chat is equally addressable.

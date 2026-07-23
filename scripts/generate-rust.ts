@@ -733,7 +733,7 @@ function generateStructFromInterface(
 
 const STATE_ENUMS = [
   'PolicyState', 'PendingMessageKind', 'SessionLifecycle', 'SessionStatus',
-  'ChatOriginKind', 'ChatSourceTurnKind', 'ChatInteractivity', 'ChatInputAnswerState', 'ChatInputAnswerValueKind', 'ChatInputQuestionKind',
+  'ChatOriginKind', 'ChatInteractivity', 'ChatInputAnswerState', 'ChatInputAnswerValueKind', 'ChatInputQuestionKind',
   'ChatInputResponseKind', 'SessionInputRequestKind',
   'TurnState', 'MessageKind', 'MessageAttachmentKind', 'ResponsePartKind', 'ToolCallStatus',
   'ToolCallConfirmationReason', 'ToolCallRiskAssessmentKind',
@@ -783,8 +783,6 @@ const STATE_STRUCTS: { name: string; omitDiscriminants?: boolean; rustName?: str
   { name: 'PendingMessage' },
   { name: 'ChatState' },
   { name: 'ChatSummary' },
-  { name: 'CompletedChatSourceTurn' },
-  { name: 'ActiveChatSourceTurn' },
   { name: 'SessionState' },
   { name: 'SessionActiveClient' },
   { name: 'SessionChatInputRequest', omitDiscriminants: true },
@@ -1149,8 +1147,9 @@ pub enum ChatOrigin {
     SideChat {
         /// URI of the chat that supplied the side-chat context.
         chat: Uri,
-        /// Source-turn snapshot through which context was supplied.
-        turn: ChatSourceTurn,
+        /// Stable source-turn identifier through which context was supplied.
+        #[serde(rename = "turnId")]
+        turn_id: String,
     },
     /// Spawned by a tool call in another chat.
     #[serde(rename = "tool")]
@@ -1167,16 +1166,6 @@ pub enum ChatOrigin {
     Unknown(serde_json::Value),
 }`;
 }
-
-const CHAT_SOURCE_TURN_UNION: UnionConfig = {
-  name: 'ChatSourceTurn',
-  discriminantField: 'kind',
-  doc: 'A source-turn snapshot used when creating or describing a chat.',
-  variants: [
-    { variantName: 'Completed', innerType: 'CompletedChatSourceTurn', wireValue: 'completed' },
-    { variantName: 'Active', innerType: 'ActiveChatSourceTurn', wireValue: 'active' },
-  ],
-};
 
 function generateSnapshotState(): string {
   return `/// The state payload of a snapshot — root, session, chat, terminal,
@@ -1233,8 +1222,6 @@ function generateStateFile(project: Project): string {
   }
 
   lines.push('// ─── Discriminated Unions ─────────────────────────────────────────────\n');
-  lines.push(generateValueRoutedDiscriminatedUnion(CHAT_SOURCE_TURN_UNION));
-  lines.push('');
   lines.push(generateChatOrigin());
   lines.push('');
   lines.push(generateDiscriminatedUnion(RESPONSE_PART_UNION));
@@ -1561,7 +1548,7 @@ function generateCommandsFile(project: Project): string {
   lines.push('#[allow(unused_imports)]');
   lines.push('use crate::actions::{ActionEnvelope, StateAction};');
   lines.push('#[allow(unused_imports)]');
-  lines.push('use crate::state::{AgentSelection, ChatSourceTurn, CompletedChatSourceTurn, ContentRef, Message, MessageAttachment, ModelSelection, SessionActiveClient, SessionConfigSchema, SessionSummary, Snapshot, SnapshotState, TelemetryCapabilities, TerminalClaim, TextRange, Turn};');
+  lines.push('use crate::state::{AgentSelection, ContentRef, Message, MessageAttachment, ModelSelection, SessionActiveClient, SessionConfigSchema, SessionSummary, Snapshot, SnapshotState, TelemetryCapabilities, TerminalClaim, TextRange, Turn};');
   lines.push('');
 
   lines.push('// ─── Enums ────────────────────────────────────────────────────────────\n');
@@ -2004,7 +1991,6 @@ function checkExhaustiveness(project: Project): void {
     'ChatToolCallDeniedAction',     // merged into ChatToolCallConfirmedAction
     'ChatToolCallConfirmedAction',  // emitted as merged variant
     'ChatAction',                   // source-only union covered by StateAction
-    'ChatSourceTurn',
     'ChatOrigin',                   // hand-generated union for inline variants
     'ChatSource',
     'PingParams',

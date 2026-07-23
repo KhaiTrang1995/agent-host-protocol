@@ -478,23 +478,24 @@ public struct SideChatSource: Codable, Sendable {
     public var kind: ChatSourceKind
     /// URI of the existing source chat.
     public var chat: String
-    /// Source turn in the source chat.
+    /// Stable source-turn identifier in the source chat.
     ///
-    /// When this is `kind: "completed"`, the side chat is seeded from the source
-    /// chat's retained history through that turn. When this is `kind: "active"`,
-    /// the host snapshots the source chat's retained history plus the active turn's
-    /// current user message and any partial assistant response already available
-    /// when accepting `createChat`.
-    public var turn: ChatSourceTurn
+    /// Hosts resolve this id against the source chat's current `activeTurn` or its
+    /// retained `turns` when accepting `createChat`. If it names the current
+    /// active turn, the host snapshots the source chat's retained history plus
+    /// that turn's current user message and any partial assistant response already
+    /// available. Once that turn later becomes historical, it is still referenced
+    /// by this same identifier.
+    public var turnId: String
 
     public init(
         kind: ChatSourceKind,
         chat: String,
-        turn: ChatSourceTurn
+        turnId: String
     ) {
         self.kind = kind
         self.chat = chat
-        self.turn = turn
+        self.turnId = turnId
     }
 }
 
@@ -513,8 +514,10 @@ public struct CreateChatParams: Codable, Sendable {
     /// `kind: "sideChat"` when the selected agent advertises
     /// `capabilities.multipleChats.sideChat`. Forks keep the legacy flat
     /// `chat` + `turnId` shape and therefore only target completed turns. Side
-    /// chats use `source.turn.kind` to distinguish a completed source turn from
-    /// the source chat's current active turn.
+    /// chats also carry a stable `turnId`, which the host resolves against the
+    /// source chat's current active turn or retained history. If it resolves to
+    /// the active turn, the host snapshots the currently available partial
+    /// response when accepting `createChat`.
     public var source: ChatSource?
     /// Initial working-directory subset for this chat. Every entry MUST be
     /// present in the owning session's `workingDirectories`; the server MUST

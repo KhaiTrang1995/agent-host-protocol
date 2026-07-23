@@ -1130,15 +1130,15 @@
           "$ref": "#/$defs/URI",
           "description": "URI of the existing source chat."
         },
-        "turn": {
-          "$ref": "#/$defs/ChatSourceTurn",
-          "description": "Source turn in the source chat.\n\nWhen this is `kind: \"completed\"`, the side chat is seeded from the source\nchat's retained history through that turn. When this is `kind: \"active\"`,\nthe host snapshots the source chat's retained history plus the active turn's\ncurrent user message and any partial assistant response already available\nwhen accepting `createChat`."
+        "turnId": {
+          "type": "string",
+          "description": "Stable source-turn identifier in the source chat.\n\nHosts resolve this id against the source chat's current `activeTurn` or its\nretained `turns` when accepting `createChat`. If it names the current\nactive turn, the host snapshots the source chat's retained history plus\nthat turn's current user message and any partial assistant response already\navailable. Once that turn later becomes historical, it is still referenced\nby this same identifier."
         }
       },
       "required": [
         "kind",
         "chat",
-        "turn"
+        "turnId"
       ]
     },
     "CreateChatParams": {
@@ -1159,7 +1159,7 @@
         },
         "source": {
           "$ref": "#/$defs/ChatSource",
-          "description": "Optional source chat and source turn.\n\nThe source chat MUST belong to this session. Clients MUST only request the\nflat fork shape (`chat` + `turnId`) when the selected agent advertises\n`capabilities.multipleChats.fork`, and\n`kind: \"sideChat\"` when the selected agent advertises\n`capabilities.multipleChats.sideChat`. Forks keep the legacy flat\n`chat` + `turnId` shape and therefore only target completed turns. Side\nchats use `source.turn.kind` to distinguish a completed source turn from\nthe source chat's current active turn."
+          "description": "Optional source chat and source turn.\n\nThe source chat MUST belong to this session. Clients MUST only request the\nflat fork shape (`chat` + `turnId`) when the selected agent advertises\n`capabilities.multipleChats.fork`, and\n`kind: \"sideChat\"` when the selected agent advertises\n`capabilities.multipleChats.sideChat`. Forks keep the legacy flat\n`chat` + `turnId` shape and therefore only target completed turns. Side\nchats also carry a stable `turnId`, which the host resolves against the\nsource chat's current active turn or retained history. If it resolves to\nthe active turn, the host snapshots the currently available partial\nresponse when accepting `createChat`."
         },
         "workingDirectories": {
           "type": "array",
@@ -1907,7 +1907,7 @@
         },
         "sideChat": {
           "type": "boolean",
-          "description": "The agent can create a side chat from a specific turn. When absent or\n`false`, clients MUST NOT pass a {@link ChatSource} with\n`kind: \"sideChat\"` to `createChat`.\n\nA side chat receives the source turn as context without copying the source\ntranscript into its own visible history. The source may be a completed turn\nor the source chat's current active turn; when active, the host snapshots\nthe available partial assistant response at creation time. Side-chat\nsupport always implies multi-chat support."
+          "description": "The agent can create a side chat from a specific turn. When absent or\n`false`, clients MUST NOT pass a {@link ChatSource} with\n`kind: \"sideChat\"` to `createChat`.\n\nA side chat receives the source turn as context without copying the source\ntranscript into its own visible history. The source is identified by a\nstable `turnId`, which the host resolves against the source chat's current\n`activeTurn` or retained history. When it names the current active turn,\nthe host snapshots the available partial assistant response at creation\ntime. Side-chat support always implies multi-chat support."
         }
       }
     },
@@ -3789,42 +3789,6 @@
         "title",
         "status",
         "modifiedAt"
-      ]
-    },
-    "CompletedChatSourceTurn": {
-      "type": "object",
-      "description": "A completed turn used as a chat source or recorded in chat origin.",
-      "properties": {
-        "kind": {
-          "const": "completed",
-          "description": "Discriminant"
-        },
-        "turnId": {
-          "type": "string",
-          "description": "Turn identifier in the source chat."
-        }
-      },
-      "required": [
-        "kind",
-        "turnId"
-      ]
-    },
-    "ActiveChatSourceTurn": {
-      "type": "object",
-      "description": "The current in-progress turn used as a side-chat source or recorded in chat\norigin.\n\nWhen a host accepts side-chat creation from an active turn, it snapshots the\nsource chat's retained history plus that turn's current user message and any\npartial assistant response already available. Later source-turn deltas do not\nretroactively change the created side chat's starting context.",
-      "properties": {
-        "kind": {
-          "const": "active",
-          "description": "Discriminant"
-        },
-        "turnId": {
-          "type": "string",
-          "description": "Active turn identifier in the source chat."
-        }
-      },
-      "required": [
-        "kind",
-        "turnId"
       ]
     },
     "PendingMessage": {
@@ -8689,17 +8653,6 @@
       ],
       "description": "An attachment associated with a {@link Message}."
     },
-    "ChatSourceTurn": {
-      "oneOf": [
-        {
-          "$ref": "#/$defs/CompletedChatSourceTurn"
-        },
-        {
-          "$ref": "#/$defs/ActiveChatSourceTurn"
-        }
-      ],
-      "description": "A source-turn reference used by chat creation and durable chat origin state."
-    },
     "ChatSource": {
       "oneOf": [
         {
@@ -9042,14 +8995,14 @@
             "chat": {
               "$ref": "#/$defs/URI"
             },
-            "turn": {
-              "$ref": "#/$defs/ChatSourceTurn"
+            "turnId": {
+              "type": "string"
             }
           },
           "required": [
             "kind",
             "chat",
-            "turn"
+            "turnId"
           ]
         },
         {
@@ -9072,7 +9025,7 @@
           ]
         }
       ],
-      "description": "How a chat came into existence. Clients MAY use it to render\ncontextual UI (parent indicators, fork markers, \"spawned by tool\" badges).\n\nFork origins preserve the existing flat `chat` + `turnId` wire shape. Side\nchat origins use `turn.kind` to distinguish completed-turn provenance from\nactive-turn snapshot provenance.\n\nThe `tool` variant records a tool-spawned worker from the worker's side: its\n`chat`/`toolCallId` identify the spawning tool call in the parent chat. This\nis the canonical record of the spawn relationship. The same edge is surfaced\nfrom the parent's side by {@link ToolResultSubagentContent}, whose `resource`\nis this chat's URI; hosts MUST keep the two consistent."
+      "description": "How a chat came into existence. Clients MAY use it to render\ncontextual UI (parent indicators, fork markers, \"spawned by tool\" badges).\n\nFork origins preserve the existing flat `chat` + `turnId` wire shape. Side\nchat origins likewise carry a stable `turnId` identity alongside\n`kind: \"sideChat\"` instead of snapshotting whether that turn was active or\nhistorical at creation time. Consumers resolve the identifier against the\nsource chat's current `activeTurn` or retained `turns` as needed.\n\nWhen a host accepts side-chat creation from the source chat's current active\nturn, it snapshots the retained history plus that turn's current user\nmessage and any partial assistant response already available. Later\nsource-turn deltas do not retroactively change the created side chat's\nstarting context, and once the source turn completes it is still referenced\nby the same `turnId`.\n\nThe `tool` variant records a tool-spawned worker from the worker's side: its\n`chat`/`toolCallId` identify the spawning tool call in the parent chat. This\nis the canonical record of the spawn relationship. The same edge is surfaced\nfrom the parent's side by {@link ToolResultSubagentContent}, whose `resource`\nis this chat's URI; hosts MUST keep the two consistent."
     },
     "ChatInteractivity": {
       "enum": [

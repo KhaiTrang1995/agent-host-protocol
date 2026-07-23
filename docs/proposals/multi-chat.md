@@ -430,8 +430,12 @@ a `copilot` per piece of work; `/resume` reopens one at a time):
 A new chat is forked from a point in an existing chat, seeded with that history,
 then diverges on its own. Both chats keep sharing the session's context.
 
-A **side chat** starts from the same kind of `(chat, turn)` reference — either a
-completed turn or an active-turn snapshot — but does not copy the parent's turns
+A **side chat** starts from a stable `(chat, turnId)` reference. The host
+resolves that id against either a completed turn or the parent's current active
+turn at creation time, but the wire does not snapshot which lifecycle slot held
+it. If the id names the active turn, the host snapshots whatever response is
+available at that moment. This preserves `/btw`-style side questions without
+copying the parent's turns
 into its own transcript. It is a focused,
 independent conversation that can later be pulled back into the main chat as a
 bounded chat attachment. The distinction keeps the side transcript clean while
@@ -440,7 +444,7 @@ making the result durable and reusable:
 | Mode | Source context | New chat's visible history | Return path |
 | --- | --- | --- | --- |
 | Fork | Copied through the source turn | Starts with copied parent turns | Continue either branch |
-| Side chat | Supplied through the source turn (completed or active snapshot) | Starts empty | Attach through a completed side-chat turn |
+| Side chat | Supplied through the source `turnId` (resolved against historical or active turn at create time) | Starts empty | Attach through a completed side-chat turn |
 
 Agents advertise these independently through `multipleChats.fork` and
 `multipleChats.sideChat`, so clients only offer creation modes the selected

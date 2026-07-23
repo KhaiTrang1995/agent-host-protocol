@@ -15,9 +15,9 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use crate::actions::{ActionEnvelope, StateAction};
 #[allow(unused_imports)]
 use crate::state::{
-    AgentSelection, ChatSourceTurn, CompletedChatSourceTurn, ContentRef, Message,
-    MessageAttachment, ModelSelection, SessionActiveClient, SessionConfigSchema, SessionSummary,
-    Snapshot, SnapshotState, TelemetryCapabilities, TerminalClaim, TextRange, Turn,
+    AgentSelection, ContentRef, Message, MessageAttachment, ModelSelection, SessionActiveClient,
+    SessionConfigSchema, SessionSummary, Snapshot, SnapshotState, TelemetryCapabilities,
+    TerminalClaim, TextRange, Turn,
 };
 
 // ─── Enums ────────────────────────────────────────────────────────────
@@ -502,14 +502,15 @@ pub struct SideChatSource {
     pub kind: ChatSourceKind,
     /// URI of the existing source chat.
     pub chat: Uri,
-    /// Source turn in the source chat.
+    /// Stable source-turn identifier in the source chat.
     ///
-    /// When this is `kind: "completed"`, the side chat is seeded from the source
-    /// chat's retained history through that turn. When this is `kind: "active"`,
-    /// the host snapshots the source chat's retained history plus the active turn's
-    /// current user message and any partial assistant response already available
-    /// when accepting `createChat`.
-    pub turn: ChatSourceTurn,
+    /// Hosts resolve this id against the source chat's current `activeTurn` or its
+    /// retained `turns` when accepting `createChat`. If it names the current
+    /// active turn, the host snapshots the source chat's retained history plus
+    /// that turn's current user message and any partial assistant response already
+    /// available. Once that turn later becomes historical, it is still referenced
+    /// by this same identifier.
+    pub turn_id: String,
 }
 
 /// Creates a new chat within a session.
@@ -531,8 +532,10 @@ pub struct CreateChatParams {
     /// `kind: "sideChat"` when the selected agent advertises
     /// `capabilities.multipleChats.sideChat`. Forks keep the legacy flat
     /// `chat` + `turnId` shape and therefore only target completed turns. Side
-    /// chats use `source.turn.kind` to distinguish a completed source turn from
-    /// the source chat's current active turn.
+    /// chats also carry a stable `turnId`, which the host resolves against the
+    /// source chat's current active turn or retained history. If it resolves to
+    /// the active turn, the host snapshots the currently available partial
+    /// response when accepting `createChat`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<ChatSource>,
     /// Initial working-directory subset for this chat. Every entry MUST be

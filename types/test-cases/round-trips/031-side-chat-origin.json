@@ -1,7 +1,7 @@
 {
   "name": "side-chat-origin",
   "group": "A",
-  "description": "A session/chatAdded action preserves completed-turn side-chat provenance through the ChatOrigin discriminated union.",
+  "description": "A session/chatAdded action preserves stable side-chat turn identities for historical source turns.",
   "type": "StateAction",
   "input": {
     "type": "session/chatAdded",
@@ -13,10 +13,7 @@
       "origin": {
         "kind": "sideChat",
         "chat": "ahp-chat:/main",
-        "turn": {
-          "kind": "completed",
-          "turnId": "turn-12"
-        }
+        "turnId": "turn-12"
       }
     }
   },
@@ -31,10 +28,7 @@
         "origin": {
           "kind": "sideChat",
           "chat": "ahp-chat:/main",
-          "turn": {
-            "kind": "completed",
-            "turnId": "turn-12"
-          }
+          "turnId": "turn-12"
         }
       }
     }

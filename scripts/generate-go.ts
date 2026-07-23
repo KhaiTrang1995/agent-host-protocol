@@ -641,7 +641,7 @@ function generateDiscriminatedUnion(cfg: UnionConfig): string {
 
 const STATE_ENUMS = [
   'PolicyState', 'SessionLifecycle', 'SessionStatus',
-  'ChatOriginKind', 'ChatSourceTurnKind', 'ChatInteractivity', 'PendingMessageKind', 'ChatInputAnswerState', 'ChatInputAnswerValueKind', 'ChatInputQuestionKind',
+  'ChatOriginKind', 'ChatInteractivity', 'PendingMessageKind', 'ChatInputAnswerState', 'ChatInputAnswerValueKind', 'ChatInputQuestionKind',
   'ChatInputResponseKind', 'SessionInputRequestKind',
   'TurnState', 'MessageKind', 'MessageAttachmentKind', 'ResponsePartKind', 'ToolCallStatus',
   'ToolCallConfirmationReason', 'ToolCallRiskAssessmentKind',
@@ -677,8 +677,6 @@ const STATE_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: strin
   { name: 'ChangesSummary' },
   { name: 'ChatState' },
   { name: 'ChatSummary' },
-  { name: 'CompletedChatSourceTurn' },
-  { name: 'ActiveChatSourceTurn' },
   { name: 'PendingMessage' },
   { name: 'ProjectInfo' },
   { name: 'SessionConfigPropertySchema' },
@@ -1035,7 +1033,7 @@ func (*ChatForkOrigin) isChatOrigin() {}
 type ChatSideChatOrigin struct {
 \tKind   ChatOriginKind \`json:"kind"\`
 \tChat   URI            \`json:"chat"\`
-\tTurn   ChatSourceTurn \`json:"turn"\`
+\tTurnId string         \`json:"turnId"\`
 }
 
 func (*ChatSideChatOrigin) isChatOrigin() {}
@@ -1270,8 +1268,6 @@ function generateStateFile(project: Project): string {
   lines.push(generateDiscriminatedUnion(TOOL_CALL_RISK_ASSESSMENT_UNION));
   lines.push('');
   lines.push(generateDiscriminatedUnion(SESSION_INPUT_REQUEST_UNION));
-  lines.push('');
-  lines.push(generateDiscriminatedUnion(CHAT_SOURCE_TURN_UNION));
   lines.push('');
   lines.push(generateChatOriginGo());
   lines.push('');
@@ -1517,16 +1513,6 @@ const RECONNECT_RESULT_UNION: UnionConfig = {
   variants: [
     { variantName: 'Replay', innerType: 'ReconnectReplayResult', wireValue: 'replay' },
     { variantName: 'Snapshot', innerType: 'ReconnectSnapshotResult', wireValue: 'snapshot' },
-  ],
-};
-
-const CHAT_SOURCE_TURN_UNION: UnionConfig = {
-  name: 'ChatSourceTurn',
-  discriminantField: 'kind',
-  doc: 'ChatSourceTurn identifies whether a source-turn snapshot came from a completed or active turn.',
-  variants: [
-    { variantName: 'Completed', innerType: 'CompletedChatSourceTurn', wireValue: 'completed' },
-    { variantName: 'Active', innerType: 'ActiveChatSourceTurn', wireValue: 'active' },
   ],
 };
 
@@ -2031,7 +2017,6 @@ function checkExhaustiveness(project: Project): void {
     'PingParams',
     'TerminalClaim',
     'TerminalContentPart',
-    'ChatSourceTurn',
     'ChatOrigin',
     'ChatSource',
     'ChatInputQuestion',

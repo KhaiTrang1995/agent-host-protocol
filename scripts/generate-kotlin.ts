@@ -788,7 +788,7 @@ internal object ToolResultContentSerializer : KSerializer<ToolResultContent> {
 
 const STATE_ENUMS = [
   'PolicyState', 'PendingMessageKind', 'SessionLifecycle', 'SessionStatus',
-  'ChatOriginKind', 'ChatSourceTurnKind', 'ChatInteractivity', 'ChatInputAnswerState', 'ChatInputAnswerValueKind', 'ChatInputQuestionKind',
+  'ChatOriginKind', 'ChatInteractivity', 'ChatInputAnswerState', 'ChatInputAnswerValueKind', 'ChatInputQuestionKind',
   'ChatInputResponseKind', 'SessionInputRequestKind',
   'TurnState', 'MessageKind', 'MessageAttachmentKind', 'ResponsePartKind', 'ToolCallStatus',
   'ToolCallConfirmationReason', 'ToolCallRiskAssessmentKind',
@@ -806,7 +806,7 @@ const STATE_STRUCTS = [
   'MultipleChatsCapability',
   'MultipleWorkingDirectoriesCapability',
   'SessionModelInfo', 'ModelSelection', 'AgentSelection', 'ConfigPropertySchema', 'ConfigSchema',
-  'PendingMessage', 'ChatState', 'ChatSummary', 'CompletedChatSourceTurn', 'ActiveChatSourceTurn', 'SessionState', 'SessionActiveClient',
+  'PendingMessage', 'ChatState', 'ChatSummary', 'SessionState', 'SessionActiveClient',
   'SessionChatInputRequest', 'SessionToolConfirmationRequest', 'SessionToolClientExecutionRequest',
   'SessionToolAuthenticationRequest',
   'SessionSummary', 'ChangesSummary', 'ProjectInfo', 'SessionConfigState', 'Turn', 'ActiveTurn', 'Message',
@@ -867,15 +867,6 @@ const RESPONSE_PART_UNION: UnionConfig = {
     { caseName: 'InputRequest', structName: 'InputRequestResponsePart', discriminantValue: 'inputRequest' },
   ],
   unknown: true,
-};
-
-const CHAT_SOURCE_TURN_UNION: UnionConfig = {
-  name: 'ChatSourceTurn',
-  discriminantField: 'kind',
-  variants: [
-    { caseName: 'Completed', structName: 'CompletedChatSourceTurn', discriminantValue: 'completed' },
-    { caseName: 'Active', structName: 'ActiveChatSourceTurn', discriminantValue: 'active' },
-  ],
 };
 
 const TOOL_CALL_STATE_UNION: UnionConfig = {
@@ -956,7 +947,7 @@ data class ChatOriginTool(
 data class ChatOriginSideChat(
     val kind: ChatOriginKind = ChatOriginKind.SIDE_CHAT,
     val chat: String,
-    val turn: ChatSourceTurn,
+    val turnId: String,
 )
 
 internal object ChatOriginSerializer : KSerializer<ChatOrigin> {
@@ -1160,8 +1151,6 @@ function generateStateFile(project: Project): string {
   }
 
   lines.push('// ─── Discriminated Unions ───────────────────────────────────────────────────');
-  lines.push('');
-  lines.push(generateDiscriminatedUnion(CHAT_SOURCE_TURN_UNION));
   lines.push('');
   lines.push(generateChatOriginKotlin());
   lines.push('');
@@ -2011,7 +2000,6 @@ function checkExhaustiveness(project: Project): void {
     'ChatInputQuestion',         // CHAT_INPUT_QUESTION_UNION discriminated union
     'ChatInputAnswerValue',      // CHAT_INPUT_ANSWER_VALUE_UNION discriminated union
     'ChatInputAnswer',           // CHAT_INPUT_ANSWER_UNION discriminated union
-    'ChatSourceTurn',            // CHAT_SOURCE_TURN_UNION discriminated union
     'ChatOrigin',                // hand-generated union for inline variants
     'ChatSource',                // CHAT_SOURCE_UNION discriminated union
     'ChatToolCallApprovedAction', // merged into ChatToolCallConfirmedAction
