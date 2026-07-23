@@ -597,6 +597,20 @@ function generateFixedChatSourceBranchKotlin(
   doc: string,
   turnIdDoc: string,
 ): string {
+  const sideChatSelectionProps = name === 'SideChatSource'
+    ? `${emitKDoc('Optional immutable selected-text snapshot to carry into the created side\nchat\'s origin.', '    ').join('\n')}
+    val selection: SideChatSelection? = null,
+`
+    : '';
+  const sideChatSelectionWireProps = name === 'SideChatSource'
+    ? '    val selection: SideChatSelection? = null,\n'
+    : '';
+  const sideChatSelectionDecodeArg = name === 'SideChatSource'
+    ? ', selection = wire.selection'
+    : '';
+  const sideChatSelectionEncodeArg = name === 'SideChatSource'
+    ? ', selection = value.selection'
+    : '';
   return `${emitKDoc(doc).join('\n')}
 @Serializable(with = ${name}Serializer::class)
 data class ${name}(
@@ -604,6 +618,7 @@ ${emitKDoc('URI of the existing source chat.', '    ').join('\n')}
     val chat: URI,
 ${emitKDoc(turnIdDoc, '    ').join('\n')}
     val turnId: String,
+${sideChatSelectionProps}
 ) {
     val kind: ChatSourceKind
         get() = ChatSourceKind.${kindMember}
@@ -614,7 +629,7 @@ private data class ${name}Wire(
     val kind: ChatSourceKind,
     val chat: URI,
     val turnId: String,
-)
+${sideChatSelectionWireProps})
 
 internal object ${name}Serializer : KSerializer<${name}> {
     override val descriptor: SerialDescriptor = ${name}Wire.serializer().descriptor
@@ -626,7 +641,7 @@ internal object ${name}Serializer : KSerializer<${name}> {
         if (wire.kind != ChatSourceKind.${kindMember}) {
             error("Expected ${name} kind ${kindWire}")
         }
-        return ${name}(chat = wire.chat, turnId = wire.turnId)
+        return ${name}(chat = wire.chat, turnId = wire.turnId${sideChatSelectionDecodeArg})
     }
 
     override fun serialize(encoder: Encoder, value: ${name}) {
@@ -634,7 +649,7 @@ internal object ${name}Serializer : KSerializer<${name}> {
             ?: error("${name} can only be serialized to JSON")
         val element = output.json.encodeToJsonElement(
             ${name}Wire.serializer(),
-            ${name}Wire(kind = ChatSourceKind.${kindMember}, chat = value.chat, turnId = value.turnId),
+            ${name}Wire(kind = ChatSourceKind.${kindMember}, chat = value.chat, turnId = value.turnId${sideChatSelectionEncodeArg}),
         )
         output.encodeJsonElement(element)
     }
@@ -857,7 +872,7 @@ const STATE_STRUCTS = [
   'MultipleChatsCapability',
   'MultipleWorkingDirectoriesCapability',
   'SessionModelInfo', 'ModelSelection', 'AgentSelection', 'ConfigPropertySchema', 'ConfigSchema',
-  'PendingMessage', 'ChatState', 'ChatSummary', 'SessionState', 'SessionActiveClient',
+  'PendingMessage', 'ChatState', 'ChatSummary', 'SideChatSelection', 'SessionState', 'SessionActiveClient',
   'SessionChatInputRequest', 'SessionToolConfirmationRequest', 'SessionToolClientExecutionRequest',
   'SessionToolAuthenticationRequest',
   'SessionSummary', 'ChangesSummary', 'ProjectInfo', 'SessionConfigState', 'Turn', 'ActiveTurn', 'Message',
@@ -999,6 +1014,7 @@ data class ChatOriginSideChat(
     val kind: ChatOriginKind = ChatOriginKind.SIDE_CHAT,
     val chat: String,
     val turnId: String,
+    val selection: SideChatSelection? = null,
 )
 
 internal object ChatOriginSerializer : KSerializer<ChatOrigin> {

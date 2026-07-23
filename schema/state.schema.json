@@ -2439,6 +2439,23 @@
         "modifiedAt"
       ]
     },
+    "SideChatSelection": {
+      "type": "object",
+      "description": "Immutable selected-text snapshot captured when a side chat is created.\n\nThe host records this exact text when it accepts `createChat`; later changes\nto the source chat do not alter it.",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Exact selected-text snapshot captured at `createChat` acceptance.\n\nMUST be non-empty."
+        },
+        "responsePartId": {
+          "type": "string",
+          "description": "Optional provenance for the response part that contained {@link text} when\nthe host took the snapshot.\n\nAdvisory only: this is not a live range or offset and MUST NOT be used to\nrecompute `text`."
+        }
+      },
+      "required": [
+        "text"
+      ]
+    },
     "PendingMessage": {
       "type": "object",
       "description": "A message queued for future delivery to the agent.\n\nSteering messages are injected into the current turn mid-flight.\nQueued messages are automatically started as new turns after the\ncurrent turn naturally finishes.",
@@ -5093,6 +5110,9 @@
             },
             "turnId": {
               "type": "string"
+            },
+            "selection": {
+              "$ref": "#/$defs/SideChatSelection"
             }
           },
           "required": [
@@ -5121,7 +5141,7 @@
           ]
         }
       ],
-      "description": "How a chat came into existence. Clients MAY use it to render\ncontextual UI (parent indicators, fork markers, \"spawned by tool\" badges).\n\nFork and side-chat origins both carry a stable top-level `turnId` alongside\ntheir discriminated `kind` value instead of snapshotting whether that turn\nwas active or historical at creation time. Consumers resolve the identifier\nagainst the\nsource chat's current `activeTurn` or retained `turns` as needed.\n\nWhen a host accepts side-chat creation from the source chat's current active\nturn, it snapshots the retained history plus that turn's current user\nmessage and any partial assistant response already available. Later\nsource-turn deltas do not retroactively change the created side chat's\nstarting context, and once the source turn completes it is still referenced\nby the same `turnId`.\n\nThe `tool` variant records a tool-spawned worker from the worker's side: its\n`chat`/`toolCallId` identify the spawning tool call in the parent chat. This\nis the canonical record of the spawn relationship. The same edge is surfaced\nfrom the parent's side by {@link ToolResultSubagentContent}, whose `resource`\nis this chat's URI; hosts MUST keep the two consistent."
+      "description": "How a chat came into existence. Clients MAY use it to render\ncontextual UI (parent indicators, fork markers, \"spawned by tool\" badges).\n\nFork and side-chat origins both carry a stable top-level `turnId` alongside\ntheir discriminated `kind` value instead of snapshotting whether that turn\nwas active or historical at creation time. Consumers resolve the identifier\nagainst the\nsource chat's current `activeTurn` or retained `turns` as needed.\n\nWhen a host accepts side-chat creation from the source chat's current active\nturn, it snapshots the retained history plus that turn's current user\nmessage and any partial assistant response already available. Later\nsource-turn deltas do not retroactively change the created side chat's\nstarting context, and once the source turn completes it is still referenced\nby the same `turnId`. Side-chat origins MAY also retain an immutable\n{@link SideChatSelection | selected-text snapshot} captured at acceptance\ntime; any `responsePartId` there is provenance only, not a range.\n\nThe `tool` variant records a tool-spawned worker from the worker's side: its\n`chat`/`toolCallId` identify the spawning tool call in the parent chat. This\nis the canonical record of the spawn relationship. The same edge is surfaced\nfrom the parent's side by {@link ToolResultSubagentContent}, whose `resource`\nis this chat's URI; hosts MUST keep the two consistent."
     },
     "ChatInputQuestion": {
       "oneOf": [

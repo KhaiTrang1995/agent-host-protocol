@@ -1328,6 +1328,24 @@ data class ChatSummary(
 )
 
 @Serializable
+data class SideChatSelection(
+    /**
+     * Exact selected-text snapshot captured at `createChat` acceptance.
+     *
+     * MUST be non-empty.
+     */
+    val text: String,
+    /**
+     * Optional provenance for the response part that contained {@link text} when
+     * the host took the snapshot.
+     *
+     * Advisory only: this is not a live range or offset and MUST NOT be used to
+     * recompute `text`.
+     */
+    val responsePartId: String? = null
+)
+
+@Serializable
 data class SessionState(
     /**
      * Agent provider ID
@@ -4668,6 +4686,7 @@ data class ChatOriginSideChat(
     val kind: ChatOriginKind = ChatOriginKind.SIDE_CHAT,
     val chat: String,
     val turnId: String,
+    val selection: SideChatSelection? = null,
 )
 
 internal object ChatOriginSerializer : KSerializer<ChatOrigin> {

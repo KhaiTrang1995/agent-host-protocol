@@ -23,7 +23,7 @@ func TestChatSourceRoutesByKind(t *testing.T) {
 
 	t.Run("sideChat", func(t *testing.T) {
 		var value ChatSource
-		if err := json.Unmarshal([]byte(`{"kind":"sideChat","chat":"ahp-chat:/main","turnId":"turn-active"}`), &value); err != nil {
+		if err := json.Unmarshal([]byte(`{"kind":"sideChat","chat":"ahp-chat:/main","turnId":"turn-active","selection":{"text":"const value = compute()","responsePartId":"part-7"}}`), &value); err != nil {
 			t.Fatalf("decode sideChat: %v", err)
 		}
 		sideChat, ok := value.Value.(*SideChatSource)
@@ -32,6 +32,9 @@ func TestChatSourceRoutesByKind(t *testing.T) {
 		}
 		if sideChat.Kind != ChatSourceKindSideChat || sideChat.TurnId != "turn-active" {
 			t.Fatalf("unexpected sideChat payload: %#v", sideChat)
+		}
+		if sideChat.Selection == nil || sideChat.Selection.Text != "const value = compute()" || sideChat.Selection.ResponsePartId == nil || *sideChat.Selection.ResponsePartId != "part-7" {
+			t.Fatalf("unexpected sideChat selection: %#v", sideChat.Selection)
 		}
 	})
 }
@@ -86,6 +89,10 @@ func TestChatSourceSerializationForcesExactKinds(t *testing.T) {
 		branch := SideChatSource{
 			Chat:   "ahp-chat:/main",
 			TurnId: "turn-active",
+			Selection: &SideChatSelection{
+				Text:           "const value = compute()",
+				ResponsePartId: stringPtr("part-7"),
+			},
 		}
 
 		branchRaw, err := json.Marshal(branch)
@@ -105,6 +112,14 @@ func TestChatSourceSerializationForcesExactKinds(t *testing.T) {
 			if got := decoded["kind"]; got != "sideChat" {
 				t.Fatalf("expected sideChat kind, got %#v in %s", got, raw)
 			}
+			selection, ok := decoded["selection"].(map[string]any)
+			if !ok || selection["text"] != "const value = compute()" || selection["responsePartId"] != "part-7" {
+				t.Fatalf("expected sideChat selection to round-trip, got %#v in %s", decoded["selection"], raw)
+			}
 		}
 	})
+}
+
+func stringPtr(value string) *string {
+	return &value
 }

@@ -432,11 +432,14 @@ then diverges on its own. Both chats keep sharing the session's context.
 
 A **fork** uses `{ kind: "fork", chat, turnId }` to copy visible history
 through a completed source turn into a new chat. A **side chat** uses
-`{ kind: "sideChat", chat, turnId }`. The host resolves that stable `turnId`
-against either a completed turn or the parent's current active turn at creation
-time, but the wire does not snapshot which lifecycle slot held it. If the id
-names the active turn, the host snapshots whatever response is available at that
-moment. This preserves `/btw`-style side questions without copying the parent's turns
+`{ kind: "sideChat", chat, turnId, selection? }`. The host resolves that
+stable `turnId` against either a completed turn or the parent's current active
+turn at creation time, but the wire does not snapshot which lifecycle slot held
+it. If the id names the active turn, the host snapshots whatever response is
+available at that moment. When `selection` is present, the host also records an
+immutable `{ text, responsePartId? }` snapshot of the user's exact selected
+text; `text` must be non-empty and `responsePartId` is provenance only, not a
+range. This preserves `/btw`-style side questions without copying the parent's turns
 into its own transcript. It is a focused,
 independent conversation that can later be pulled back into the main chat as a
 bounded chat attachment. The distinction keeps the side transcript clean while

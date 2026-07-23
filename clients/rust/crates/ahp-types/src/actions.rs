@@ -18,9 +18,9 @@ use crate::state::{
     ChatInputRequest, ChatInputResponseKind, ChatInteractivity, ChatOrigin, ChatSummary,
     ConfirmationOption, Customization, ErrorInfo, McpAuthRequirement, McpServerState, Message,
     ModelSelection, PendingMessageKind, ResponsePart, SessionActiveClient, SessionInputRequest,
-    TerminalClaim, TerminalInfo, TextRange, ToolCallCancellationReason, ToolCallConfirmationReason,
-    ToolCallContributor, ToolCallResult, ToolCallRiskAssessment, ToolDefinition, ToolResultContent,
-    Turn, UsageInfo,
+    SideChatSelection, TerminalClaim, TerminalInfo, TextRange, ToolCallCancellationReason,
+    ToolCallConfirmationReason, ToolCallContributor, ToolCallResult, ToolCallRiskAssessment,
+    ToolDefinition, ToolResultContent, Turn, UsageInfo,
 };
 
 // ─── ActionType ──────────────────────────────────────────────────────

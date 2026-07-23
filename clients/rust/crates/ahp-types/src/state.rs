@@ -1147,6 +1147,26 @@ pub struct ChatSummary {
     pub primary_working_directory: Option<Uri>,
 }
 
+/// Immutable selected-text snapshot captured when a side chat is created.
+///
+/// The host records this exact text when it accepts `createChat`; later changes
+/// to the source chat do not alter it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SideChatSelection {
+    /// Exact selected-text snapshot captured at `createChat` acceptance.
+    ///
+    /// MUST be non-empty.
+    pub text: String,
+    /// Optional provenance for the response part that contained {@link text} when
+    /// the host took the snapshot.
+    ///
+    /// Advisory only: this is not a live range or offset and MUST NOT be used to
+    /// recompute `text`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_part_id: Option<String>,
+}
+
 /// Full state for a single session, loaded when a client subscribes to the session's URI.
 ///
 /// Inlines (denormalizes) every {@link SessionMetadata} field directly onto
@@ -4243,6 +4263,9 @@ pub enum ChatOrigin {
         /// Stable source-turn identifier through which context was supplied.
         #[serde(rename = "turnId")]
         turn_id: String,
+        /// Optional immutable selected-text snapshot captured when the side chat was created.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selection: Option<SideChatSelection>,
     },
     /// Spawned by a tool call in another chat.
     #[serde(rename = "tool")]

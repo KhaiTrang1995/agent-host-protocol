@@ -16,8 +16,8 @@ use crate::actions::{ActionEnvelope, StateAction};
 #[allow(unused_imports)]
 use crate::state::{
     AgentSelection, ContentRef, Message, MessageAttachment, ModelSelection, SessionActiveClient,
-    SessionConfigSchema, SessionSummary, Snapshot, SnapshotState, TelemetryCapabilities,
-    TerminalClaim, TextRange, Turn,
+    SessionConfigSchema, SessionSummary, SideChatSelection, Snapshot, SnapshotState,
+    TelemetryCapabilities, TerminalClaim, TextRange, Turn,
 };
 
 // ─── Enums ────────────────────────────────────────────────────────────
@@ -507,6 +507,13 @@ pub struct SideChatSource {
     /// available. Once that turn later becomes historical, it is still referenced
     /// by this same identifier.
     pub turn_id: String,
+    /// Optional immutable selected-text snapshot to carry into the created side
+    /// chat's origin.
+    ///
+    /// When present, the host MUST snapshot and preserve this exact selection when
+    /// it accepts `createChat`; later source-turn deltas do not alter it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<SideChatSelection>,
 }
 
 /// Creates a new chat within a session.
@@ -530,7 +537,10 @@ pub struct CreateChatParams {
     /// turns. Side chats also carry a stable `turnId`, which the host resolves
     /// against the source chat's current active turn or retained history. If it
     /// resolves to the active turn, the host snapshots the currently available
-    /// partial response when accepting `createChat`.
+    /// partial response when accepting `createChat`. When
+    /// `source.kind === "sideChat"` and `source.selection` is present, the host
+    /// also snapshots and preserves that exact selected text in the created chat's
+    /// origin; any `responsePartId` there is provenance only, not a live range.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<ChatSource>,
     /// Initial working-directory subset for this chat. Every entry MUST be

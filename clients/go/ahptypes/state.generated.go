@@ -1183,6 +1183,23 @@ type ChatSummary struct {
 	PrimaryWorkingDirectory *URI `json:"primaryWorkingDirectory,omitempty"`
 }
 
+// Immutable selected-text snapshot captured when a side chat is created.
+//
+// The host records this exact text when it accepts `createChat`; later changes
+// to the source chat do not alter it.
+type SideChatSelection struct {
+	// Exact selected-text snapshot captured at `createChat` acceptance.
+	//
+	// MUST be non-empty.
+	Text string `json:"text"`
+	// Optional provenance for the response part that contained {@link text} when
+	// the host took the snapshot.
+	//
+	// Advisory only: this is not a live range or offset and MUST NOT be used to
+	// recompute `text`.
+	ResponsePartId *string `json:"responsePartId,omitempty"`
+}
+
 // A message queued for future delivery to the agent.
 //
 // Steering messages are injected into the current turn mid-flight.
@@ -4811,9 +4828,10 @@ type ChatForkOrigin struct {
 func (*ChatForkOrigin) isChatOrigin() {}
 
 type ChatSideChatOrigin struct {
-	Kind   ChatOriginKind `json:"kind"`
-	Chat   URI            `json:"chat"`
-	TurnId string         `json:"turnId"`
+	Kind      ChatOriginKind     `json:"kind"`
+	Chat      URI                `json:"chat"`
+	TurnId    string             `json:"turnId"`
+	Selection *SideChatSelection `json:"selection,omitempty"`
 }
 
 func (*ChatSideChatOrigin) isChatOrigin() {}

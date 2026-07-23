@@ -7,7 +7,7 @@ fn chat_source_routes_by_kind() {
     )
     .expect("decode fork source");
     let side_chat = serde_json::from_str::<ChatSource>(
-        r#"{"kind":"sideChat","chat":"ahp-chat:/main","turnId":"turn-active"}"#,
+        r#"{"kind":"sideChat","chat":"ahp-chat:/main","turnId":"turn-active","selection":{"text":"const value = compute()","responsePartId":"part-7"}}"#,
     )
     .expect("decode side chat source");
 
@@ -23,6 +23,9 @@ fn chat_source_routes_by_kind() {
         ChatSource::SideChat(value) => {
             assert_eq!(value.chat, "ahp-chat:/main");
             assert_eq!(value.turn_id, "turn-active");
+            let selection = value.selection.expect("selection should decode");
+            assert_eq!(selection.text, "const value = compute()");
+            assert_eq!(selection.response_part_id.as_deref(), Some("part-7"));
         }
         other => panic!("expected sideChat variant, got {other:?}"),
     }

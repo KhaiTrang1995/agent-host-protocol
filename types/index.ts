@@ -26,6 +26,7 @@ export type {
   ChatState,
   ChatSummary,
   ChatOrigin,
+  SideChatSelection,
   ChangesSummary,
   SessionConfigState,
   Turn,

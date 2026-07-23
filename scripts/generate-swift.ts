@@ -521,6 +521,7 @@ function generateFixedChatSourceBranchSwift(
   doc: string,
   turnIdDoc: string,
 ): string {
+  const hasSelection = name === 'SideChatSource';
   const lines = [
     ...doc.split('\n').map(line => emitSwiftDocLine(line)),
     `public struct ${name}: Codable, Sendable {`,
@@ -530,19 +531,28 @@ function generateFixedChatSourceBranchSwift(
     '    public var chat: URI',
     ...turnIdDoc.split('\n').map(line => emitSwiftDocLine(line, '    ')),
     '    public var turnId: String',
+    ...(hasSelection
+      ? [
+          ...'Optional immutable selected-text snapshot to carry into the created side\nchat\'s origin.'.split('\n').map(line => emitSwiftDocLine(line, '    ')),
+          '    public var selection: SideChatSelection?',
+        ]
+      : []),
     '',
     '    private enum CodingKeys: String, CodingKey {',
     '        case kind',
     '        case chat',
     '        case turnId',
+    ...(hasSelection ? ['        case selection'] : []),
     '    }',
     '',
     '    public init(',
     '        chat: URI,',
-    '        turnId: String',
+    '        turnId: String' + (hasSelection ? ',' : ''),
+    ...(hasSelection ? ['        selection: SideChatSelection? = nil'] : []),
     '    ) {',
     '        self.chat = chat',
     '        self.turnId = turnId',
+    ...(hasSelection ? ['        self.selection = selection'] : []),
     '    }',
     '',
     '    public init(from decoder: Decoder) throws {',
@@ -553,6 +563,7 @@ function generateFixedChatSourceBranchSwift(
     '        }',
     '        self.chat = try container.decode(URI.self, forKey: .chat)',
     '        self.turnId = try container.decode(String.self, forKey: .turnId)',
+    ...(hasSelection ? ['        self.selection = try container.decodeIfPresent(SideChatSelection.self, forKey: .selection)'] : []),
     '    }',
     '',
     '    public func encode(to encoder: Encoder) throws {',
@@ -560,6 +571,7 @@ function generateFixedChatSourceBranchSwift(
     `        try container.encode(ChatSourceKind.${kindCase}, forKey: .kind)`,
     '        try container.encode(chat, forKey: .chat)',
     '        try container.encode(turnId, forKey: .turnId)',
+    ...(hasSelection ? ['        try container.encodeIfPresent(selection, forKey: .selection)'] : []),
     '    }',
     '}',
   ];
@@ -607,7 +619,7 @@ const STATE_STRUCTS = [
   'MultipleChatsCapability',
   'MultipleWorkingDirectoriesCapability',
   'SessionModelInfo', 'ModelSelection', 'AgentSelection', 'ConfigPropertySchema', 'ConfigSchema',
-  'PendingMessage', 'ChatState', 'ChatSummary', 'SessionState', 'SessionActiveClient',
+  'PendingMessage', 'ChatState', 'ChatSummary', 'SideChatSelection', 'SessionState', 'SessionActiveClient',
   'SessionChatInputRequest', 'SessionToolConfirmationRequest', 'SessionToolClientExecutionRequest',
   'SessionToolAuthenticationRequest',
   'SessionSummary', 'ChangesSummary', 'ProjectInfo', 'SessionConfigState', 'Turn', 'ActiveTurn', 'Message',
@@ -1045,11 +1057,13 @@ public struct ChatOriginSideChat: Codable, Sendable {
     public var kind: ChatOriginKind
     public var chat: String
     public var turnId: String
+    public var selection: SideChatSelection?
 
-    public init(kind: ChatOriginKind = .sideChat, chat: String, turnId: String) {
+    public init(kind: ChatOriginKind = .sideChat, chat: String, turnId: String, selection: SideChatSelection? = nil) {
         self.kind = kind
         self.chat = chat
         self.turnId = turnId
+        self.selection = selection
     }
 }
 

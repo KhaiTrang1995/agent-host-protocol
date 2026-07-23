@@ -699,6 +699,7 @@ const STATE_STRUCTS: { name: string; omitDiscriminants?: boolean; rustName?: str
   { name: 'PendingMessage' },
   { name: 'ChatState' },
   { name: 'ChatSummary' },
+  { name: 'SideChatSelection' },
   { name: 'SessionState' },
   { name: 'SessionActiveClient' },
   { name: 'SessionChatInputRequest', omitDiscriminants: true },
@@ -1066,6 +1067,9 @@ pub enum ChatOrigin {
         /// Stable source-turn identifier through which context was supplied.
         #[serde(rename = "turnId")]
         turn_id: String,
+        /// Optional immutable selected-text snapshot captured when the side chat was created.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selection: Option<SideChatSelection>,
     },
     /// Spawned by a tool call in another chat.
     #[serde(rename = "tool")]
@@ -1313,7 +1317,7 @@ pub struct ${scope}ToolCallConfirmedAction {
 function generateActionsFile(project: Project): string {
   const lines: string[] = [GENERATED_HEADER];
   lines.push('#[allow(unused_imports)]');
-  lines.push('use crate::state::{AgentInfo, AgentSelection, Annotation, AnnotationEntry, ChatInputAnswer, ChatInputRequest, ChatInputResponseKind, ChatInteractivity, ChatOrigin, ConfirmationOption, Customization, ErrorInfo, McpAuthRequirement, McpServerState, ModelSelection, ResponsePart, SessionActiveClient, SessionInputRequest, TerminalClaim, TerminalInfo, TextRange, ToolCallContributor, ToolCallResult, ToolCallRiskAssessment, ToolCallConfirmationReason, ToolCallCancellationReason, ToolDefinition, ToolResultContent, UsageInfo, Message, PendingMessageKind, Turn, ChangesetStatus, ChangesetFile, ChangesetOperation, ChangesetOperationStatus, Changeset, ChatSummary};');
+  lines.push('use crate::state::{AgentInfo, AgentSelection, Annotation, AnnotationEntry, ChatInputAnswer, ChatInputRequest, ChatInputResponseKind, ChatInteractivity, ChatOrigin, ConfirmationOption, Customization, ErrorInfo, McpAuthRequirement, McpServerState, ModelSelection, ResponsePart, SessionActiveClient, SessionInputRequest, SideChatSelection, TerminalClaim, TerminalInfo, TextRange, ToolCallContributor, ToolCallResult, ToolCallRiskAssessment, ToolCallConfirmationReason, ToolCallCancellationReason, ToolDefinition, ToolResultContent, UsageInfo, Message, PendingMessageKind, Turn, ChangesetStatus, ChangesetFile, ChangesetOperation, ChangesetOperationStatus, Changeset, ChatSummary};');
   lines.push('');
 
   // ActionType enum
@@ -1474,7 +1478,7 @@ function generateCommandsFile(project: Project): string {
   lines.push('#[allow(unused_imports)]');
   lines.push('use crate::actions::{ActionEnvelope, StateAction};');
   lines.push('#[allow(unused_imports)]');
-  lines.push('use crate::state::{AgentSelection, ContentRef, Message, MessageAttachment, ModelSelection, SessionActiveClient, SessionConfigSchema, SessionSummary, Snapshot, SnapshotState, TelemetryCapabilities, TerminalClaim, TextRange, Turn};');
+  lines.push('use crate::state::{AgentSelection, ContentRef, Message, MessageAttachment, ModelSelection, SessionActiveClient, SessionConfigSchema, SessionSummary, SideChatSelection, Snapshot, SnapshotState, TelemetryCapabilities, TerminalClaim, TextRange, Turn};');
   lines.push('');
 
   lines.push('// ─── Enums ────────────────────────────────────────────────────────────\n');

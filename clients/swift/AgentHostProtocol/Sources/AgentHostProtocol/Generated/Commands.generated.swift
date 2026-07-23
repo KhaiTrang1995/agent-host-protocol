@@ -125,19 +125,25 @@ public struct SideChatSource: Codable, Sendable {
     /// available. Once that turn later becomes historical, it is still referenced
     /// by this same identifier.
     public var turnId: String
+    /// Optional immutable selected-text snapshot to carry into the created side
+    /// chat's origin.
+    public var selection: SideChatSelection?
 
     private enum CodingKeys: String, CodingKey {
         case kind
         case chat
         case turnId
+        case selection
     }
 
     public init(
         chat: URI,
-        turnId: String
+        turnId: String,
+        selection: SideChatSelection? = nil
     ) {
         self.chat = chat
         self.turnId = turnId
+        self.selection = selection
     }
 
     public init(from decoder: Decoder) throws {
@@ -148,6 +154,7 @@ public struct SideChatSource: Codable, Sendable {
         }
         self.chat = try container.decode(URI.self, forKey: .chat)
         self.turnId = try container.decode(String.self, forKey: .turnId)
+        self.selection = try container.decodeIfPresent(SideChatSelection.self, forKey: .selection)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -155,6 +162,7 @@ public struct SideChatSource: Codable, Sendable {
         try container.encode(ChatSourceKind.sideChat, forKey: .kind)
         try container.encode(chat, forKey: .chat)
         try container.encode(turnId, forKey: .turnId)
+        try container.encodeIfPresent(selection, forKey: .selection)
     }
 }
 
@@ -563,7 +571,10 @@ public struct CreateChatParams: Codable, Sendable {
     /// turns. Side chats also carry a stable `turnId`, which the host resolves
     /// against the source chat's current active turn or retained history. If it
     /// resolves to the active turn, the host snapshots the currently available
-    /// partial response when accepting `createChat`.
+    /// partial response when accepting `createChat`. When
+    /// `source.kind === "sideChat"` and `source.selection` is present, the host
+    /// also snapshots and preserves that exact selected text in the created chat's
+    /// origin; any `responsePartId` there is provenance only, not a live range.
     public var source: ChatSource?
     /// Initial working-directory subset for this chat. Every entry MUST be
     /// present in the owning session's `workingDirectories`; the server MUST

@@ -196,6 +196,7 @@ describe('generated JSON schemas', () => {
 
         assert.deepEqual(branchByKind.get('fork')?.turnId?.type, 'string');
         assert.deepEqual(branchByKind.get('sideChat')?.turnId?.type, 'string');
+        assert.deepEqual(branchByKind.get('sideChat')?.selection?.$ref, '#/$defs/SideChatSelection');
 
         const chatSource = defs.ChatSource;
         if (chatSource) {
@@ -203,8 +204,13 @@ describe('generated JSON schemas', () => {
           assert.deepEqual(defs.ForkChatSource?.properties?.turnId?.type, 'string');
           assert.deepEqual(defs.SideChatSource?.properties?.kind?.const, 'sideChat');
           assert.deepEqual(defs.SideChatSource?.properties?.turnId?.type, 'string');
+          assert.deepEqual(defs.SideChatSource?.properties?.selection?.$ref, '#/$defs/SideChatSelection');
           assert.equal(defs.SideChatSource?.properties?.turn, undefined);
         }
+
+        assert.deepEqual(defs.SideChatSelection?.required, ['text']);
+        assert.deepEqual(defs.SideChatSelection?.properties?.text?.type, 'string');
+        assert.deepEqual(defs.SideChatSelection?.properties?.responsePartId?.type, 'string');
       });
 
       it('accepts valid discriminated ChatSource payloads and rejects missing or unknown kinds', () => {
@@ -227,6 +233,10 @@ describe('generated JSON schemas', () => {
             kind: 'sideChat',
             chat: 'ahp-chat:/source',
             turnId: 'turn-1',
+            selection: {
+              text: 'selected text',
+              responsePartId: 'part-1',
+            },
           }),
           true,
         );
@@ -234,6 +244,15 @@ describe('generated JSON schemas', () => {
           schemaAccepts(schema, chatSource, {
             chat: 'ahp-chat:/source',
             turnId: 'turn-1',
+          }),
+          false,
+        );
+        assert.equal(
+          schemaAccepts(schema, chatSource, {
+            kind: 'sideChat',
+            chat: 'ahp-chat:/source',
+            turnId: 'turn-1',
+            selection: {},
           }),
           false,
         );

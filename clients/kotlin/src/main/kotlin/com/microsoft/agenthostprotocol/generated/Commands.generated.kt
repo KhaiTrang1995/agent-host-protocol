@@ -135,6 +135,7 @@ data class ForkChatSource(
      * Content through this turn is copied into the new chat's visible `turns`.
      */
     val turnId: String,
+
 ) {
     val kind: ChatSourceKind
         get() = ChatSourceKind.FORK
@@ -192,6 +193,12 @@ data class SideChatSource(
      * by this same identifier.
      */
     val turnId: String,
+    /**
+     * Optional immutable selected-text snapshot to carry into the created side
+     * chat's origin.
+     */
+    val selection: SideChatSelection? = null,
+
 ) {
     val kind: ChatSourceKind
         get() = ChatSourceKind.SIDE_CHAT
@@ -202,6 +209,7 @@ private data class SideChatSourceWire(
     val kind: ChatSourceKind,
     val chat: URI,
     val turnId: String,
+    val selection: SideChatSelection? = null,
 )
 
 internal object SideChatSourceSerializer : KSerializer<SideChatSource> {
@@ -214,7 +222,7 @@ internal object SideChatSourceSerializer : KSerializer<SideChatSource> {
         if (wire.kind != ChatSourceKind.SIDE_CHAT) {
             error("Expected SideChatSource kind sideChat")
         }
-        return SideChatSource(chat = wire.chat, turnId = wire.turnId)
+        return SideChatSource(chat = wire.chat, turnId = wire.turnId, selection = wire.selection)
     }
 
     override fun serialize(encoder: Encoder, value: SideChatSource) {
@@ -222,7 +230,7 @@ internal object SideChatSourceSerializer : KSerializer<SideChatSource> {
             ?: error("SideChatSource can only be serialized to JSON")
         val element = output.json.encodeToJsonElement(
             SideChatSourceWire.serializer(),
-            SideChatSourceWire(kind = ChatSourceKind.SIDE_CHAT, chat = value.chat, turnId = value.turnId),
+            SideChatSourceWire(kind = ChatSourceKind.SIDE_CHAT, chat = value.chat, turnId = value.turnId, selection = value.selection),
         )
         output.encodeJsonElement(element)
     }
@@ -599,7 +607,10 @@ data class CreateChatParams(
      * turns. Side chats also carry a stable `turnId`, which the host resolves
      * against the source chat's current active turn or retained history. If it
      * resolves to the active turn, the host snapshots the currently available
-     * partial response when accepting `createChat`.
+     * partial response when accepting `createChat`. When
+     * `source.kind === "sideChat"` and `source.selection` is present, the host
+     * also snapshots and preserves that exact selected text in the created chat's
+     * origin; any `responsePartId` there is provenance only, not a live range.
      */
     val source: ChatSource? = null,
     /**

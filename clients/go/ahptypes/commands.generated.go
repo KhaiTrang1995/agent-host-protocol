@@ -412,6 +412,12 @@ type SideChatSource struct {
 	// available. Once that turn later becomes historical, it is still referenced
 	// by this same identifier.
 	TurnId string `json:"turnId"`
+	// Optional immutable selected-text snapshot to carry into the created side
+	// chat's origin.
+	//
+	// When present, the host MUST snapshot and preserve this exact selection when
+	// it accepts `createChat`; later source-turn deltas do not alter it.
+	Selection *SideChatSelection `json:"selection,omitempty"`
 }
 
 // Creates a new chat within a session.
@@ -432,7 +438,10 @@ type CreateChatParams struct {
 	// turns. Side chats also carry a stable `turnId`, which the host resolves
 	// against the source chat's current active turn or retained history. If it
 	// resolves to the active turn, the host snapshots the currently available
-	// partial response when accepting `createChat`.
+	// partial response when accepting `createChat`. When
+	// `source.kind === "sideChat"` and `source.selection` is present, the host
+	// also snapshots and preserves that exact selected text in the created chat's
+	// origin; any `responsePartId` there is provenance only, not a live range.
 	Source *ChatSource `json:"source,omitempty"`
 	// Initial working-directory subset for this chat. Every entry MUST be
 	// present in the owning session's `workingDirectories`; the server MUST

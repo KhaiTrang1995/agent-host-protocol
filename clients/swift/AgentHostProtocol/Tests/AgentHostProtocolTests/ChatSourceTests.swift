@@ -12,7 +12,7 @@ final class ChatSourceTests: XCTestCase {
         )
         let sideChat = try decoder.decode(
             ChatSource.self,
-            from: Data(#"{"kind":"sideChat","chat":"ahp-chat:/main","turnId":"turn-active"}"#.utf8)
+            from: Data(#"{"kind":"sideChat","chat":"ahp-chat:/main","turnId":"turn-active","selection":{"text":"const value = compute()","responsePartId":"part-7"}}"#.utf8)
         )
 
         switch fork {
@@ -27,6 +27,8 @@ final class ChatSourceTests: XCTestCase {
         case .sideChat(let value):
             XCTAssertEqual(value.kind, .sideChat)
             XCTAssertEqual(value.turnId, "turn-active")
+            XCTAssertEqual(value.selection?.text, "const value = compute()")
+            XCTAssertEqual(value.selection?.responsePartId, "part-7")
         default:
             XCTFail("Expected sideChat variant")
         }
@@ -53,7 +55,11 @@ final class ChatSourceTests: XCTestCase {
         let encoder = JSONEncoder()
 
         let fork = ForkChatSource(chat: "ahp-chat:/main", turnId: "turn-12")
-        let sideChat = SideChatSource(chat: "ahp-chat:/main", turnId: "turn-active")
+        let sideChat = SideChatSource(
+            chat: "ahp-chat:/main",
+            turnId: "turn-active",
+            selection: SideChatSelection(text: "const value = compute()", responsePartId: "part-7")
+        )
 
         XCTAssertEqual(fork.kind, .fork)
         XCTAssertEqual(sideChat.kind, .sideChat)
@@ -67,5 +73,7 @@ final class ChatSourceTests: XCTestCase {
         XCTAssertEqual(sideChatBranch?["kind"] as? String, "sideChat")
         XCTAssertEqual(forkUnion?["kind"] as? String, "fork")
         XCTAssertEqual(sideChatUnion?["kind"] as? String, "sideChat")
+        XCTAssertEqual((sideChatBranch?["selection"] as? [String: Any])?["text"] as? String, "const value = compute()")
+        XCTAssertEqual((sideChatUnion?["selection"] as? [String: Any])?["responsePartId"] as? String, "part-7")
     }
 }

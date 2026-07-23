@@ -1081,6 +1081,27 @@ public struct ChatSummary: Codable, Sendable {
     }
 }
 
+public struct SideChatSelection: Codable, Sendable {
+    /// Exact selected-text snapshot captured at `createChat` acceptance.
+    ///
+    /// MUST be non-empty.
+    public var text: String
+    /// Optional provenance for the response part that contained {@link text} when
+    /// the host took the snapshot.
+    ///
+    /// Advisory only: this is not a live range or offset and MUST NOT be used to
+    /// recompute `text`.
+    public var responsePartId: String?
+
+    public init(
+        text: String,
+        responsePartId: String? = nil
+    ) {
+        self.text = text
+        self.responsePartId = responsePartId
+    }
+}
+
 public struct SessionState: Codable, Sendable {
     /// Agent provider ID
     public var provider: String
@@ -5235,11 +5256,13 @@ public struct ChatOriginSideChat: Codable, Sendable {
     public var kind: ChatOriginKind
     public var chat: String
     public var turnId: String
+    public var selection: SideChatSelection?
 
-    public init(kind: ChatOriginKind = .sideChat, chat: String, turnId: String) {
+    public init(kind: ChatOriginKind = .sideChat, chat: String, turnId: String, selection: SideChatSelection? = nil) {
         self.kind = kind
         self.chat = chat
         self.turnId = turnId
+        self.selection = selection
     }
 }
 

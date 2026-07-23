@@ -723,6 +723,7 @@ const STATE_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: strin
   { name: 'ChangesSummary' },
   { name: 'ChatState' },
   { name: 'ChatSummary' },
+  { name: 'SideChatSelection' },
   { name: 'PendingMessage' },
   { name: 'ProjectInfo' },
   { name: 'SessionConfigPropertySchema' },
@@ -1080,6 +1081,7 @@ type ChatSideChatOrigin struct {
 \tKind   ChatOriginKind \`json:"kind"\`
 \tChat   URI            \`json:"chat"\`
 \tTurnId string         \`json:"turnId"\`
+\tSelection *SideChatSelection \`json:"selection,omitempty"\`
 }
 
 func (*ChatSideChatOrigin) isChatOrigin() {}
