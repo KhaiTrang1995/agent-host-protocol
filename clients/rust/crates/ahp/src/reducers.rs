@@ -2155,6 +2155,7 @@ mod tests {
                 },
             ),
             supports_command_detection: None,
+            is_pty: None,
         };
         let a = StateAction::TerminalData(ahp_types::actions::TerminalDataAction {
             data: "hello".into(),

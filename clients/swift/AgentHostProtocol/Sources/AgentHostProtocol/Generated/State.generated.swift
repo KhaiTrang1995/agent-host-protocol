@@ -267,7 +267,6 @@ public enum ToolResultContentType: String, Codable, Sendable {
     case resource = "resource"
     case fileEdit = "fileEdit"
     case terminal = "terminal"
-    case terminalComplete = "terminalComplete"
     case subagent = "subagent"
 }
 
@@ -3283,46 +3282,25 @@ public struct ToolResultTerminalContent: Codable, Sendable {
     public var resource: String
     /// Display title for the terminal content
     public var title: String
+    /// Whether this terminal-style resource is backed by a pseudoterminal.
+    /// When `false`, output is plain text and clients do not need to parse
+    /// VT sequences.
+    public var isPty: Bool?
+    /// Outcome of the command, present once it has exited.
+    public var result: TerminalCommandResult?
 
     public init(
         type: ToolResultContentType,
         resource: String,
-        title: String
+        title: String,
+        isPty: Bool? = nil,
+        result: TerminalCommandResult? = nil
     ) {
         self.type = type
         self.resource = resource
         self.title = title
-    }
-}
-
-public struct ToolResultTerminalCompleteContent: Codable, Sendable {
-    public var type: ToolResultContentType
-    /// URI of the `ahp-terminal:` channel that carried live output for this
-    /// command, if one was exposed.
-    public var resource: String?
-    /// Exit code from the completed command, if reported by the runtime
-    public var exitCode: Int?
-    /// Working directory where the command was executed
-    public var cwd: String?
-    /// Preview of the command's output, if available
-    public var preview: String?
-    /// Whether `preview` is known to be incomplete or truncated
-    public var truncated: Bool?
-
-    public init(
-        type: ToolResultContentType,
-        resource: String? = nil,
-        exitCode: Int? = nil,
-        cwd: String? = nil,
-        preview: String? = nil,
-        truncated: Bool? = nil
-    ) {
-        self.type = type
-        self.resource = resource
-        self.exitCode = exitCode
-        self.cwd = cwd
-        self.preview = preview
-        self.truncated = truncated
+        self.isPty = isPty
+        self.result = result
     }
 }
 
@@ -4457,6 +4435,28 @@ public struct FileEdit: Codable, Sendable {
     }
 }
 
+public struct TerminalCommandResult: Codable, Sendable {
+    /// Exit code from the completed command, if reported by the runtime
+    public var exitCode: Int?
+    /// Preview of the command's output, for clients that are not subscribed
+    /// to the terminal or that arrive after it is disposed. When `isPty` is
+    /// `true` the preview may contain VT sequences; when `false` it is plain
+    /// text.
+    public var preview: String?
+    /// Whether `preview` is known to be incomplete or truncated
+    public var truncated: Bool?
+
+    public init(
+        exitCode: Int? = nil,
+        preview: String? = nil,
+        truncated: Bool? = nil
+    ) {
+        self.exitCode = exitCode
+        self.preview = preview
+        self.truncated = truncated
+    }
+}
+
 public struct TerminalInfo: Codable, Sendable {
     /// Terminal URI (subscribable for full terminal state)
     public var resource: String
@@ -4545,6 +4545,10 @@ public struct TerminalState: Codable, Sendable {
     /// Do NOT use the presence of a `command` part as a feature flag — parts
     /// are absent in the normal idle state.
     public var supportsCommandDetection: Bool?
+    /// Whether this terminal-style resource is backed by a pseudoterminal.
+    /// When `false`, output is plain text and clients do not need to parse
+    /// VT sequences.
+    public var isPty: Bool?
 
     public init(
         title: String,
@@ -4554,7 +4558,8 @@ public struct TerminalState: Codable, Sendable {
         content: [TerminalContentPart],
         exitCode: Int? = nil,
         claim: TerminalClaim,
-        supportsCommandDetection: Bool? = nil
+        supportsCommandDetection: Bool? = nil,
+        isPty: Bool? = nil
     ) {
         self.title = title
         self.cwd = cwd
@@ -4564,6 +4569,7 @@ public struct TerminalState: Codable, Sendable {
         self.exitCode = exitCode
         self.claim = claim
         self.supportsCommandDetection = supportsCommandDetection
+        self.isPty = isPty
     }
 }
 
@@ -5829,7 +5835,6 @@ public enum ToolResultContent: Codable, Sendable {
     case resource(ToolResultResourceContent)
     case fileEdit(ToolResultFileEditContent)
     case terminal(ToolResultTerminalContent)
-    case terminalComplete(ToolResultTerminalCompleteContent)
     case subagent(ToolResultSubagentContent)
     /// Unknown or future tool result content type; the raw payload is preserved
     /// and re-encoded verbatim for forward-compatibility.
@@ -5853,8 +5858,6 @@ public enum ToolResultContent: Codable, Sendable {
                 self = .fileEdit(try ToolResultFileEditContent(from: decoder))
             case "terminal":
                 self = .terminal(try ToolResultTerminalContent(from: decoder))
-            case "terminalComplete":
-                self = .terminalComplete(try ToolResultTerminalCompleteContent(from: decoder))
             case "subagent":
                 self = .subagent(try ToolResultSubagentContent(from: decoder))
             default:
@@ -5875,7 +5878,6 @@ public enum ToolResultContent: Codable, Sendable {
         case .resource(let v): try v.encode(to: encoder)
         case .fileEdit(let v): try v.encode(to: encoder)
         case .terminal(let v): try v.encode(to: encoder)
-        case .terminalComplete(let v): try v.encode(to: encoder)
         case .subagent(let v): try v.encode(to: encoder)
         case .unknown(let v): try v.encode(to: encoder)
         }

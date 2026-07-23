@@ -407,8 +407,6 @@ pub enum ToolResultContentType {
     FileEdit,
     #[serde(rename = "terminal")]
     Terminal,
-    #[serde(rename = "terminalComplete")]
-    TerminalComplete,
     #[serde(rename = "subagent")]
     Subagent,
 }
@@ -2724,6 +2722,11 @@ pub struct ToolResultFileEditContent {
 ///
 /// Clients can subscribe to the terminal's URI to stream its output in real
 /// time, providing live feedback while a tool is executing.
+///
+/// When the command exits, {@link result} is filled in on the completed
+/// result, retaining the outcome for clients that did not subscribe. This
+/// records the command's exit, not the terminal's — the terminal may keep
+/// running afterwards.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolResultTerminalContent {
@@ -2731,37 +2734,14 @@ pub struct ToolResultTerminalContent {
     pub resource: Uri,
     /// Display title for the terminal content
     pub title: String,
-}
-
-/// Record of a command executed by a terminal-style tool (e.g. a shell tool),
-/// appended to the tool result when the command exits.
-///
-/// This records the command's exit, not the terminal's — the terminal may
-/// keep running afterwards.
-///
-/// When live output was exposed through a terminal channel (a
-/// {@link ToolResultTerminalContent} block in the same tool result),
-/// {@link resource} identifies that channel; otherwise this block stands alone
-/// as the retained command result.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct ToolResultTerminalCompleteContent {
-    /// URI of the `ahp-terminal:` channel that carried live output for this
-    /// command, if one was exposed.
+    /// Whether this terminal-style resource is backed by a pseudoterminal.
+    /// When `false`, output is plain text and clients do not need to parse
+    /// VT sequences.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub resource: Option<Uri>,
-    /// Exit code from the completed command, if reported by the runtime
+    pub is_pty: Option<bool>,
+    /// Outcome of the command, present once it has exited.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub exit_code: Option<i64>,
-    /// Working directory where the command was executed
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cwd: Option<Uri>,
-    /// Preview of the command's output, if available
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preview: Option<String>,
-    /// Whether `preview` is known to be incomplete or truncated
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub truncated: Option<bool>,
+    pub result: Option<TerminalCommandResult>,
 }
 
 /// A reference, embedded in a tool result, to a worker chat spawned by the tool
@@ -3625,6 +3605,25 @@ pub struct FileEdit {
     pub diff: Option<AnyValue>,
 }
 
+/// Outcome of a command run in a terminal-style tool, filled in on
+/// {@link ToolResultTerminalContent.result} once the command exits.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalCommandResult {
+    /// Exit code from the completed command, if reported by the runtime
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i64>,
+    /// Preview of the command's output, for clients that are not subscribed
+    /// to the terminal or that arrive after it is disposed. When `isPty` is
+    /// `true` the preview may contain VT sequences; when `false` it is plain
+    /// text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
+    /// Whether `preview` is known to be incomplete or truncated
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub truncated: Option<bool>,
+}
+
 /// Lightweight terminal metadata exposed on the root state.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -3697,6 +3696,11 @@ pub struct TerminalState {
     /// are absent in the normal idle state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_command_detection: Option<bool>,
+    /// Whether this terminal-style resource is backed by a pseudoterminal.
+    /// When `false`, output is plain text and clients do not need to parse
+    /// VT sequences.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_pty: Option<bool>,
 }
 
 /// Unstructured terminal output — content before, between, or after commands,
@@ -4343,8 +4347,6 @@ pub enum ToolResultContent {
     FileEdit(ToolResultFileEditContent),
     #[serde(rename = "terminal")]
     Terminal(ToolResultTerminalContent),
-    #[serde(rename = "terminalComplete")]
-    TerminalComplete(ToolResultTerminalCompleteContent),
     #[serde(rename = "subagent")]
     Subagent(ToolResultSubagentContent),
     /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.

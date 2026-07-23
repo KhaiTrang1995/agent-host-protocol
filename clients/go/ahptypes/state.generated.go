@@ -291,7 +291,6 @@ const (
 	ToolResultContentTypeResource         ToolResultContentType = "resource"
 	ToolResultContentTypeFileEdit         ToolResultContentType = "fileEdit"
 	ToolResultContentTypeTerminal         ToolResultContentType = "terminal"
-	ToolResultContentTypeTerminalComplete ToolResultContentType = "terminalComplete"
 	ToolResultContentTypeSubagent         ToolResultContentType = "subagent"
 )
 
@@ -2202,37 +2201,23 @@ type ToolResultFileEditContent struct {
 //
 // Clients can subscribe to the terminal's URI to stream its output in real
 // time, providing live feedback while a tool is executing.
+//
+// When the command exits, {@link result} is filled in on the completed
+// result, retaining the outcome for clients that did not subscribe. This
+// records the command's exit, not the terminal's — the terminal may keep
+// running afterwards.
 type ToolResultTerminalContent struct {
 	Type ToolResultContentType `json:"type"`
 	// Terminal URI (subscribable for full terminal state)
 	Resource URI `json:"resource"`
 	// Display title for the terminal content
 	Title string `json:"title"`
-}
-
-// Record of a command executed by a terminal-style tool (e.g. a shell tool),
-// appended to the tool result when the command exits.
-//
-// This records the command's exit, not the terminal's — the terminal may
-// keep running afterwards.
-//
-// When live output was exposed through a terminal channel (a
-// {@link ToolResultTerminalContent} block in the same tool result),
-// {@link resource} identifies that channel; otherwise this block stands alone
-// as the retained command result.
-type ToolResultTerminalCompleteContent struct {
-	Type ToolResultContentType `json:"type"`
-	// URI of the `ahp-terminal:` channel that carried live output for this
-	// command, if one was exposed.
-	Resource *URI `json:"resource,omitempty"`
-	// Exit code from the completed command, if reported by the runtime
-	ExitCode *int64 `json:"exitCode,omitempty"`
-	// Working directory where the command was executed
-	Cwd *URI `json:"cwd,omitempty"`
-	// Preview of the command's output, if available
-	Preview *string `json:"preview,omitempty"`
-	// Whether `preview` is known to be incomplete or truncated
-	Truncated *bool `json:"truncated,omitempty"`
+	// Whether this terminal-style resource is backed by a pseudoterminal.
+	// When `false`, output is plain text and clients do not need to parse
+	// VT sequences.
+	IsPty *bool `json:"isPty,omitempty"`
+	// Outcome of the command, present once it has exited.
+	Result *TerminalCommandResult `json:"result,omitempty"`
 }
 
 // A reference, embedded in a tool result, to a worker chat spawned by the tool
@@ -2996,6 +2981,20 @@ type FileEdit struct {
 	Diff *json.RawMessage `json:"diff,omitempty"`
 }
 
+// Outcome of a command run in a terminal-style tool, filled in on
+// {@link ToolResultTerminalContent.result} once the command exits.
+type TerminalCommandResult struct {
+	// Exit code from the completed command, if reported by the runtime
+	ExitCode *int64 `json:"exitCode,omitempty"`
+	// Preview of the command's output, for clients that are not subscribed
+	// to the terminal or that arrive after it is disposed. When `isPty` is
+	// `true` the preview may contain VT sequences; when `false` it is plain
+	// text.
+	Preview *string `json:"preview,omitempty"`
+	// Whether `preview` is known to be incomplete or truncated
+	Truncated *bool `json:"truncated,omitempty"`
+}
+
 // Lightweight terminal metadata exposed on the root state.
 type TerminalInfo struct {
 	// Terminal URI (subscribable for full terminal state)
@@ -3056,6 +3055,10 @@ type TerminalState struct {
 	// Do NOT use the presence of a `command` part as a feature flag — parts
 	// are absent in the normal idle state.
 	SupportsCommandDetection *bool `json:"supportsCommandDetection,omitempty"`
+	// Whether this terminal-style resource is backed by a pseudoterminal.
+	// When `false`, output is plain text and clients do not need to parse
+	// VT sequences.
+	IsPty *bool `json:"isPty,omitempty"`
 }
 
 // Unstructured terminal output — content before, between, or after commands,
@@ -4061,7 +4064,6 @@ func (*ToolResultEmbeddedResourceContent) isToolResultContent() {}
 func (*ToolResultResourceContent) isToolResultContent()         {}
 func (*ToolResultFileEditContent) isToolResultContent()         {}
 func (*ToolResultTerminalContent) isToolResultContent()         {}
-func (*ToolResultTerminalCompleteContent) isToolResultContent() {}
 func (*ToolResultSubagentContent) isToolResultContent()         {}
 
 // ToolResultContentUnknown carries an unrecognized ToolResultContent variant — typically a discriminator value introduced by a newer protocol version. The original JSON object is preserved verbatim so that re-encoding round-trips faithfully.
@@ -4104,12 +4106,6 @@ func (u *ToolResultContent) UnmarshalJSON(data []byte) error {
 		u.Value = &value
 	case "terminal":
 		var value ToolResultTerminalContent
-		if err := json.Unmarshal(data, &value); err != nil {
-			return err
-		}
-		u.Value = &value
-	case "terminalComplete":
-		var value ToolResultTerminalCompleteContent
 		if err := json.Unmarshal(data, &value); err != nil {
 			return err
 		}
