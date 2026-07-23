@@ -126,97 +126,6 @@ function getAllInterfaceProperties(iface: InterfaceDeclaration, project: Project
   return [...byName.values()];
 }
 
-function resolveSchemaForInspection(schema: JsonSchema, project: Project): JsonSchema | undefined {
-  if (!schema.$ref) return schema;
-  const match = schema.$ref.match(/^#\/\$defs\/(.+)$/);
-  if (!match) return undefined;
-  return buildDefForName(project, match[1]);
-}
-
-function getObjectSchemaMetadata(
-  schema: JsonSchema,
-  project: Project,
-): { properties: Record<string, JsonSchema>; required: Set<string> } | undefined {
-  const resolved = resolveSchemaForInspection(schema, project);
-  if (!resolved || resolved.type !== 'object' || !resolved.properties) return undefined;
-  return {
-    properties: resolved.properties,
-    required: new Set(resolved.required ?? []),
-  };
-}
-
-function makeUnionBranchesMutuallyExclusive(
-  branches: JsonSchema[],
-  project: Project,
-): JsonSchema[] {
-  const metadata = branches.map(branch => getObjectSchemaMetadata(branch, project));
-  const objectMetadata = metadata.filter(
-    (info): info is { properties: Record<string, JsonSchema>; required: Set<string> } => !!info,
-  );
-  if (objectMetadata.length !== metadata.length) {
-    return branches;
-  }
-
-  const candidateProperties = new Set<string>();
-  for (const info of objectMetadata) {
-    for (const [name, schema] of Object.entries(info.properties)) {
-      if (info.required.has(name) && schema.const !== undefined) {
-        candidateProperties.add(name);
-      }
-    }
-  }
-
-  for (const propertyName of candidateProperties) {
-    let hasLegacyBranch = false;
-    let hasDiscriminatedBranch = false;
-    const discriminantValues = new Set<string | number | boolean>();
-    let supported = true;
-
-    for (const info of objectMetadata) {
-      const propertySchema = info.properties[propertyName];
-      if (!propertySchema) {
-        hasLegacyBranch = true;
-        continue;
-      }
-
-      if (!info.required.has(propertyName) || propertySchema.const === undefined) {
-        supported = false;
-        break;
-      }
-
-      if (discriminantValues.has(propertySchema.const)) {
-        supported = false;
-        break;
-      }
-
-      discriminantValues.add(propertySchema.const);
-      hasDiscriminatedBranch = true;
-    }
-
-    if (!supported || !hasLegacyBranch || !hasDiscriminatedBranch) {
-      continue;
-    }
-
-    return branches.map((branch, index) => {
-      if (objectMetadata[index].properties[propertyName]) {
-        return branch;
-      }
-      return {
-        allOf: [
-          branch,
-          {
-            not: {
-              required: [propertyName],
-            },
-          },
-        ],
-      };
-    });
-  }
-
-  return branches;
-}
-
 // ─── Type → JSON Schema Conversion ──────────────────────────────────────────
 
 function typeTextToSchema(typeText: string, project: Project, _depth = 0): JsonSchema {
@@ -297,10 +206,7 @@ function typeTextToSchema(typeText: string, project: Project, _depth = 0): JsonS
     const parts = splitUnionType(cleaned).filter(p => p !== 'undefined' && p !== '');
     if (parts.length > 1) {
       return {
-        oneOf: makeUnionBranchesMutuallyExclusive(
-          parts.map(p => typeTextToSchema(p, project, _depth + 1)),
-          project,
-        ),
+        oneOf: parts.map(p => typeTextToSchema(p, project, _depth + 1)),
       };
     }
     if (parts.length === 1 && parts[0] !== cleaned) {

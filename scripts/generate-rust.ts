@@ -631,90 +631,6 @@ function generateDiscriminatedUnion(cfg: UnionConfig): string {
   return lines.join('\n');
 }
 
-function generateValueRoutedDiscriminatedUnion(cfg: UnionConfig): string {
-  const lines: string[] = [];
-  if (cfg.doc) {
-    for (const d of cfg.doc.split('\n')) lines.push(`/// ${d.trimEnd()}`);
-  }
-  lines.push('#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]');
-  lines.push('#[serde(try_from = "serde_json::Value", into = "serde_json::Value")]');
-  lines.push(`pub enum ${cfg.name} {`);
-
-  for (const v of cfg.variants) {
-    if (v.doc) {
-      for (const d of v.doc.split('\n')) lines.push(`    /// ${d.trimEnd()}`);
-    }
-    if (v.isUnit) {
-      lines.push(`    ${v.variantName},`);
-    } else {
-      const inner = v.boxed ? `Box<${v.innerType}>` : v.innerType;
-      lines.push(`    ${v.variantName}(${inner}),`);
-    }
-  }
-
-  if (cfg.unknown) {
-    lines.push('    /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.');
-    lines.push('    /// Reducers treat this as a no-op.');
-    lines.push('    Unknown(serde_json::Value),');
-  }
-
-  lines.push('}');
-  lines.push('');
-  lines.push(`impl TryFrom<serde_json::Value> for ${cfg.name} {`);
-  lines.push('    type Error = String;');
-  lines.push('');
-  lines.push('    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {');
-  lines.push('        let Some(object) = value.as_object() else {');
-  lines.push(`            return Err("${cfg.name} must be a JSON object".to_string());`);
-  lines.push('        };');
-  lines.push(`        let Some(kind) = object.get(${JSON.stringify(cfg.discriminantField)}).and_then(|value| value.as_str()) else {`);
-  lines.push(`            return Err("${cfg.name} is missing a string ${cfg.discriminantField} discriminant".to_string());`);
-  lines.push('        };');
-  lines.push('');
-  lines.push('        match kind {');
-  for (const v of cfg.variants) {
-    lines.push(`            ${JSON.stringify(v.wireValue)} => {`);
-    if (v.isUnit) {
-      lines.push(`                Ok(Self::${v.variantName})`);
-    } else {
-      const boxOpen = v.boxed ? 'Box::new(' : '';
-      const boxClose = v.boxed ? ')' : '';
-      lines.push(`                serde_json::from_value(value).map(|inner| Self::${v.variantName}(${boxOpen}inner${boxClose})).map_err(|error| error.to_string())`);
-    }
-    lines.push('            }');
-  }
-  if (cfg.unknown) {
-    lines.push('            _ => Ok(Self::Unknown(value)),');
-  } else {
-    lines.push(`            _ => Err(format!("unknown ${cfg.discriminantField}: {kind}")),`);
-  }
-  lines.push('        }');
-  lines.push('    }');
-  lines.push('}');
-  lines.push('');
-  lines.push(`impl From<${cfg.name}> for serde_json::Value {`);
-  lines.push(`    fn from(value: ${cfg.name}) -> Self {`);
-  lines.push('        match value {');
-  for (const v of cfg.variants) {
-    if (v.isUnit) {
-      lines.push(`            ${cfg.name}::${v.variantName} => serde_json::json!({ ${JSON.stringify(cfg.discriminantField)}: ${JSON.stringify(v.wireValue)} }),`);
-    } else {
-      const innerPattern = v.boxed ? 'inner' : 'inner';
-      const innerValue = v.boxed ? '*inner' : 'inner';
-      lines.push(`            ${cfg.name}::${v.variantName}(${innerPattern}) => serde_json::to_value(${innerValue}).expect("serializing ${cfg.name}::${v.variantName}"),`);
-    }
-  }
-  if (cfg.unknown) {
-    lines.push(`            ${cfg.name}::Unknown(value) => value,`);
-  }
-  lines.push('        }');
-  lines.push('    }');
-  lines.push('}');
-  return lines.join('\n');
-}
-
-// ─── Interface → Rust Struct (auto) ──────────────────────────────────────────
-
 function generateStructFromInterface(
   project: Project,
   tsInterfaceName: string,
@@ -1507,7 +1423,7 @@ const COMMAND_STRUCTS: { name: string; omitDiscriminants?: boolean; rustName?: s
   { name: 'SubscribeParams' }, { name: 'SubscribeView' }, { name: 'SubscriptionDeliveryOptions' }, { name: 'SubscribeResult' },
   { name: 'SessionForkSource' }, { name: 'CreateSessionParams' },
   { name: 'DisposeSessionParams' },
-  { name: 'ForkChatSource' }, { name: 'SideChatSource' }, { name: 'CreateChatParams' },
+  { name: 'ForkChatSource', omitDiscriminants: true }, { name: 'SideChatSource', omitDiscriminants: true }, { name: 'CreateChatParams' },
   { name: 'DisposeChatParams' },
   { name: 'ListSessionsParams' }, { name: 'ListSessionsResult' },
   { name: 'ResourceReadParams' }, { name: 'ResourceReadResult' },
@@ -1540,6 +1456,16 @@ const RECONNECT_RESULT_UNION: UnionConfig = {
   variants: [
     { variantName: 'Replay', innerType: 'ReconnectReplayResult', wireValue: 'replay' },
     { variantName: 'Snapshot', innerType: 'ReconnectSnapshotResult', wireValue: 'snapshot' },
+  ],
+};
+
+const CHAT_SOURCE_UNION: UnionConfig = {
+  name: 'ChatSource',
+  discriminantField: 'kind',
+  doc: 'How a new chat uses a source chat.',
+  variants: [
+    { variantName: 'Fork', innerType: 'ForkChatSource', wireValue: 'fork' },
+    { variantName: 'SideChat', innerType: 'SideChatSource', wireValue: 'sideChat' },
   ],
 };
 
@@ -1581,7 +1507,7 @@ function generateCommandsFile(project: Project): string {
   }
 
   lines.push('// ─── ChatSource Union ─────────────────────────────────────────────────\n');
-  lines.push(generateChatSource());
+  lines.push(generateDiscriminatedUnion(CHAT_SOURCE_UNION));
   lines.push('');
 
   lines.push('// ─── ReconnectResult Union ────────────────────────────────────────────\n');
@@ -1593,47 +1519,6 @@ function generateCommandsFile(project: Project): string {
   lines.push('');
 
   return lines.join('\n');
-}
-
-function generateChatSource(): string {
-  return `/// How a new chat uses a source chat.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(try_from = "serde_json::Value", into = "serde_json::Value")]
-pub enum ChatSource {
-    /// Copies source history through a completed turn into the new chat.
-    Fork(ForkChatSource),
-    /// Supplies source context to a new side chat without copying it into the side chat's visible history.
-    SideChat(SideChatSource),
-}
-
-impl TryFrom<serde_json::Value> for ChatSource {
-    type Error = String;
-
-    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
-        let Some(object) = value.as_object() else {
-            return Err("ChatSource must be a JSON object".to_string());
-        };
-
-        match object.get("kind").and_then(|field| field.as_str()) {
-            Some("sideChat") => serde_json::from_value(value)
-                .map(Self::SideChat)
-                .map_err(|error| error.to_string()),
-            Some(kind) => Err(format!("unknown kind: {kind}")),
-            None => serde_json::from_value(value)
-                .map(Self::Fork)
-                .map_err(|error| error.to_string()),
-        }
-    }
-}
-
-impl From<ChatSource> for serde_json::Value {
-    fn from(value: ChatSource) -> Self {
-        match value {
-            ChatSource::Fork(inner) => serde_json::to_value(inner).expect("serializing ChatSource::Fork"),
-            ChatSource::SideChat(inner) => serde_json::to_value(inner).expect("serializing ChatSource::SideChat"),
-        }
-    }
-}`;
 }
 
 function generateSubscribeParamsImplRust(): string {

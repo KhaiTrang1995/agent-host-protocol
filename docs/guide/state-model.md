@@ -163,9 +163,9 @@ ChatState {
 ```
 
 Fork and side-chat creation both reference source turns by stable identifiers.
-The legacy fork payload remains flat `{ chat, turnId }`; a side chat uses
-`{ kind: 'sideChat', chat, turnId }`. For side chats, hosts resolve `turnId`
-against either `activeTurn` or historical `turns` at creation time. If it names
+Both source forms are fully discriminated — `{ kind: 'fork', chat, turnId }`
+and `{ kind: 'sideChat', chat, turnId }`. For side chats, hosts resolve
+`turnId` against either `activeTurn` or historical `turns` at creation time. If it names
 the active turn, the host snapshots the currently available response there,
 which preserves `/btw`-style side chats even though that same turn later moves
 into `turns` when it completes.
@@ -667,9 +667,9 @@ createChat({
 });
 ```
 
-Forked chats (those whose `source` uses the flat `{ chat, turnId }` shape)
-inherit the source chat's `workingDirectories` and primary, so both fields are
-ignored for forks. Side chats can still choose their own subset and primary,
+Forked chats (those whose `source.kind` is `"fork"`) inherit the source
+chat's `workingDirectories` and primary, so both fields are ignored for forks.
+Side chats can still choose their own subset and primary,
 and they still reference their source with a stable `turnId` whether that turn
 was active or historical when the side chat was created.
 

@@ -1,7 +1,7 @@
 {
-  "name": "chat-origin-fork-flat",
+  "name": "chat-origin-fork",
   "group": "A",
-  "description": "A session/chatAdded action preserves flat fork provenance in ChatOrigin state.",
+  "description": "A session/chatAdded action preserves discriminated fork provenance in ChatOrigin state.",
   "type": "StateAction",
   "input": {
     "type": "session/chatAdded",

@@ -488,8 +488,6 @@ pub struct ForkChatSource {
     /// Completed turn identifier in the source chat.
     ///
     /// Content through this turn is copied into the new chat's visible `turns`.
-    /// This preserves the existing 0.7.x flat fork wire format (`chat` +
-    /// `turnId`).
     pub turn_id: String,
 }
 
@@ -498,8 +496,6 @@ pub struct ForkChatSource {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SideChatSource {
-    /// Discriminant
-    pub kind: ChatSourceKind,
     /// URI of the existing source chat.
     pub chat: Uri,
     /// Stable source-turn identifier in the source chat.
@@ -526,24 +522,22 @@ pub struct CreateChatParams {
     pub initial_message: Option<Message>,
     /// Optional source chat and source turn.
     ///
-    /// The source chat MUST belong to this session. Clients MUST only request the
-    /// flat fork shape (`chat` + `turnId`) when the selected agent advertises
-    /// `capabilities.multipleChats.fork`, and
-    /// `kind: "sideChat"` when the selected agent advertises
-    /// `capabilities.multipleChats.sideChat`. Forks keep the legacy flat
-    /// `chat` + `turnId` shape and therefore only target completed turns. Side
-    /// chats also carry a stable `turnId`, which the host resolves against the
-    /// source chat's current active turn or retained history. If it resolves to
-    /// the active turn, the host snapshots the currently available partial
-    /// response when accepting `createChat`.
+    /// The source chat MUST belong to this session. Clients MUST only request
+    /// `kind: "fork"` when the selected agent advertises
+    /// `capabilities.multipleChats.fork`, and `kind: "sideChat"` when the
+    /// selected agent advertises `capabilities.multipleChats.sideChat`. Both
+    /// source forms carry a stable top-level `turnId`. Forks target completed
+    /// turns. Side chats also carry a stable `turnId`, which the host resolves
+    /// against the source chat's current active turn or retained history. If it
+    /// resolves to the active turn, the host snapshots the currently available
+    /// partial response when accepting `createChat`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<ChatSource>,
     /// Initial working-directory subset for this chat. Every entry MUST be
     /// present in the owning session's `workingDirectories`; the server MUST
     /// reject any entry that is not. When absent, the chat inherits the full
-    /// session set. Forked chats (those whose `source` uses the flat `chat` +
-    /// `turnId` shape) inherit the source chat's `workingDirectories`; this field
-    /// is ignored for forks.
+    /// session set. Forked chats (those whose `source.kind` is `"fork"`) inherit
+    /// the source chat's `workingDirectories`; this field is ignored for forks.
     ///
     /// A client MUST NOT supply this field unless the agent advertises
     /// {@link AgentCapabilities.multipleWorkingDirectories}.
@@ -557,8 +551,7 @@ pub struct CreateChatParams {
     /// reject creation that omits it, or fall back to the first of the chat's
     /// directories. Fixed at creation and reported (read-only) on
     /// {@link ChatState.primaryWorkingDirectory}. Ignored for forks (a chat whose
-    /// `source` uses the flat `chat` + `turnId` shape inherits the source chat's
-    /// primary).
+    /// `source.kind` is `"fork"` inherits the source chat's primary).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primary_working_directory: Option<Uri>,
 }
@@ -1353,45 +1346,12 @@ pub struct ChangesetOperationFollowUp {
 
 /// How a new chat uses a source chat.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(try_from = "serde_json::Value", into = "serde_json::Value")]
+#[serde(tag = "kind")]
 pub enum ChatSource {
-    /// Copies source history through a completed turn into the new chat.
+    #[serde(rename = "fork")]
     Fork(ForkChatSource),
-    /// Supplies source context to a new side chat without copying it into the side chat's visible history.
+    #[serde(rename = "sideChat")]
     SideChat(SideChatSource),
-}
-
-impl TryFrom<serde_json::Value> for ChatSource {
-    type Error = String;
-
-    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
-        let Some(object) = value.as_object() else {
-            return Err("ChatSource must be a JSON object".to_string());
-        };
-
-        match object.get("kind").and_then(|field| field.as_str()) {
-            Some("sideChat") => serde_json::from_value(value)
-                .map(Self::SideChat)
-                .map_err(|error| error.to_string()),
-            Some(kind) => Err(format!("unknown kind: {kind}")),
-            None => serde_json::from_value(value)
-                .map(Self::Fork)
-                .map_err(|error| error.to_string()),
-        }
-    }
-}
-
-impl From<ChatSource> for serde_json::Value {
-    fn from(value: ChatSource) -> Self {
-        match value {
-            ChatSource::Fork(inner) => {
-                serde_json::to_value(inner).expect("serializing ChatSource::Fork")
-            }
-            ChatSource::SideChat(inner) => {
-                serde_json::to_value(inner).expect("serializing ChatSource::SideChat")
-            }
-        }
-    }
 }
 
 // ─── ReconnectResult Union ────────────────────────────────────────────

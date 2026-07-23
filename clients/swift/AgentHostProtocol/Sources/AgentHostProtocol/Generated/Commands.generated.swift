@@ -455,19 +455,21 @@ public struct DisposeSessionParams: Codable, Sendable {
 }
 
 public struct ForkChatSource: Codable, Sendable {
+    /// Discriminant
+    public var kind: ChatSourceKind
     /// URI of the existing source chat.
     public var chat: String
     /// Completed turn identifier in the source chat.
     ///
     /// Content through this turn is copied into the new chat's visible `turns`.
-    /// This preserves the existing 0.7.x flat fork wire format (`chat` +
-    /// `turnId`).
     public var turnId: String
 
     public init(
+        kind: ChatSourceKind,
         chat: String,
         turnId: String
     ) {
+        self.kind = kind
         self.chat = chat
         self.turnId = turnId
     }
@@ -508,23 +510,21 @@ public struct CreateChatParams: Codable, Sendable {
     public var initialMessage: Message?
     /// Optional source chat and source turn.
     ///
-    /// The source chat MUST belong to this session. Clients MUST only request the
-    /// flat fork shape (`chat` + `turnId`) when the selected agent advertises
-    /// `capabilities.multipleChats.fork`, and
-    /// `kind: "sideChat"` when the selected agent advertises
-    /// `capabilities.multipleChats.sideChat`. Forks keep the legacy flat
-    /// `chat` + `turnId` shape and therefore only target completed turns. Side
-    /// chats also carry a stable `turnId`, which the host resolves against the
-    /// source chat's current active turn or retained history. If it resolves to
-    /// the active turn, the host snapshots the currently available partial
-    /// response when accepting `createChat`.
+    /// The source chat MUST belong to this session. Clients MUST only request
+    /// `kind: "fork"` when the selected agent advertises
+    /// `capabilities.multipleChats.fork`, and `kind: "sideChat"` when the
+    /// selected agent advertises `capabilities.multipleChats.sideChat`. Both
+    /// source forms carry a stable top-level `turnId`. Forks target completed
+    /// turns. Side chats also carry a stable `turnId`, which the host resolves
+    /// against the source chat's current active turn or retained history. If it
+    /// resolves to the active turn, the host snapshots the currently available
+    /// partial response when accepting `createChat`.
     public var source: ChatSource?
     /// Initial working-directory subset for this chat. Every entry MUST be
     /// present in the owning session's `workingDirectories`; the server MUST
     /// reject any entry that is not. When absent, the chat inherits the full
-    /// session set. Forked chats (those whose `source` uses the flat `chat` +
-    /// `turnId` shape) inherit the source chat's `workingDirectories`; this field
-    /// is ignored for forks.
+    /// session set. Forked chats (those whose `source.kind` is `"fork"`) inherit
+    /// the source chat's `workingDirectories`; this field is ignored for forks.
     ///
     /// A client MUST NOT supply this field unless the agent advertises
     /// {@link AgentCapabilities.multipleWorkingDirectories}.
@@ -537,8 +537,7 @@ public struct CreateChatParams: Codable, Sendable {
     /// reject creation that omits it, or fall back to the first of the chat's
     /// directories. Fixed at creation and reported (read-only) on
     /// {@link ChatState.primaryWorkingDirectory}. Ignored for forks (a chat whose
-    /// `source` uses the flat `chat` + `turnId` shape inherits the source chat's
-    /// primary).
+    /// `source.kind` is `"fork"` inherits the source chat's primary).
     public var primaryWorkingDirectory: String?
 
     public init(
@@ -1470,17 +1469,20 @@ public enum ChatSource: Codable, Sendable {
     case fork(ForkChatSource)
     case sideChat(SideChatSource)
 
-    private enum DiscriminatorCodingKeys: String, CodingKey { case kind }
+    private enum DiscriminantKey: String, CodingKey {
+        case discriminant = "kind"
+    }
 
     public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: DiscriminatorCodingKeys.self)
-        switch try container.decodeIfPresent(String.self, forKey: .kind) {
+        let container = try decoder.container(keyedBy: DiscriminantKey.self)
+        let discriminant = try container.decode(String.self, forKey: .discriminant)
+        switch discriminant {
+        case "fork":
+            self = .fork(try ForkChatSource(from: decoder))
         case "sideChat":
             self = .sideChat(try SideChatSource(from: decoder))
-        case nil:
-            self = .fork(try ForkChatSource(from: decoder))
-        case .some(let discriminant):
-            throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "Unknown ChatSource discriminant: \(discriminant)")
+        default:
+            throw DecodingError.dataCorruptedError(forKey: .discriminant, in: container, debugDescription: "Unknown ChatSource discriminant: \(discriminant)")
         }
     }
 

@@ -827,8 +827,8 @@ pub struct AgentCapabilities {
 #[serde(rename_all = "camelCase")]
 pub struct MultipleChatsCapability {
     /// The agent can fork a chat from a specific turn. When absent or `false`,
-    /// clients MUST NOT pass a fork-shaped {@link ChatSource} (`chat` + `turnId`)
-    /// to `createChat`.
+    /// clients MUST NOT pass a {@link ChatSource} with `kind: "fork"` to
+    /// `createChat`.
     /// Forking always implies multi-chat support.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fork: Option<bool>,

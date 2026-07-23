@@ -1,14 +1,16 @@
 {
-  "name": "chat-source-fork-flat",
+  "name": "chat-source-fork",
   "group": "A",
-  "description": "ChatSource preserves the 0.7.x flat fork wire format with a top-level turnId.",
+  "description": "ChatSource requires an explicit fork discriminator alongside its source chat and stable completed-turn turnId.",
   "type": "ChatSource",
   "input": {
+    "kind": "fork",
     "chat": "ahp-chat:/main",
     "turnId": "turn-12"
   },
   "acceptableOutputs": [
     {
+      "kind": "fork",
       "chat": "ahp-chat:/main",
       "turnId": "turn-12"
     }

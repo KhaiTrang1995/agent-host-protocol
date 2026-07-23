@@ -62,23 +62,22 @@ Clients MAY periodically sync their local input state into the draft by dispatch
 [`createChat`](/reference/chat#createchat) is a JSON-RPC request. Callers identify the owning session via the request's `channel` parameter (`ahp-session:/<sid>`) and MAY supply:
 
 - an `initialMessage` to start the first turn immediately — carrying its own [`model`](/reference/chat#message) / [`agent`](/reference/chat#message) selection — and
-- a `source` of type [`ChatSource`](/reference/chat#chatsource), which is
-  either the legacy flat fork payload `{ chat, turnId }` or a side-chat payload
-  `{ kind: "sideChat", chat, turnId }` selecting a specific source turn.
+- a `source` of type [`ChatSource`](/reference/chat#chatsource), either
+  `{ kind: "fork", chat, turnId }` or `{ kind: "sideChat", chat, turnId }`,
+  selecting a specific source turn.
 
 The server allocates the chat URI and adds the chat to the session's catalog (`session/chatAdded` on the session channel) before returning.
 
 Clients MUST gate source-based creation using the selected
 [`AgentInfo.capabilities.multipleChats`](/reference/root#multiplechatscapability):
 
-- `fork: true` permits the legacy flat fork shape `{ chat, turnId }`.
+- `fork: true` permits `source.kind: "fork"`.
 - `sideChat: true` permits `source.kind: "sideChat"`.
 Absence or `false` means the corresponding source form is unsupported. The host
 MUST reject an unsupported source. It MUST also reject a source chat outside the
 target session, an unknown source chat or turn, or a source that names the chat
-being created. For forks, the host MUST additionally reject any source that does
-not use the legacy flat `chat` + `turnId` fork shape — forks only target
-completed turns.
+being created. For forks, the host MUST additionally reject any source whose
+`kind` is not `"fork"` — forks only target completed turns.
 
 For side chats, `turnId` is a stable identity, not a lifecycle snapshot. Hosts
 and clients resolve it against the source chat's current `activeTurn` or its

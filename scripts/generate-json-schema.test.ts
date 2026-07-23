@@ -183,7 +183,7 @@ describe('generated JSON schemas', () => {
         assert.deepEqual(kinds, ['user', 'fork', 'sideChat', 'tool']);
       });
 
-      it('preserves flat fork sources and stable side-chat turn identifiers', () => {
+      it('requires stable top-level turn identifiers for fork and side-chat provenance', () => {
         const defs = schema.$defs as Record<string, Record<string, unknown>>;
         const chatOrigin = defs.ChatOrigin;
         const branches = chatOrigin.oneOf as Array<Record<string, unknown>>;
@@ -194,47 +194,34 @@ describe('generated JSON schemas', () => {
           }),
         );
 
-        assert.deepEqual(
-          branchByKind.get('fork')?.turnId?.type,
-          'string',
-        );
-        assert.deepEqual(
-          branchByKind.get('sideChat')?.turnId?.type,
-          'string',
-        );
+        assert.deepEqual(branchByKind.get('fork')?.turnId?.type, 'string');
+        assert.deepEqual(branchByKind.get('sideChat')?.turnId?.type, 'string');
 
         const chatSource = defs.ChatSource;
         if (chatSource) {
-          assert.deepEqual(
-            defs.ForkChatSource?.properties?.turnId?.type,
-            'string',
-          );
-          assert.equal(
-            defs.ForkChatSource?.properties?.kind,
-            undefined,
-          );
-          assert.deepEqual(
-            defs.SideChatSource?.properties?.turnId?.type,
-            'string',
-          );
-          assert.deepEqual(
-            defs.SideChatSource?.properties?.kind?.const,
-            'sideChat',
-          );
-          assert.equal(
-            defs.SideChatSource?.properties?.turn,
-            undefined,
-          );
+          assert.deepEqual(defs.ForkChatSource?.properties?.kind?.const, 'fork');
+          assert.deepEqual(defs.ForkChatSource?.properties?.turnId?.type, 'string');
+          assert.deepEqual(defs.SideChatSource?.properties?.kind?.const, 'sideChat');
+          assert.deepEqual(defs.SideChatSource?.properties?.turnId?.type, 'string');
+          assert.equal(defs.SideChatSource?.properties?.turn, undefined);
         }
       });
 
-      it('validates ChatSource kind disambiguation', () => {
+      it('accepts valid discriminated ChatSource payloads and rejects missing or unknown kinds', () => {
         const defs = schema.$defs as Record<string, Record<string, unknown>>;
         const chatSource = defs.ChatSource;
         if (!chatSource) {
           return;
         }
 
+        assert.equal(
+          schemaAccepts(schema, chatSource, {
+            kind: 'fork',
+            chat: 'ahp-chat:/source',
+            turnId: 'turn-1',
+          }),
+          true,
+        );
         assert.equal(
           schemaAccepts(schema, chatSource, {
             kind: 'sideChat',
@@ -248,11 +235,11 @@ describe('generated JSON schemas', () => {
             chat: 'ahp-chat:/source',
             turnId: 'turn-1',
           }),
-          true,
+          false,
         );
         assert.equal(
           schemaAccepts(schema, chatSource, {
-            kind: 'fork',
+            kind: 'unknown',
             chat: 'ahp-chat:/source',
             turnId: 'turn-1',
           }),

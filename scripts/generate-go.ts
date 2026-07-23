@@ -592,10 +592,19 @@ function generateDiscriminatedUnion(cfg: UnionConfig): string {
   // UnmarshalJSON
   lines.push(`// UnmarshalJSON decodes the variant indicated by the ${JSON.stringify(cfg.discriminantField)} discriminator.`);
   lines.push(`func (u *${cfg.name}) UnmarshalJSON(data []byte) error {`);
-  lines.push(`\tdisc, _, err := readDiscriminator(data, ${JSON.stringify(cfg.discriminantField)})`);
+  lines.push(
+    `\tdisc, ${cfg.unknown ? '_' : 'ok'}, err := readDiscriminator(data, ${JSON.stringify(cfg.discriminantField)})`,
+  );
   lines.push('\tif err != nil {');
   lines.push('\t\treturn err');
   lines.push('\t}');
+  if (!cfg.unknown) {
+    lines.push('\tif !ok {');
+    lines.push(
+      `\t\treturn missingDiscriminatorError(${JSON.stringify(cfg.name)}, ${JSON.stringify(cfg.discriminantField)})`,
+    );
+    lines.push('\t}');
+  }
   lines.push('\tswitch disc {');
   for (const v of cfg.variants) {
     lines.push(`\tcase ${JSON.stringify(v.wireValue)}:`);
@@ -611,7 +620,9 @@ function generateDiscriminatedUnion(cfg: UnionConfig): string {
     lines.push('\t\tcopy(raw, data)');
     lines.push(`\t\tu.Value = &${cfg.name}Unknown{Raw: raw}`);
   } else {
-    lines.push(`\t\treturn &json.UnmarshalTypeError{Value: "${cfg.name}", Type: nil}`);
+    lines.push(
+      `\t\treturn unknownDiscriminatorError(${JSON.stringify(cfg.name)}, ${JSON.stringify(cfg.discriminantField)}, disc)`,
+    );
   }
   lines.push('\t}');
   lines.push('\treturn nil');
@@ -1516,6 +1527,16 @@ const RECONNECT_RESULT_UNION: UnionConfig = {
   ],
 };
 
+const CHAT_SOURCE_UNION: UnionConfig = {
+  name: 'ChatSource',
+  discriminantField: 'kind',
+  doc: 'ChatSource identifies how a new chat uses a source chat.',
+  variants: [
+    { variantName: 'Fork', innerType: 'ForkChatSource', wireValue: 'fork' },
+    { variantName: 'SideChat', innerType: 'SideChatSource', wireValue: 'sideChat' },
+  ],
+};
+
 function generateChangesetOperationTargetGo(): string {
   return `// ChangesetOperationTarget identifies the file or range a
 // ChangesetOperation should act on.
@@ -1579,55 +1600,6 @@ func (t ChangesetOperationTarget) MarshalJSON() ([]byte, error) {
 }`;
 }
 
-function generateChatSourceGo(): string {
-  return `// ChatSource identifies how a new chat uses a source chat.
-type ChatSource struct {
-	Value isChatSource
-}
-
-// isChatSource is the marker interface for chat source variants.
-type isChatSource interface{ isChatSource() }
-
-func (*ForkChatSource) isChatSource() {}
-func (*SideChatSource) isChatSource() {}
-
-// UnmarshalJSON decodes side-chat sources by \`kind: "sideChat"\`. Any other
-// object without a \`kind\` is treated as the legacy flat fork payload.
-func (s *ChatSource) UnmarshalJSON(data []byte) error {
-	disc, ok, err := readDiscriminator(data, "kind")
-	if err != nil {
-		return err
-	}
-	if ok {
-		switch disc {
-		case "sideChat":
-			var value SideChatSource
-			if err := json.Unmarshal(data, &value); err != nil {
-				return err
-			}
-			s.Value = &value
-			return nil
-		default:
-			return &json.UnmarshalTypeError{Value: "ChatSource kind " + disc, Type: nil}
-		}
-	}
-	var value ForkChatSource
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-	s.Value = &value
-	return nil
-}
-
-// MarshalJSON encodes the active variant back to JSON.
-func (s ChatSource) MarshalJSON() ([]byte, error) {
-	if s.Value == nil {
-		return []byte("null"), nil
-	}
-	return json.Marshal(s.Value)
-}`;
-}
-
 function generateCommandsFile(project: Project): string {
   const lines: string[] = [HEADER_WITH_IMPORTS];
 
@@ -1659,7 +1631,7 @@ function generateCommandsFile(project: Project): string {
   }
 
   lines.push('// ─── ChatSource Union ─────────────────────────────────────────────────\n');
-  lines.push(generateChatSourceGo());
+  lines.push(generateDiscriminatedUnion(CHAT_SOURCE_UNION));
   lines.push('');
 
   lines.push('// ─── ReconnectResult Union ────────────────────────────────────────────\n');
