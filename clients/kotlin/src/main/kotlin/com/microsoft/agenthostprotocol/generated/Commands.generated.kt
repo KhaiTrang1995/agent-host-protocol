@@ -120,6 +120,114 @@ enum class ResourceWriteMode {
 
 // ─── Command Types ──────────────────────────────────────────────────────────
 
+/**
+ * Copies source history through a completed turn into the new chat.
+ */
+@Serializable(with = ForkChatSourceSerializer::class)
+data class ForkChatSource(
+    /**
+     * URI of the existing source chat.
+     */
+    val chat: URI,
+    /**
+     * Completed turn identifier in the source chat.
+     *
+     * Content through this turn is copied into the new chat's visible `turns`.
+     */
+    val turnId: String,
+) {
+    val kind: ChatSourceKind
+        get() = ChatSourceKind.FORK
+}
+
+@Serializable
+private data class ForkChatSourceWire(
+    val kind: ChatSourceKind,
+    val chat: URI,
+    val turnId: String,
+)
+
+internal object ForkChatSourceSerializer : KSerializer<ForkChatSource> {
+    override val descriptor: SerialDescriptor = ForkChatSourceWire.serializer().descriptor
+
+    override fun deserialize(decoder: Decoder): ForkChatSource {
+        val input = decoder as? JsonDecoder
+            ?: error("ForkChatSource can only be deserialized from JSON")
+        val wire = input.json.decodeFromJsonElement(ForkChatSourceWire.serializer(), input.decodeJsonElement())
+        if (wire.kind != ChatSourceKind.FORK) {
+            error("Expected ForkChatSource kind fork")
+        }
+        return ForkChatSource(chat = wire.chat, turnId = wire.turnId)
+    }
+
+    override fun serialize(encoder: Encoder, value: ForkChatSource) {
+        val output = encoder as? JsonEncoder
+            ?: error("ForkChatSource can only be serialized to JSON")
+        val element = output.json.encodeToJsonElement(
+            ForkChatSourceWire.serializer(),
+            ForkChatSourceWire(kind = ChatSourceKind.FORK, chat = value.chat, turnId = value.turnId),
+        )
+        output.encodeJsonElement(element)
+    }
+}
+
+/**
+ * Supplies source context to a new side chat without copying it into the side
+ * chat's visible history.
+ */
+@Serializable(with = SideChatSourceSerializer::class)
+data class SideChatSource(
+    /**
+     * URI of the existing source chat.
+     */
+    val chat: URI,
+    /**
+     * Stable source-turn identifier in the source chat.
+     *
+     * Hosts resolve this id against the source chat's current `activeTurn` or its
+     * retained `turns` when accepting `createChat`. If it names the current
+     * active turn, the host snapshots the source chat's retained history plus
+     * that turn's current user message and any partial assistant response already
+     * available. Once that turn later becomes historical, it is still referenced
+     * by this same identifier.
+     */
+    val turnId: String,
+) {
+    val kind: ChatSourceKind
+        get() = ChatSourceKind.SIDE_CHAT
+}
+
+@Serializable
+private data class SideChatSourceWire(
+    val kind: ChatSourceKind,
+    val chat: URI,
+    val turnId: String,
+)
+
+internal object SideChatSourceSerializer : KSerializer<SideChatSource> {
+    override val descriptor: SerialDescriptor = SideChatSourceWire.serializer().descriptor
+
+    override fun deserialize(decoder: Decoder): SideChatSource {
+        val input = decoder as? JsonDecoder
+            ?: error("SideChatSource can only be deserialized from JSON")
+        val wire = input.json.decodeFromJsonElement(SideChatSourceWire.serializer(), input.decodeJsonElement())
+        if (wire.kind != ChatSourceKind.SIDE_CHAT) {
+            error("Expected SideChatSource kind sideChat")
+        }
+        return SideChatSource(chat = wire.chat, turnId = wire.turnId)
+    }
+
+    override fun serialize(encoder: Encoder, value: SideChatSource) {
+        val output = encoder as? JsonEncoder
+            ?: error("SideChatSource can only be serialized to JSON")
+        val element = output.json.encodeToJsonElement(
+            SideChatSourceWire.serializer(),
+            SideChatSourceWire(kind = ChatSourceKind.SIDE_CHAT, chat = value.chat, turnId = value.turnId),
+        )
+        output.encodeJsonElement(element)
+    }
+}
+
 @Serializable
 data class InitializeParams(
     /**
@@ -464,47 +572,6 @@ data class DisposeSessionParams(
      * Channel URI this command targets.
      */
     val channel: String
-)
-
-@Serializable
-data class ForkChatSource(
-    /**
-     * Discriminant
-     */
-    val kind: ChatSourceKind,
-    /**
-     * URI of the existing source chat.
-     */
-    val chat: String,
-    /**
-     * Completed turn identifier in the source chat.
-     *
-     * Content through this turn is copied into the new chat's visible `turns`.
-     */
-    val turnId: String
-)
-
-@Serializable
-data class SideChatSource(
-    /**
-     * Discriminant
-     */
-    val kind: ChatSourceKind,
-    /**
-     * URI of the existing source chat.
-     */
-    val chat: String,
-    /**
-     * Stable source-turn identifier in the source chat.
-     *
-     * Hosts resolve this id against the source chat's current `activeTurn` or its
-     * retained `turns` when accepting `createChat`. If it names the current
-     * active turn, the host snapshots the source chat's retained history plus
-     * that turn's current user message and any partial assistant response already
-     * available. Once that turn later becomes historical, it is still referenced
-     * by this same identifier.
-     */
-    val turnId: String
 )
 
 @Serializable

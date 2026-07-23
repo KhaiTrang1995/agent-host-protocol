@@ -1119,6 +1119,62 @@ type ChangesetOperationFollowUp struct {
 	External *bool `json:"external,omitempty"`
 }
 
+func (v *ForkChatSource) UnmarshalJSON(data []byte) error {
+	disc, ok, err := readDiscriminator(data, "kind")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return missingDiscriminatorError("ForkChatSource", "kind")
+	}
+	if disc != "fork" {
+		return unknownDiscriminatorError("ForkChatSource", "kind", disc)
+	}
+	type wire ForkChatSource
+	var raw wire
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*v = ForkChatSource(raw)
+	v.Kind = ChatSourceKindFork
+	return nil
+}
+
+func (v ForkChatSource) MarshalJSON() ([]byte, error) {
+	type wire ForkChatSource
+	raw := wire(v)
+	raw.Kind = ChatSourceKindFork
+	return json.Marshal(raw)
+}
+
+func (v *SideChatSource) UnmarshalJSON(data []byte) error {
+	disc, ok, err := readDiscriminator(data, "kind")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return missingDiscriminatorError("SideChatSource", "kind")
+	}
+	if disc != "sideChat" {
+		return unknownDiscriminatorError("SideChatSource", "kind", disc)
+	}
+	type wire SideChatSource
+	var raw wire
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*v = SideChatSource(raw)
+	v.Kind = ChatSourceKindSideChat
+	return nil
+}
+
+func (v SideChatSource) MarshalJSON() ([]byte, error) {
+	type wire SideChatSource
+	raw := wire(v)
+	raw.Kind = ChatSourceKindSideChat
+	return json.Marshal(raw)
+}
+
 // ─── ChatSource Union ─────────────────────────────────────────────────
 
 // ChatSource identifies how a new chat uses a source chat.

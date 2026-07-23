@@ -590,6 +590,57 @@ function generateDataClassFromInterface(
   return generateKotlinDataClass(name, props);
 }
 
+function generateFixedChatSourceBranchKotlin(
+  name: 'ForkChatSource' | 'SideChatSource',
+  kindMember: 'FORK' | 'SIDE_CHAT',
+  kindWire: 'fork' | 'sideChat',
+  doc: string,
+  turnIdDoc: string,
+): string {
+  return `${emitKDoc(doc).join('\n')}
+@Serializable(with = ${name}Serializer::class)
+data class ${name}(
+${emitKDoc('URI of the existing source chat.', '    ').join('\n')}
+    val chat: URI,
+${emitKDoc(turnIdDoc, '    ').join('\n')}
+    val turnId: String,
+) {
+    val kind: ChatSourceKind
+        get() = ChatSourceKind.${kindMember}
+}
+
+@Serializable
+private data class ${name}Wire(
+    val kind: ChatSourceKind,
+    val chat: URI,
+    val turnId: String,
+)
+
+internal object ${name}Serializer : KSerializer<${name}> {
+    override val descriptor: SerialDescriptor = ${name}Wire.serializer().descriptor
+
+    override fun deserialize(decoder: Decoder): ${name} {
+        val input = decoder as? JsonDecoder
+            ?: error("${name} can only be deserialized from JSON")
+        val wire = input.json.decodeFromJsonElement(${name}Wire.serializer(), input.decodeJsonElement())
+        if (wire.kind != ChatSourceKind.${kindMember}) {
+            error("Expected ${name} kind ${kindWire}")
+        }
+        return ${name}(chat = wire.chat, turnId = wire.turnId)
+    }
+
+    override fun serialize(encoder: Encoder, value: ${name}) {
+        val output = encoder as? JsonEncoder
+            ?: error("${name} can only be serialized to JSON")
+        val element = output.json.encodeToJsonElement(
+            ${name}Wire.serializer(),
+            ${name}Wire(kind = ChatSourceKind.${kindMember}, chat = value.chat, turnId = value.turnId),
+        )
+        output.encodeJsonElement(element)
+    }
+}`;
+}
+
 /**
  * Emit a Kotlin counterpart for `Partial<T>`: same properties as `T` but with
  * every field forced nullable. The synthetic data class is referenced by
@@ -1446,7 +1497,7 @@ const COMMAND_STRUCTS = [
   'ReconnectParams', 'ReconnectReplayResult', 'ReconnectSnapshotResult',
   'SubscribeParams', 'SubscribeView', 'SubscriptionDeliveryOptions', 'SubscribeResult',
   'SessionForkSource', 'CreateSessionParams', 'DisposeSessionParams',
-  'ForkChatSource', 'SideChatSource', 'CreateChatParams', 'DisposeChatParams',
+  'CreateChatParams', 'DisposeChatParams',
   'ListSessionsParams', 'ListSessionsResult',
   'ResourceReadParams', 'ResourceReadResult',
   'ResourceWriteParams', 'ResourceWriteResult',
@@ -1575,6 +1626,22 @@ function generateCommandsFile(project: Project): string {
   }
 
   lines.push('// ─── Command Types ──────────────────────────────────────────────────────────');
+  lines.push('');
+  lines.push(generateFixedChatSourceBranchKotlin(
+    'ForkChatSource',
+    'FORK',
+    'fork',
+    'Copies source history through a completed turn into the new chat.',
+    'Completed turn identifier in the source chat.\n\nContent through this turn is copied into the new chat\'s visible `turns`.',
+  ));
+  lines.push('');
+  lines.push(generateFixedChatSourceBranchKotlin(
+    'SideChatSource',
+    'SIDE_CHAT',
+    'sideChat',
+    'Supplies source context to a new side chat without copying it into the side\nchat\'s visible history.',
+    'Stable source-turn identifier in the source chat.\n\nHosts resolve this id against the source chat\'s current `activeTurn` or its\nretained `turns` when accepting `createChat`. If it names the current\nactive turn, the host snapshots the source chat\'s retained history plus\nthat turn\'s current user message and any partial assistant response already\navailable. Once that turn later becomes historical, it is still referenced\nby this same identifier.',
+  ));
   lines.push('');
   const generated = new Set<string>();
   for (const ifaceName of COMMAND_STRUCTS) {
@@ -1989,6 +2056,8 @@ function checkExhaustiveness(project: Project): void {
     'AhpErrorCodeWithData',         // type-level alias; not a Kotlin type
     'JsonRpcErrorCode',             // type-level alias over JsonRpcErrorCodes const enum
     'ReconnectResult',              // RECONNECT_RESULT_UNION discriminated union
+    'ForkChatSource',               // generateFixedChatSourceBranchKotlin()
+    'SideChatSource',               // generateFixedChatSourceBranchKotlin()
     'ChangesetOperationTarget',     // generateChangesetOperationTargetKotlin()
   ]);
 

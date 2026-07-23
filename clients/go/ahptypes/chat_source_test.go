@@ -53,3 +53,58 @@ func TestChatSourceRejectsMissingOrUnknownKind(t *testing.T) {
 		})
 	}
 }
+
+func TestChatSourceSerializationForcesExactKinds(t *testing.T) {
+	t.Run("fork branch and union ignore contradictory kind", func(t *testing.T) {
+		branch := ForkChatSource{
+			Kind:   ChatSourceKindSideChat,
+			Chat:   "ahp-chat:/main",
+			TurnId: "turn-12",
+		}
+
+		branchRaw, err := json.Marshal(branch)
+		if err != nil {
+			t.Fatalf("marshal fork branch: %v", err)
+		}
+		unionRaw, err := json.Marshal(ChatSource{Value: &branch})
+		if err != nil {
+			t.Fatalf("marshal fork union: %v", err)
+		}
+
+		for _, raw := range [][]byte{branchRaw, unionRaw} {
+			var decoded map[string]any
+			if err := json.Unmarshal(raw, &decoded); err != nil {
+				t.Fatalf("decode serialized fork payload: %v", err)
+			}
+			if got := decoded["kind"]; got != "fork" {
+				t.Fatalf("expected fork kind, got %#v in %s", got, raw)
+			}
+		}
+	})
+
+	t.Run("sideChat branch and union ignore zero kind", func(t *testing.T) {
+		branch := SideChatSource{
+			Chat:   "ahp-chat:/main",
+			TurnId: "turn-active",
+		}
+
+		branchRaw, err := json.Marshal(branch)
+		if err != nil {
+			t.Fatalf("marshal sideChat branch: %v", err)
+		}
+		unionRaw, err := json.Marshal(ChatSource{Value: &branch})
+		if err != nil {
+			t.Fatalf("marshal sideChat union: %v", err)
+		}
+
+		for _, raw := range [][]byte{branchRaw, unionRaw} {
+			var decoded map[string]any
+			if err := json.Unmarshal(raw, &decoded); err != nil {
+				t.Fatalf("decode serialized sideChat payload: %v", err)
+			}
+			if got := decoded["kind"]; got != "sideChat" {
+				t.Fatalf("expected sideChat kind, got %#v in %s", got, raw)
+			}
+		}
+	})
+}

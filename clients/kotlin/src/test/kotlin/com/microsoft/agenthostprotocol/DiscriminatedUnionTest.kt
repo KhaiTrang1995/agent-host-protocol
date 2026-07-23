@@ -140,14 +140,33 @@ class DiscriminatedUnionTest {
 
         val reEncodedFork = json.encodeToString(
             ChatSource.serializer(),
-            ChatSourceFork(ForkChatSource(kind = ChatSourceKind.FORK, chat = "ahp-chat:/main", turnId = "turn-12")),
+            ChatSourceFork(ForkChatSource(chat = "ahp-chat:/main", turnId = "turn-12")),
         )
         val reEncodedSideChat = json.encodeToString(
             ChatSource.serializer(),
-            ChatSourceSideChat(SideChatSource(kind = ChatSourceKind.SIDE_CHAT, chat = "ahp-chat:/main", turnId = "turn-active")),
+            ChatSourceSideChat(SideChatSource(chat = "ahp-chat:/main", turnId = "turn-active")),
         )
         assertEquals(JsonPrimitive("fork"), json.parseToJsonElement(reEncodedFork).jsonObject["kind"])
         assertEquals(JsonPrimitive("sideChat"), json.parseToJsonElement(reEncodedSideChat).jsonObject["kind"])
+    }
+
+    @Test
+    fun `ChatSource branches serialize exact kinds`() {
+        val fork = ForkChatSource(chat = "ahp-chat:/main", turnId = "turn-12")
+        val sideChat = SideChatSource(chat = "ahp-chat:/main", turnId = "turn-active")
+
+        assertEquals(ChatSourceKind.FORK, fork.kind)
+        assertEquals(ChatSourceKind.SIDE_CHAT, sideChat.kind)
+
+        val encodedForkBranch = json.encodeToString(ForkChatSource.serializer(), fork)
+        val encodedSideChatBranch = json.encodeToString(SideChatSource.serializer(), sideChat)
+        val encodedForkUnion = json.encodeToString(ChatSource.serializer(), ChatSourceFork(fork))
+        val encodedSideChatUnion = json.encodeToString(ChatSource.serializer(), ChatSourceSideChat(sideChat))
+
+        assertEquals(JsonPrimitive("fork"), json.parseToJsonElement(encodedForkBranch).jsonObject["kind"])
+        assertEquals(JsonPrimitive("sideChat"), json.parseToJsonElement(encodedSideChatBranch).jsonObject["kind"])
+        assertEquals(JsonPrimitive("fork"), json.parseToJsonElement(encodedForkUnion).jsonObject["kind"])
+        assertEquals(JsonPrimitive("sideChat"), json.parseToJsonElement(encodedSideChatUnion).jsonObject["kind"])
     }
 
     @Test

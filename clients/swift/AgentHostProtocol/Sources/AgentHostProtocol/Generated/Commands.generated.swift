@@ -66,6 +66,98 @@ public enum ResourceWriteMode: String, Codable, Sendable {
 
 // MARK: - Command Types
 
+/// Copies source history through a completed turn into the new chat.
+public struct ForkChatSource: Codable, Sendable {
+    /// Discriminant
+    public var kind: ChatSourceKind { .fork }
+    /// URI of the existing source chat.
+    public var chat: URI
+    /// Completed turn identifier in the source chat.
+    ///
+    /// Content through this turn is copied into the new chat's visible `turns`.
+    public var turnId: String
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case chat
+        case turnId
+    }
+
+    public init(
+        chat: URI,
+        turnId: String
+    ) {
+        self.chat = chat
+        self.turnId = turnId
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let kind = try container.decode(ChatSourceKind.self, forKey: .kind)
+        guard kind == .fork else {
+            throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "Expected ForkChatSource kind fork")
+        }
+        self.chat = try container.decode(URI.self, forKey: .chat)
+        self.turnId = try container.decode(String.self, forKey: .turnId)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(ChatSourceKind.fork, forKey: .kind)
+        try container.encode(chat, forKey: .chat)
+        try container.encode(turnId, forKey: .turnId)
+    }
+}
+
+/// Supplies source context to a new side chat without copying it into the side
+/// chat's visible history.
+public struct SideChatSource: Codable, Sendable {
+    /// Discriminant
+    public var kind: ChatSourceKind { .sideChat }
+    /// URI of the existing source chat.
+    public var chat: URI
+    /// Stable source-turn identifier in the source chat.
+    ///
+    /// Hosts resolve this id against the source chat's current `activeTurn` or its
+    /// retained `turns` when accepting `createChat`. If it names the current
+    /// active turn, the host snapshots the source chat's retained history plus
+    /// that turn's current user message and any partial assistant response already
+    /// available. Once that turn later becomes historical, it is still referenced
+    /// by this same identifier.
+    public var turnId: String
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case chat
+        case turnId
+    }
+
+    public init(
+        chat: URI,
+        turnId: String
+    ) {
+        self.chat = chat
+        self.turnId = turnId
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let kind = try container.decode(ChatSourceKind.self, forKey: .kind)
+        guard kind == .sideChat else {
+            throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "Expected SideChatSource kind sideChat")
+        }
+        self.chat = try container.decode(URI.self, forKey: .chat)
+        self.turnId = try container.decode(String.self, forKey: .turnId)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(ChatSourceKind.sideChat, forKey: .kind)
+        try container.encode(chat, forKey: .chat)
+        try container.encode(turnId, forKey: .turnId)
+    }
+}
+
 public struct InitializeParams: Codable, Sendable {
     /// Channel URI this command targets.
     public var channel: String
@@ -451,53 +543,6 @@ public struct DisposeSessionParams: Codable, Sendable {
         channel: String
     ) {
         self.channel = channel
-    }
-}
-
-public struct ForkChatSource: Codable, Sendable {
-    /// Discriminant
-    public var kind: ChatSourceKind
-    /// URI of the existing source chat.
-    public var chat: String
-    /// Completed turn identifier in the source chat.
-    ///
-    /// Content through this turn is copied into the new chat's visible `turns`.
-    public var turnId: String
-
-    public init(
-        kind: ChatSourceKind,
-        chat: String,
-        turnId: String
-    ) {
-        self.kind = kind
-        self.chat = chat
-        self.turnId = turnId
-    }
-}
-
-public struct SideChatSource: Codable, Sendable {
-    /// Discriminant
-    public var kind: ChatSourceKind
-    /// URI of the existing source chat.
-    public var chat: String
-    /// Stable source-turn identifier in the source chat.
-    ///
-    /// Hosts resolve this id against the source chat's current `activeTurn` or its
-    /// retained `turns` when accepting `createChat`. If it names the current
-    /// active turn, the host snapshots the source chat's retained history plus
-    /// that turn's current user message and any partial assistant response already
-    /// available. Once that turn later becomes historical, it is still referenced
-    /// by this same identifier.
-    public var turnId: String
-
-    public init(
-        kind: ChatSourceKind,
-        chat: String,
-        turnId: String
-    ) {
-        self.kind = kind
-        self.chat = chat
-        self.turnId = turnId
     }
 }
 

@@ -48,4 +48,24 @@ final class ChatSourceTests: XCTestCase {
             )
         )
     }
+
+    func testChatSourceBranchesEncodeFixedKinds() throws {
+        let encoder = JSONEncoder()
+
+        let fork = ForkChatSource(chat: "ahp-chat:/main", turnId: "turn-12")
+        let sideChat = SideChatSource(chat: "ahp-chat:/main", turnId: "turn-active")
+
+        XCTAssertEqual(fork.kind, .fork)
+        XCTAssertEqual(sideChat.kind, .sideChat)
+
+        let forkBranch = try JSONSerialization.jsonObject(with: encoder.encode(fork)) as? [String: Any]
+        let sideChatBranch = try JSONSerialization.jsonObject(with: encoder.encode(sideChat)) as? [String: Any]
+        let forkUnion = try JSONSerialization.jsonObject(with: encoder.encode(ChatSource.fork(fork))) as? [String: Any]
+        let sideChatUnion = try JSONSerialization.jsonObject(with: encoder.encode(ChatSource.sideChat(sideChat))) as? [String: Any]
+
+        XCTAssertEqual(forkBranch?["kind"] as? String, "fork")
+        XCTAssertEqual(sideChatBranch?["kind"] as? String, "sideChat")
+        XCTAssertEqual(forkUnion?["kind"] as? String, "fork")
+        XCTAssertEqual(sideChatUnion?["kind"] as? String, "sideChat")
+    }
 }

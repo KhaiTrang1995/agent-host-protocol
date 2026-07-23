@@ -512,6 +512,41 @@ function generateStructFromInterface(
   return generateGoStruct(name, props, { doc: ifaceDoc, ...opts });
 }
 
+function generateFixedDiscriminantMethods(
+  goName: string,
+  discriminantField: string,
+  discriminantValue: string,
+  discriminantType: string,
+): string {
+  return `func (v *${goName}) UnmarshalJSON(data []byte) error {
+\tdisc, ok, err := readDiscriminator(data, ${JSON.stringify(discriminantField)})
+\tif err != nil {
+\t\treturn err
+\t}
+\tif !ok {
+\t\treturn missingDiscriminatorError(${JSON.stringify(goName)}, ${JSON.stringify(discriminantField)})
+\t}
+\tif disc != ${JSON.stringify(discriminantValue)} {
+\t\treturn unknownDiscriminatorError(${JSON.stringify(goName)}, ${JSON.stringify(discriminantField)}, disc)
+\t}
+\ttype wire ${goName}
+\tvar raw wire
+\tif err := json.Unmarshal(data, &raw); err != nil {
+\t\treturn err
+\t}
+\t*v = ${goName}(raw)
+\tv.${toPascalCase(discriminantField)} = ${discriminantType}${toPascalCase(discriminantValue)}
+\treturn nil
+}
+
+func (v ${goName}) MarshalJSON() ([]byte, error) {
+\ttype wire ${goName}
+\traw := wire(v)
+\traw.${toPascalCase(discriminantField)} = ${discriminantType}${toPascalCase(discriminantValue)}
+\treturn json.Marshal(raw)
+}`;
+}
+
 // ─── Partial Struct Generation ───────────────────────────────────────────────
 
 function generatePartialStruct(project: Project, tsInterfaceName: string): string {
@@ -1629,6 +1664,11 @@ function generateCommandsFile(project: Project): string {
       lines.push('');
     }
   }
+
+  lines.push(generateFixedDiscriminantMethods('ForkChatSource', 'kind', 'fork', 'ChatSourceKind'));
+  lines.push('');
+  lines.push(generateFixedDiscriminantMethods('SideChatSource', 'kind', 'sideChat', 'ChatSourceKind'));
+  lines.push('');
 
   lines.push('// ─── ChatSource Union ─────────────────────────────────────────────────\n');
   lines.push(generateDiscriminatedUnion(CHAT_SOURCE_UNION));

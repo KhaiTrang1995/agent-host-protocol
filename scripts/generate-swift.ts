@@ -515,6 +515,57 @@ function generateStructFromInterface(
   return generateSwiftStruct(name, props);
 }
 
+function generateFixedChatSourceBranchSwift(
+  name: 'ForkChatSource' | 'SideChatSource',
+  kindCase: 'fork' | 'sideChat',
+  doc: string,
+  turnIdDoc: string,
+): string {
+  const lines = [
+    ...doc.split('\n').map(line => emitSwiftDocLine(line)),
+    `public struct ${name}: Codable, Sendable {`,
+    '    /// Discriminant',
+    `    public var kind: ChatSourceKind { .${kindCase} }`,
+    '    /// URI of the existing source chat.',
+    '    public var chat: URI',
+    ...turnIdDoc.split('\n').map(line => emitSwiftDocLine(line, '    ')),
+    '    public var turnId: String',
+    '',
+    '    private enum CodingKeys: String, CodingKey {',
+    '        case kind',
+    '        case chat',
+    '        case turnId',
+    '    }',
+    '',
+    '    public init(',
+    '        chat: URI,',
+    '        turnId: String',
+    '    ) {',
+    '        self.chat = chat',
+    '        self.turnId = turnId',
+    '    }',
+    '',
+    '    public init(from decoder: Decoder) throws {',
+    '        let container = try decoder.container(keyedBy: CodingKeys.self)',
+    '        let kind = try container.decode(ChatSourceKind.self, forKey: .kind)',
+    `        guard kind == .${kindCase} else {`,
+    `            throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "Expected ${name} kind ${kindCase}")`,
+    '        }',
+    '        self.chat = try container.decode(URI.self, forKey: .chat)',
+    '        self.turnId = try container.decode(String.self, forKey: .turnId)',
+    '    }',
+    '',
+    '    public func encode(to encoder: Encoder) throws {',
+    '        var container = encoder.container(keyedBy: CodingKeys.self)',
+    `        try container.encode(ChatSourceKind.${kindCase}, forKey: .kind)`,
+    '        try container.encode(chat, forKey: .chat)',
+    '        try container.encode(turnId, forKey: .turnId)',
+    '    }',
+    '}',
+  ];
+  return lines.join('\n');
+}
+
 /**
  * Emit a Swift counterpart for `Partial<T>`: same properties as `T` but with
  * every field forced optional. The synthetic struct is referenced by
@@ -1369,7 +1420,7 @@ const COMMAND_STRUCTS = [
   'ReconnectParams', 'ReconnectReplayResult', 'ReconnectSnapshotResult',
   'SubscribeParams', 'SubscribeView', 'SubscriptionDeliveryOptions', 'SubscribeResult',
   'SessionForkSource', 'CreateSessionParams', 'DisposeSessionParams',
-  'ForkChatSource', 'SideChatSource', 'CreateChatParams', 'DisposeChatParams',
+  'CreateChatParams', 'DisposeChatParams',
   'ListSessionsParams', 'ListSessionsResult',
   'ResourceReadParams', 'ResourceReadResult',
   'ResourceWriteParams', 'ResourceWriteResult',
@@ -1425,6 +1476,20 @@ function generateCommandsFile(project: Project): string {
   }
 
   lines.push('// MARK: - Command Types\n');
+  lines.push(generateFixedChatSourceBranchSwift(
+    'ForkChatSource',
+    'fork',
+    'Copies source history through a completed turn into the new chat.',
+    'Completed turn identifier in the source chat.\n\nContent through this turn is copied into the new chat\'s visible `turns`.',
+  ));
+  lines.push('');
+  lines.push(generateFixedChatSourceBranchSwift(
+    'SideChatSource',
+    'sideChat',
+    'Supplies source context to a new side chat without copying it into the side\nchat\'s visible history.',
+    'Stable source-turn identifier in the source chat.\n\nHosts resolve this id against the source chat\'s current `activeTurn` or its\nretained `turns` when accepting `createChat`. If it names the current\nactive turn, the host snapshots the source chat\'s retained history plus\nthat turn\'s current user message and any partial assistant response already\navailable. Once that turn later becomes historical, it is still referenced\nby this same identifier.',
+  ));
+  lines.push('');
   // Track which interfaces we've already generated to handle duplicates
   const generated = new Set<string>();
   for (const ifaceName of COMMAND_STRUCTS) {
@@ -2030,6 +2095,8 @@ function checkExhaustiveness(project: Project): void {
     'AhpErrorCodeWithData',         // type-level alias; not a Swift type
     'JsonRpcErrorCode',             // type-level alias over JsonRpcErrorCodes const enum
     'ReconnectResult',              // RECONNECT_RESULT_UNION discriminated union
+    'ForkChatSource',               // generateFixedChatSourceBranchSwift()
+    'SideChatSource',               // generateFixedChatSourceBranchSwift()
     'ChangesetOperationTarget',     // TS discriminated union; consumers should add a Swift case-iterable enum
   ]);
 
