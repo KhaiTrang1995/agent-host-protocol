@@ -425,10 +425,34 @@ a `copilot` per piece of work; `/resume` reopens one at a time):
  (desktop app: N/A — terminal-only)
 ```
 
-### 8.2 Forking
+### 8.2 Forking and side chats
 
 A new chat is forked from a point in an existing chat, seeded with that history,
 then diverges on its own. Both chats keep sharing the session's context.
+
+A **fork** uses `{ kind: "fork", chat, turnId }` to copy visible history
+through a completed source turn into a new chat. A **side chat** uses
+`{ kind: "sideChat", chat, turnId, selection? }`. The host resolves that
+stable `turnId` against either a completed turn or the parent's current active
+turn at creation time, but the wire does not snapshot which lifecycle slot held
+it. If the id names the active turn, the host snapshots whatever response is
+available at that moment. When `selection` is present, the host also records an
+immutable `{ text, responsePartId? }` snapshot of the user's exact selected
+text; `text` must be non-empty and `responsePartId` is provenance only, not a
+range. This preserves `/btw`-style side questions without copying the parent's turns
+into its own transcript. It is a focused,
+independent conversation that can later be pulled back into the main chat as a
+bounded chat attachment. The distinction keeps the side transcript clean while
+making the result durable and reusable:
+
+| Mode | Source context | New chat's visible history | Return path |
+| --- | --- | --- | --- |
+| Fork | Copied through the source turn | Starts with copied parent turns | Continue either branch |
+| Side chat | Supplied through the source `turnId` (resolved against historical or active turn at create time) | Starts empty | Attach through a completed side-chat turn |
+
+Agents advertise these independently through `multipleChats.fork` and
+`multipleChats.sideChat`, so clients only offer creation modes the selected
+agent supports.
 
 > **Real-world example:** Mid-debugging, at message 12 the agent proposes two
 > fixes for a race condition. Rather than lose the current thread, the developer

@@ -149,7 +149,7 @@ ChatState {
   status: number          // SessionStatus bitset
   activity?: string
   modifiedAt: string
-  origin?: ChatOrigin      // how the chat came to exist (user / fork / tool)
+  origin?: ChatOrigin      // how the chat came to exist (user / fork / sideChat / tool)
   workingDirectories?: URI[]      // subset of session's workingDirectories
   primaryWorkingDirectory?: URI      // this chat's primary, read-only (set at creation, when requiresPrimary)
 
@@ -161,6 +161,17 @@ ChatState {
   draft?: Message                     // user's in-progress input
 }
 ```
+
+Fork and side-chat creation both reference source turns by stable identifiers.
+Both source forms are fully discriminated — `{ kind: 'fork', chat, turnId }`
+and `{ kind: 'sideChat', chat, turnId, selection? }`. For side chats, hosts
+resolve `turnId` against either `activeTurn` or historical `turns` at creation
+time. If it names the active turn, the host snapshots the currently available
+response there, which preserves `/btw`-style side chats even though that same
+turn later moves into `turns` when it completes. When `selection` is present,
+the host also snapshots that exact selected text (which MUST be non-empty) into
+the created chat's `origin`; `responsePartId` there is advisory provenance, not
+a range.
 
 The sections below — turns, response parts, tool calls, pending messages, and input requests — describe the contents of `ChatState`.
 
@@ -659,8 +670,13 @@ createChat({
 });
 ```
 
-Forked chats (those with a `source`) inherit the source chat's
-`workingDirectories` and primary; both fields are ignored for them.
+Forked chats (those whose `source.kind` is `"fork"`) inherit the source
+chat's `workingDirectories` and primary, so both fields are ignored for forks.
+Side chats can still choose their own subset and primary,
+and they still reference their source with a stable `turnId` whether that turn
+was active or historical when the side chat was created. They MAY also retain a
+selected-text snapshot in `origin.selection`; that snapshot is fixed when the
+host accepts `createChat` and does not follow later edits to the source chat.
 
 #### Managing the subset after creation
 

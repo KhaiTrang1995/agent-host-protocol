@@ -512,6 +512,41 @@ function generateStructFromInterface(
   return generateGoStruct(name, props, { doc: ifaceDoc, ...opts });
 }
 
+function generateFixedDiscriminantMethods(
+  goName: string,
+  discriminantField: string,
+  discriminantValue: string,
+  discriminantType: string,
+): string {
+  return `func (v *${goName}) UnmarshalJSON(data []byte) error {
+\tdisc, ok, err := readDiscriminator(data, ${JSON.stringify(discriminantField)})
+\tif err != nil {
+\t\treturn err
+\t}
+\tif !ok {
+\t\treturn missingDiscriminatorError(${JSON.stringify(goName)}, ${JSON.stringify(discriminantField)})
+\t}
+\tif disc != ${JSON.stringify(discriminantValue)} {
+\t\treturn unknownDiscriminatorError(${JSON.stringify(goName)}, ${JSON.stringify(discriminantField)}, disc)
+\t}
+\ttype wire ${goName}
+\tvar raw wire
+\tif err := json.Unmarshal(data, &raw); err != nil {
+\t\treturn err
+\t}
+\t*v = ${goName}(raw)
+\tv.${toPascalCase(discriminantField)} = ${discriminantType}${toPascalCase(discriminantValue)}
+\treturn nil
+}
+
+func (v ${goName}) MarshalJSON() ([]byte, error) {
+\ttype wire ${goName}
+\traw := wire(v)
+\traw.${toPascalCase(discriminantField)} = ${discriminantType}${toPascalCase(discriminantValue)}
+\treturn json.Marshal(raw)
+}`;
+}
+
 // ─── Partial Struct Generation ───────────────────────────────────────────────
 
 function generatePartialStruct(project: Project, tsInterfaceName: string): string {
@@ -592,10 +627,19 @@ function generateDiscriminatedUnion(cfg: UnionConfig): string {
   // UnmarshalJSON
   lines.push(`// UnmarshalJSON decodes the variant indicated by the ${JSON.stringify(cfg.discriminantField)} discriminator.`);
   lines.push(`func (u *${cfg.name}) UnmarshalJSON(data []byte) error {`);
-  lines.push(`\tdisc, _, err := readDiscriminator(data, ${JSON.stringify(cfg.discriminantField)})`);
+  lines.push(
+    `\tdisc, ${cfg.unknown ? '_' : 'ok'}, err := readDiscriminator(data, ${JSON.stringify(cfg.discriminantField)})`,
+  );
   lines.push('\tif err != nil {');
   lines.push('\t\treturn err');
   lines.push('\t}');
+  if (!cfg.unknown) {
+    lines.push('\tif !ok {');
+    lines.push(
+      `\t\treturn missingDiscriminatorError(${JSON.stringify(cfg.name)}, ${JSON.stringify(cfg.discriminantField)})`,
+    );
+    lines.push('\t}');
+  }
   lines.push('\tswitch disc {');
   for (const v of cfg.variants) {
     lines.push(`\tcase ${JSON.stringify(v.wireValue)}:`);
@@ -611,7 +655,9 @@ function generateDiscriminatedUnion(cfg: UnionConfig): string {
     lines.push('\t\tcopy(raw, data)');
     lines.push(`\t\tu.Value = &${cfg.name}Unknown{Raw: raw}`);
   } else {
-    lines.push(`\t\treturn &json.UnmarshalTypeError{Value: "${cfg.name}", Type: nil}`);
+    lines.push(
+      `\t\treturn unknownDiscriminatorError(${JSON.stringify(cfg.name)}, ${JSON.stringify(cfg.discriminantField)}, disc)`,
+    );
   }
   lines.push('\t}');
   lines.push('\treturn nil');
@@ -677,6 +723,7 @@ const STATE_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: strin
   { name: 'ChangesSummary' },
   { name: 'ChatState' },
   { name: 'ChatSummary' },
+  { name: 'SideChatSelection' },
   { name: 'PendingMessage' },
   { name: 'ProjectInfo' },
   { name: 'SessionConfigPropertySchema' },
@@ -707,6 +754,7 @@ const STATE_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: strin
   { name: 'MessageEmbeddedResourceAttachment' },
   { name: 'MessageResourceAttachment' },
   { name: 'MessageAnnotationsAttachment' },
+  { name: 'MessageChatAttachment' },
   { name: 'MarkdownResponsePart' },
   { name: 'ContentRef' },
   { name: 'ResourceReponsePart', goName: 'ResourceResponsePart' },
@@ -911,6 +959,7 @@ const MESSAGE_ATTACHMENT_UNION: UnionConfig = {
     { variantName: 'EmbeddedResource', innerType: 'MessageEmbeddedResourceAttachment', wireValue: 'embeddedResource' },
     { variantName: 'Resource', innerType: 'MessageResourceAttachment', wireValue: 'resource' },
     { variantName: 'Annotations', innerType: 'MessageAnnotationsAttachment', wireValue: 'annotations' },
+    { variantName: 'Chat', innerType: 'MessageChatAttachment', wireValue: 'chat' },
   ],
   unknown: true,
 };
@@ -1027,6 +1076,15 @@ type ChatForkOrigin struct {
 
 func (*ChatForkOrigin) isChatOrigin() {}
 
+type ChatSideChatOrigin struct {
+\tKind   ChatOriginKind \`json:"kind"\`
+\tChat   URI            \`json:"chat"\`
+\tTurnId string         \`json:"turnId"\`
+\tSelection *SideChatSelection \`json:"selection,omitempty"\`
+}
+
+func (*ChatSideChatOrigin) isChatOrigin() {}
+
 type ChatToolOrigin struct {
 \tKind       ChatOriginKind \`json:"kind"\`
 \tChat       URI            \`json:"chat"\`
@@ -1055,6 +1113,12 @@ func (o *ChatOrigin) UnmarshalJSON(data []byte) error {
 \t\to.Value = &v
 \tcase "fork":
 \t\tvar v ChatForkOrigin
+\t\tif err := json.Unmarshal(data, &v); err != nil {
+\t\t\treturn err
+\t\t}
+\t\to.Value = &v
+\tcase "sideChat":
+\t\tvar v ChatSideChatOrigin
 \t\tif err := json.Unmarshal(data, &v); err != nil {
 \t\t\treturn err
 \t\t}
@@ -1453,7 +1517,7 @@ function generateActionsFile(project: Project): string {
 
 // ─── Commands File Generator ─────────────────────────────────────────────────
 
-const COMMAND_ENUMS = ['ReconnectResultType', 'ContentEncoding', 'CompletionItemKind', 'ResourceType', 'ResourceWriteMode'];
+const COMMAND_ENUMS = ['ReconnectResultType', 'ChatSourceKind', 'ContentEncoding', 'CompletionItemKind', 'ResourceType', 'ResourceWriteMode'];
 
 const COMMAND_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: string }[] = [
   { name: 'InitializeParams' }, { name: 'InitializeResult' },
@@ -1464,7 +1528,7 @@ const COMMAND_STRUCTS: { name: string; omitDiscriminants?: boolean; goName?: str
   { name: 'SubscribeParams' }, { name: 'SubscribeView' }, { name: 'SubscriptionDeliveryOptions' }, { name: 'SubscribeResult' },
   { name: 'SessionForkSource' }, { name: 'CreateSessionParams' },
   { name: 'DisposeSessionParams' },
-  { name: 'ChatForkSource' }, { name: 'CreateChatParams' }, { name: 'DisposeChatParams' },
+  { name: 'ForkChatSource' }, { name: 'SideChatSource' }, { name: 'CreateChatParams' }, { name: 'DisposeChatParams' },
   { name: 'ListSessionsParams' }, { name: 'ListSessionsResult' },
   { name: 'ResourceReadParams' }, { name: 'ResourceReadResult' },
   { name: 'ResourceWriteParams' }, { name: 'ResourceWriteResult' },
@@ -1496,6 +1560,16 @@ const RECONNECT_RESULT_UNION: UnionConfig = {
   variants: [
     { variantName: 'Replay', innerType: 'ReconnectReplayResult', wireValue: 'replay' },
     { variantName: 'Snapshot', innerType: 'ReconnectSnapshotResult', wireValue: 'snapshot' },
+  ],
+};
+
+const CHAT_SOURCE_UNION: UnionConfig = {
+  name: 'ChatSource',
+  discriminantField: 'kind',
+  doc: 'ChatSource identifies how a new chat uses a source chat.',
+  variants: [
+    { variantName: 'Fork', innerType: 'ForkChatSource', wireValue: 'fork' },
+    { variantName: 'SideChat', innerType: 'SideChatSource', wireValue: 'sideChat' },
   ],
 };
 
@@ -1591,6 +1665,15 @@ function generateCommandsFile(project: Project): string {
       lines.push('');
     }
   }
+
+  lines.push(generateFixedDiscriminantMethods('ForkChatSource', 'kind', 'fork', 'ChatSourceKind'));
+  lines.push('');
+  lines.push(generateFixedDiscriminantMethods('SideChatSource', 'kind', 'sideChat', 'ChatSourceKind'));
+  lines.push('');
+
+  lines.push('// ─── ChatSource Union ─────────────────────────────────────────────────\n');
+  lines.push(generateDiscriminatedUnion(CHAT_SOURCE_UNION));
+  lines.push('');
 
   lines.push('// ─── ReconnectResult Union ────────────────────────────────────────────\n');
   lines.push(generateDiscriminatedUnion(RECONNECT_RESULT_UNION));
@@ -1948,6 +2031,7 @@ function checkExhaustiveness(project: Project): void {
     'TerminalClaim',
     'TerminalContentPart',
     'ChatOrigin',
+    'ChatSource',
     'ChatInputQuestion',
     'ChatInputAnswerValue',
     'ChatInputAnswer',

@@ -43,6 +43,8 @@ function collectRefTargets(node: JsonNode, acc: Set<string>): void {
       const m = ref.match(/^#\/\$defs\/(.+)$/);
       if (m) acc.add(m[1]);
     }
+    const not = (node as Record<string, unknown>).not;
+    if (not) collectRefTargets(not as JsonNode, acc);
     for (const value of Object.values(node)) collectRefTargets(value as JsonNode, acc);
   }
 }
@@ -64,6 +66,84 @@ function countEmptyOneOfBranches(node: JsonNode): number {
     for (const value of Object.values(node)) count += countEmptyOneOfBranches(value as JsonNode);
   }
   return count;
+}
+
+function dereferenceSchema(
+  root: Record<string, unknown>,
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
+  const ref = schema.$ref;
+  if (typeof ref !== 'string') {
+    return schema;
+  }
+  const match = ref.match(/^#\/\$defs\/(.+)$/);
+  assert.ok(match, `unsupported schema ref: ${ref}`);
+  const defs = root.$defs as Record<string, Record<string, unknown>>;
+  const resolved = defs[match[1]];
+  assert.ok(resolved, `missing schema def for ${ref}`);
+  return resolved;
+}
+
+function schemaAccepts(
+  root: Record<string, unknown>,
+  node: JsonNode,
+  value: unknown,
+): boolean {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) {
+    return true;
+  }
+
+  const schema = dereferenceSchema(root, node as Record<string, unknown>);
+  const oneOf = schema.oneOf;
+  if (Array.isArray(oneOf)) {
+    return oneOf.filter(branch => schemaAccepts(root, branch as JsonNode, value)).length === 1;
+  }
+
+  const allOf = schema.allOf;
+  if (Array.isArray(allOf)) {
+    return allOf.every(branch => schemaAccepts(root, branch as JsonNode, value));
+  }
+
+  if (schema.not) {
+    return !schemaAccepts(root, schema.not as JsonNode, value);
+  }
+
+  if ('const' in schema) {
+    return value === schema.const;
+  }
+
+  if (schema.type === 'object' || schema.required || schema.properties) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return false;
+    }
+    const record = value as Record<string, unknown>;
+    const required = Array.isArray(schema.required) ? schema.required : [];
+    if (required.some((property) => !(property in record))) {
+      return false;
+    }
+    const properties = (schema.properties as Record<string, JsonNode> | undefined) ?? {};
+    return Object.entries(properties).every(([name, propertySchema]) => {
+      if (!(name in record)) {
+        return true;
+      }
+      return schemaAccepts(root, propertySchema, record[name]);
+    });
+  }
+
+  switch (schema.type) {
+    case 'string':
+      return typeof value === 'string';
+    case 'number':
+      return typeof value === 'number';
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'null':
+      return value === null;
+    case 'array':
+      return Array.isArray(value);
+  }
+
+  return true;
 }
 
 describe('generated JSON schemas', () => {
@@ -88,6 +168,101 @@ describe('generated JSON schemas', () => {
           dangling,
           [],
           `${file} references ${dangling.length} undefined $def(s) (bug #302.2): ${dangling.slice(0, 10).join(', ')}`,
+        );
+      });
+
+      it('constrains every ChatOrigin branch to a distinct kind', () => {
+        const defs = schema.$defs as Record<string, Record<string, unknown>>;
+        const chatOrigin = defs.ChatOrigin;
+        const branches = chatOrigin.oneOf as Array<Record<string, unknown>>;
+        const kinds = branches.map((branch) => {
+          const properties = branch.properties as Record<string, Record<string, unknown>>;
+          return properties.kind.const;
+        });
+
+        assert.deepEqual(kinds, ['user', 'fork', 'sideChat', 'tool']);
+      });
+
+      it('requires stable top-level turn identifiers for fork and side-chat provenance', () => {
+        const defs = schema.$defs as Record<string, Record<string, unknown>>;
+        const chatOrigin = defs.ChatOrigin;
+        const branches = chatOrigin.oneOf as Array<Record<string, unknown>>;
+        const branchByKind = new Map(
+          branches.map((branch) => {
+            const properties = branch.properties as Record<string, Record<string, unknown>>;
+            return [properties.kind.const as string, properties];
+          }),
+        );
+
+        assert.deepEqual(branchByKind.get('fork')?.turnId?.type, 'string');
+        assert.deepEqual(branchByKind.get('sideChat')?.turnId?.type, 'string');
+        assert.deepEqual(branchByKind.get('sideChat')?.selection?.$ref, '#/$defs/SideChatSelection');
+
+        const chatSource = defs.ChatSource;
+        if (chatSource) {
+          assert.deepEqual(defs.ForkChatSource?.properties?.kind?.const, 'fork');
+          assert.deepEqual(defs.ForkChatSource?.properties?.turnId?.type, 'string');
+          assert.deepEqual(defs.SideChatSource?.properties?.kind?.const, 'sideChat');
+          assert.deepEqual(defs.SideChatSource?.properties?.turnId?.type, 'string');
+          assert.deepEqual(defs.SideChatSource?.properties?.selection?.$ref, '#/$defs/SideChatSelection');
+          assert.equal(defs.SideChatSource?.properties?.turn, undefined);
+        }
+
+        assert.deepEqual(defs.SideChatSelection?.required, ['text']);
+        assert.deepEqual(defs.SideChatSelection?.properties?.text?.type, 'string');
+        assert.deepEqual(defs.SideChatSelection?.properties?.responsePartId?.type, 'string');
+      });
+
+      it('accepts valid discriminated ChatSource payloads and rejects missing or unknown kinds', () => {
+        const defs = schema.$defs as Record<string, Record<string, unknown>>;
+        const chatSource = defs.ChatSource;
+        if (!chatSource) {
+          return;
+        }
+
+        assert.equal(
+          schemaAccepts(schema, chatSource, {
+            kind: 'fork',
+            chat: 'ahp-chat:/source',
+            turnId: 'turn-1',
+          }),
+          true,
+        );
+        assert.equal(
+          schemaAccepts(schema, chatSource, {
+            kind: 'sideChat',
+            chat: 'ahp-chat:/source',
+            turnId: 'turn-1',
+            selection: {
+              text: 'selected text',
+              responsePartId: 'part-1',
+            },
+          }),
+          true,
+        );
+        assert.equal(
+          schemaAccepts(schema, chatSource, {
+            chat: 'ahp-chat:/source',
+            turnId: 'turn-1',
+          }),
+          false,
+        );
+        assert.equal(
+          schemaAccepts(schema, chatSource, {
+            kind: 'sideChat',
+            chat: 'ahp-chat:/source',
+            turnId: 'turn-1',
+            selection: {},
+          }),
+          false,
+        );
+        assert.equal(
+          schemaAccepts(schema, chatSource, {
+            kind: 'unknown',
+            chat: 'ahp-chat:/source',
+            turnId: 'turn-1',
+          }),
+          false,
         );
       });
     });

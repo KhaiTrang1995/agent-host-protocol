@@ -23,6 +23,16 @@ const (
 	ReconnectResultTypeSnapshot ReconnectResultType = "snapshot"
 )
 
+// How a new chat uses its source chat and turn.
+type ChatSourceKind string
+
+const (
+	// Copy source history through the referenced turn into the new chat.
+	ChatSourceKindFork ChatSourceKind = "fork"
+	// Supply source context without copying it into the new chat's visible history.
+	ChatSourceKindSideChat ChatSourceKind = "sideChat"
+)
+
 // Encoding of fetched content data.
 type ContentEncoding string
 
@@ -374,12 +384,40 @@ type DisposeSessionParams struct {
 	Channel URI `json:"channel"`
 }
 
-// Identifies a source chat and turn to fork from.
-type ChatForkSource struct {
-	// URI of the existing chat to fork from
+// Copies source history through a completed turn into the new chat.
+type ForkChatSource struct {
+	// Discriminant
+	Kind ChatSourceKind `json:"kind"`
+	// URI of the existing source chat.
 	Chat URI `json:"chat"`
-	// Turn ID in the source chat; content up to and including this turn's response is copied
+	// Completed turn identifier in the source chat.
+	//
+	// Content through this turn is copied into the new chat's visible `turns`.
 	TurnId string `json:"turnId"`
+}
+
+// Supplies source context to a new side chat without copying it into the side
+// chat's visible history.
+type SideChatSource struct {
+	// Discriminant
+	Kind ChatSourceKind `json:"kind"`
+	// URI of the existing source chat.
+	Chat URI `json:"chat"`
+	// Stable source-turn identifier in the source chat.
+	//
+	// Hosts resolve this id against the source chat's current `activeTurn` or its
+	// retained `turns` when accepting `createChat`. If it names the current
+	// active turn, the host snapshots the source chat's retained history plus
+	// that turn's current user message and any partial assistant response already
+	// available. Once that turn later becomes historical, it is still referenced
+	// by this same identifier.
+	TurnId string `json:"turnId"`
+	// Optional immutable selected-text snapshot to carry into the created side
+	// chat's origin.
+	//
+	// When present, the host MUST snapshot and preserve this exact selection when
+	// it accepts `createChat`; later source-turn deltas do not alter it.
+	Selection *SideChatSelection `json:"selection,omitempty"`
 }
 
 // Creates a new chat within a session.
@@ -390,13 +428,26 @@ type CreateChatParams struct {
 	Chat URI `json:"chat"`
 	// Optional initial message for the new chat.
 	InitialMessage *Message `json:"initialMessage,omitempty"`
-	// Optional source chat and turn to fork from.
-	Source *ChatForkSource `json:"source,omitempty"`
+	// Optional source chat and source turn.
+	//
+	// The source chat MUST belong to this session. Clients MUST only request
+	// `kind: "fork"` when the selected agent advertises
+	// `capabilities.multipleChats.fork`, and `kind: "sideChat"` when the
+	// selected agent advertises `capabilities.multipleChats.sideChat`. Both
+	// source forms carry a stable top-level `turnId`. Forks target completed
+	// turns. Side chats also carry a stable `turnId`, which the host resolves
+	// against the source chat's current active turn or retained history. If it
+	// resolves to the active turn, the host snapshots the currently available
+	// partial response when accepting `createChat`. When
+	// `source.kind === "sideChat"` and `source.selection` is present, the host
+	// also snapshots and preserves that exact selected text in the created chat's
+	// origin; any `responsePartId` there is provenance only, not a live range.
+	Source *ChatSource `json:"source,omitempty"`
 	// Initial working-directory subset for this chat. Every entry MUST be
 	// present in the owning session's `workingDirectories`; the server MUST
 	// reject any entry that is not. When absent, the chat inherits the full
-	// session set. Forked chats (`source`) inherit the source chat's
-	// `workingDirectories`; this field is ignored for forked chats.
+	// session set. Forked chats (those whose `source.kind` is `"fork"`) inherit
+	// the source chat's `workingDirectories`; this field is ignored for forks.
 	//
 	// A client MUST NOT supply this field unless the agent advertises
 	// {@link AgentCapabilities.multipleWorkingDirectories}.
@@ -408,8 +459,8 @@ type CreateChatParams struct {
 	// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY
 	// reject creation that omits it, or fall back to the first of the chat's
 	// directories. Fixed at creation and reported (read-only) on
-	// {@link ChatState.primaryWorkingDirectory}. Ignored for forked chats (a fork
-	// inherits the source chat's primary).
+	// {@link ChatState.primaryWorkingDirectory}. Ignored for forks (a chat whose
+	// `source.kind` is `"fork"` inherits the source chat's primary).
 	PrimaryWorkingDirectory *URI `json:"primaryWorkingDirectory,omitempty"`
 }
 
@@ -1077,6 +1128,112 @@ type ChangesetOperationFollowUp struct {
 	External *bool `json:"external,omitempty"`
 }
 
+func (v *ForkChatSource) UnmarshalJSON(data []byte) error {
+	disc, ok, err := readDiscriminator(data, "kind")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return missingDiscriminatorError("ForkChatSource", "kind")
+	}
+	if disc != "fork" {
+		return unknownDiscriminatorError("ForkChatSource", "kind", disc)
+	}
+	type wire ForkChatSource
+	var raw wire
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*v = ForkChatSource(raw)
+	v.Kind = ChatSourceKindFork
+	return nil
+}
+
+func (v ForkChatSource) MarshalJSON() ([]byte, error) {
+	type wire ForkChatSource
+	raw := wire(v)
+	raw.Kind = ChatSourceKindFork
+	return json.Marshal(raw)
+}
+
+func (v *SideChatSource) UnmarshalJSON(data []byte) error {
+	disc, ok, err := readDiscriminator(data, "kind")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return missingDiscriminatorError("SideChatSource", "kind")
+	}
+	if disc != "sideChat" {
+		return unknownDiscriminatorError("SideChatSource", "kind", disc)
+	}
+	type wire SideChatSource
+	var raw wire
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*v = SideChatSource(raw)
+	v.Kind = ChatSourceKindSideChat
+	return nil
+}
+
+func (v SideChatSource) MarshalJSON() ([]byte, error) {
+	type wire SideChatSource
+	raw := wire(v)
+	raw.Kind = ChatSourceKindSideChat
+	return json.Marshal(raw)
+}
+
+// ─── ChatSource Union ─────────────────────────────────────────────────
+
+// ChatSource identifies how a new chat uses a source chat.
+type ChatSource struct {
+	Value isChatSource
+}
+
+// isChatSource is the marker interface implemented by every
+// concrete variant of ChatSource.
+type isChatSource interface{ isChatSource() }
+
+func (*ForkChatSource) isChatSource() {}
+func (*SideChatSource) isChatSource() {}
+
+// UnmarshalJSON decodes the variant indicated by the "kind" discriminator.
+func (u *ChatSource) UnmarshalJSON(data []byte) error {
+	disc, ok, err := readDiscriminator(data, "kind")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return missingDiscriminatorError("ChatSource", "kind")
+	}
+	switch disc {
+	case "fork":
+		var value ForkChatSource
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	case "sideChat":
+		var value SideChatSource
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		u.Value = &value
+	default:
+		return unknownDiscriminatorError("ChatSource", "kind", disc)
+	}
+	return nil
+}
+
+// MarshalJSON encodes the active variant back to JSON.
+func (u ChatSource) MarshalJSON() ([]byte, error) {
+	if u.Value == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(u.Value)
+}
+
 // ─── ReconnectResult Union ────────────────────────────────────────────
 
 // ReconnectResult is the result of the `reconnect` command.
@@ -1093,9 +1250,12 @@ func (*ReconnectSnapshotResult) isReconnectResult() {}
 
 // UnmarshalJSON decodes the variant indicated by the "type" discriminator.
 func (u *ReconnectResult) UnmarshalJSON(data []byte) error {
-	disc, _, err := readDiscriminator(data, "type")
+	disc, ok, err := readDiscriminator(data, "type")
 	if err != nil {
 		return err
+	}
+	if !ok {
+		return missingDiscriminatorError("ReconnectResult", "type")
 	}
 	switch disc {
 	case "replay":
@@ -1111,7 +1271,7 @@ func (u *ReconnectResult) UnmarshalJSON(data []byte) error {
 		}
 		u.Value = &value
 	default:
-		return &json.UnmarshalTypeError{Value: "ReconnectResult", Type: nil}
+		return unknownDiscriminatorError("ReconnectResult", "type", disc)
 	}
 	return nil
 }

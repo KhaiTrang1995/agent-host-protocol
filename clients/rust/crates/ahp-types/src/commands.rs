@@ -16,8 +16,8 @@ use crate::actions::{ActionEnvelope, StateAction};
 #[allow(unused_imports)]
 use crate::state::{
     AgentSelection, ContentRef, Message, MessageAttachment, ModelSelection, SessionActiveClient,
-    SessionConfigSchema, SessionSummary, Snapshot, SnapshotState, TelemetryCapabilities,
-    TerminalClaim, TextRange, Turn,
+    SessionConfigSchema, SessionSummary, SideChatSelection, Snapshot, SnapshotState,
+    TelemetryCapabilities, TerminalClaim, TextRange, Turn,
 };
 
 // ─── Enums ────────────────────────────────────────────────────────────
@@ -29,6 +29,17 @@ pub enum ReconnectResultType {
     Replay,
     #[serde(rename = "snapshot")]
     Snapshot,
+}
+
+/// How a new chat uses its source chat and turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ChatSourceKind {
+    /// Copy source history through the referenced turn into the new chat.
+    #[serde(rename = "fork")]
+    Fork,
+    /// Supply source context without copying it into the new chat's visible history.
+    #[serde(rename = "sideChat")]
+    SideChat,
 }
 
 /// Encoding of fetched content data.
@@ -468,14 +479,41 @@ pub struct DisposeSessionParams {
     pub channel: Uri,
 }
 
-/// Identifies a source chat and turn to fork from.
+/// Copies source history through a completed turn into the new chat.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatForkSource {
-    /// URI of the existing chat to fork from
+pub struct ForkChatSource {
+    /// URI of the existing source chat.
     pub chat: Uri,
-    /// Turn ID in the source chat; content up to and including this turn's response is copied
+    /// Completed turn identifier in the source chat.
+    ///
+    /// Content through this turn is copied into the new chat's visible `turns`.
     pub turn_id: String,
+}
+
+/// Supplies source context to a new side chat without copying it into the side
+/// chat's visible history.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SideChatSource {
+    /// URI of the existing source chat.
+    pub chat: Uri,
+    /// Stable source-turn identifier in the source chat.
+    ///
+    /// Hosts resolve this id against the source chat's current `activeTurn` or its
+    /// retained `turns` when accepting `createChat`. If it names the current
+    /// active turn, the host snapshots the source chat's retained history plus
+    /// that turn's current user message and any partial assistant response already
+    /// available. Once that turn later becomes historical, it is still referenced
+    /// by this same identifier.
+    pub turn_id: String,
+    /// Optional immutable selected-text snapshot to carry into the created side
+    /// chat's origin.
+    ///
+    /// When present, the host MUST snapshot and preserve this exact selection when
+    /// it accepts `createChat`; later source-turn deltas do not alter it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection: Option<SideChatSelection>,
 }
 
 /// Creates a new chat within a session.
@@ -489,14 +527,27 @@ pub struct CreateChatParams {
     /// Optional initial message for the new chat.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_message: Option<Message>,
-    /// Optional source chat and turn to fork from.
+    /// Optional source chat and source turn.
+    ///
+    /// The source chat MUST belong to this session. Clients MUST only request
+    /// `kind: "fork"` when the selected agent advertises
+    /// `capabilities.multipleChats.fork`, and `kind: "sideChat"` when the
+    /// selected agent advertises `capabilities.multipleChats.sideChat`. Both
+    /// source forms carry a stable top-level `turnId`. Forks target completed
+    /// turns. Side chats also carry a stable `turnId`, which the host resolves
+    /// against the source chat's current active turn or retained history. If it
+    /// resolves to the active turn, the host snapshots the currently available
+    /// partial response when accepting `createChat`. When
+    /// `source.kind === "sideChat"` and `source.selection` is present, the host
+    /// also snapshots and preserves that exact selected text in the created chat's
+    /// origin; any `responsePartId` there is provenance only, not a live range.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<ChatForkSource>,
+    pub source: Option<ChatSource>,
     /// Initial working-directory subset for this chat. Every entry MUST be
     /// present in the owning session's `workingDirectories`; the server MUST
     /// reject any entry that is not. When absent, the chat inherits the full
-    /// session set. Forked chats (`source`) inherit the source chat's
-    /// `workingDirectories`; this field is ignored for forked chats.
+    /// session set. Forked chats (those whose `source.kind` is `"fork"`) inherit
+    /// the source chat's `workingDirectories`; this field is ignored for forks.
     ///
     /// A client MUST NOT supply this field unless the agent advertises
     /// {@link AgentCapabilities.multipleWorkingDirectories}.
@@ -509,8 +560,8 @@ pub struct CreateChatParams {
     /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY
     /// reject creation that omits it, or fall back to the first of the chat's
     /// directories. Fixed at creation and reported (read-only) on
-    /// {@link ChatState.primaryWorkingDirectory}. Ignored for forked chats (a fork
-    /// inherits the source chat's primary).
+    /// {@link ChatState.primaryWorkingDirectory}. Ignored for forks (a chat whose
+    /// `source.kind` is `"fork"` inherits the source chat's primary).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primary_working_directory: Option<Uri>,
 }
@@ -1299,6 +1350,18 @@ pub struct ChangesetOperationFollowUp {
     /// When `true`, open in an external handler rather than inline.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external: Option<bool>,
+}
+
+// ─── ChatSource Union ─────────────────────────────────────────────────
+
+/// How a new chat uses a source chat.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind")]
+pub enum ChatSource {
+    #[serde(rename = "fork")]
+    Fork(ForkChatSource),
+    #[serde(rename = "sideChat")]
+    SideChat(SideChatSource),
 }
 
 // ─── ReconnectResult Union ────────────────────────────────────────────

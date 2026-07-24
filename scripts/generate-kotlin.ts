@@ -590,6 +590,72 @@ function generateDataClassFromInterface(
   return generateKotlinDataClass(name, props);
 }
 
+function generateFixedChatSourceBranchKotlin(
+  name: 'ForkChatSource' | 'SideChatSource',
+  kindMember: 'FORK' | 'SIDE_CHAT',
+  kindWire: 'fork' | 'sideChat',
+  doc: string,
+  turnIdDoc: string,
+): string {
+  const sideChatSelectionProps = name === 'SideChatSource'
+    ? `${emitKDoc('Optional immutable selected-text snapshot to carry into the created side\nchat\'s origin.', '    ').join('\n')}
+    val selection: SideChatSelection? = null,
+`
+    : '';
+  const sideChatSelectionWireProps = name === 'SideChatSource'
+    ? '    val selection: SideChatSelection? = null,\n'
+    : '';
+  const sideChatSelectionDecodeArg = name === 'SideChatSource'
+    ? ', selection = wire.selection'
+    : '';
+  const sideChatSelectionEncodeArg = name === 'SideChatSource'
+    ? ', selection = value.selection'
+    : '';
+  return `${emitKDoc(doc).join('\n')}
+@Serializable(with = ${name}Serializer::class)
+data class ${name}(
+${emitKDoc('URI of the existing source chat.', '    ').join('\n')}
+    val chat: URI,
+${emitKDoc(turnIdDoc, '    ').join('\n')}
+    val turnId: String,
+${sideChatSelectionProps}
+) {
+    val kind: ChatSourceKind
+        get() = ChatSourceKind.${kindMember}
+}
+
+@Serializable
+private data class ${name}Wire(
+    val kind: ChatSourceKind,
+    val chat: URI,
+    val turnId: String,
+${sideChatSelectionWireProps})
+
+internal object ${name}Serializer : KSerializer<${name}> {
+    override val descriptor: SerialDescriptor = ${name}Wire.serializer().descriptor
+
+    override fun deserialize(decoder: Decoder): ${name} {
+        val input = decoder as? JsonDecoder
+            ?: error("${name} can only be deserialized from JSON")
+        val wire = input.json.decodeFromJsonElement(${name}Wire.serializer(), input.decodeJsonElement())
+        if (wire.kind != ChatSourceKind.${kindMember}) {
+            error("Expected ${name} kind ${kindWire}")
+        }
+        return ${name}(chat = wire.chat, turnId = wire.turnId${sideChatSelectionDecodeArg})
+    }
+
+    override fun serialize(encoder: Encoder, value: ${name}) {
+        val output = encoder as? JsonEncoder
+            ?: error("${name} can only be serialized to JSON")
+        val element = output.json.encodeToJsonElement(
+            ${name}Wire.serializer(),
+            ${name}Wire(kind = ChatSourceKind.${kindMember}, chat = value.chat, turnId = value.turnId${sideChatSelectionEncodeArg}),
+        )
+        output.encodeJsonElement(element)
+    }
+}`;
+}
+
 /**
  * Emit a Kotlin counterpart for `Partial<T>`: same properties as `T` but with
  * every field forced nullable. The synthetic data class is referenced by
@@ -803,7 +869,7 @@ const STATE_STRUCTS = [
   'MultipleChatsCapability',
   'MultipleWorkingDirectoriesCapability',
   'SessionModelInfo', 'ModelSelection', 'AgentSelection', 'ConfigPropertySchema', 'ConfigSchema',
-  'PendingMessage', 'ChatState', 'ChatSummary', 'SessionState', 'SessionActiveClient',
+  'PendingMessage', 'ChatState', 'ChatSummary', 'SideChatSelection', 'SessionState', 'SessionActiveClient',
   'SessionChatInputRequest', 'SessionToolConfirmationRequest', 'SessionToolClientExecutionRequest',
   'SessionToolAuthenticationRequest',
   'SessionSummary', 'ChangesSummary', 'ProjectInfo', 'SessionConfigState', 'Turn', 'ActiveTurn', 'Message',
@@ -819,7 +885,7 @@ const STATE_STRUCTS = [
   'ChatInputRequest',
   'TextPosition', 'TextRange', 'TextSelection',
   'SimpleMessageAttachment', 'MessageEmbeddedResourceAttachment', 'MessageResourceAttachment',
-  'MessageAnnotationsAttachment',
+  'MessageAnnotationsAttachment', 'MessageChatAttachment',
   'MarkdownResponsePart', 'ContentRef',
   'ResourceReponsePart', 'ToolCallResponsePart', 'ReasoningResponsePart',
   'SystemNotificationResponsePart', 'InputRequestResponsePart',
@@ -916,6 +982,7 @@ function generateChatOriginKotlin(): string {
 sealed interface ChatOrigin {
     @JvmInline value class User(val value: ChatOriginUser) : ChatOrigin
     @JvmInline value class Fork(val value: ChatOriginFork) : ChatOrigin
+    @JvmInline value class SideChat(val value: ChatOriginSideChat) : ChatOrigin
     @JvmInline value class Tool(val value: ChatOriginTool) : ChatOrigin
     @JvmInline value class Unknown(val raw: JsonObject) : ChatOrigin
 }
@@ -939,6 +1006,14 @@ data class ChatOriginTool(
     val toolCallId: String,
 )
 
+@Serializable
+data class ChatOriginSideChat(
+    val kind: ChatOriginKind = ChatOriginKind.SIDE_CHAT,
+    val chat: String,
+    val turnId: String,
+    val selection: SideChatSelection? = null,
+)
+
 internal object ChatOriginSerializer : KSerializer<ChatOrigin> {
     override val descriptor: SerialDescriptor = buildClassSerialDescriptor("ChatOrigin")
 
@@ -949,6 +1024,7 @@ internal object ChatOriginSerializer : KSerializer<ChatOrigin> {
         return when ((obj["kind"] as? JsonPrimitive)?.contentOrNull) {
             "user" -> ChatOrigin.User(input.json.decodeFromJsonElement(ChatOriginUser.serializer(), element))
             "fork" -> ChatOrigin.Fork(input.json.decodeFromJsonElement(ChatOriginFork.serializer(), element))
+            "sideChat" -> ChatOrigin.SideChat(input.json.decodeFromJsonElement(ChatOriginSideChat.serializer(), element))
             "tool" -> ChatOrigin.Tool(input.json.decodeFromJsonElement(ChatOriginTool.serializer(), element))
             else -> ChatOrigin.Unknown(obj)
         }
@@ -959,6 +1035,7 @@ internal object ChatOriginSerializer : KSerializer<ChatOrigin> {
         val element: JsonElement = when (value) {
             is ChatOrigin.User -> output.json.encodeToJsonElement(ChatOriginUser.serializer(), value.value)
             is ChatOrigin.Fork -> output.json.encodeToJsonElement(ChatOriginFork.serializer(), value.value)
+            is ChatOrigin.SideChat -> output.json.encodeToJsonElement(ChatOriginSideChat.serializer(), value.value)
             is ChatOrigin.Tool -> output.json.encodeToJsonElement(ChatOriginTool.serializer(), value.value)
             is ChatOrigin.Unknown -> value.raw
         }
@@ -1015,6 +1092,7 @@ const MESSAGE_ATTACHMENT_UNION: UnionConfig = {
     { caseName: 'EmbeddedResource', structName: 'MessageEmbeddedResourceAttachment', discriminantValue: 'embeddedResource' },
     { caseName: 'Resource', structName: 'MessageResourceAttachment', discriminantValue: 'resource' },
     { caseName: 'Annotations', structName: 'MessageAnnotationsAttachment', discriminantValue: 'annotations' },
+    { caseName: 'Chat', structName: 'MessageChatAttachment', discriminantValue: 'chat' },
   ],
   unknown: true,
 };
@@ -1424,7 +1502,7 @@ function generateActionsFile(project: Project): string {
 
 // ─── Commands File Generator ─────────────────────────────────────────────────
 
-const COMMAND_ENUMS = ['ReconnectResultType', 'ContentEncoding', 'CompletionItemKind', 'ResourceType', 'ResourceWriteMode'];
+const COMMAND_ENUMS = ['ReconnectResultType', 'ChatSourceKind', 'ContentEncoding', 'CompletionItemKind', 'ResourceType', 'ResourceWriteMode'];
 
 const COMMAND_STRUCTS = [
   'InitializeParams', 'InitializeResult',
@@ -1432,7 +1510,7 @@ const COMMAND_STRUCTS = [
   'ReconnectParams', 'ReconnectReplayResult', 'ReconnectSnapshotResult',
   'SubscribeParams', 'SubscribeView', 'SubscriptionDeliveryOptions', 'SubscribeResult',
   'SessionForkSource', 'CreateSessionParams', 'DisposeSessionParams',
-  'ChatForkSource', 'CreateChatParams', 'DisposeChatParams',
+  'CreateChatParams', 'DisposeChatParams',
   'ListSessionsParams', 'ListSessionsResult',
   'ResourceReadParams', 'ResourceReadResult',
   'ResourceWriteParams', 'ResourceWriteResult',
@@ -1463,6 +1541,15 @@ const RECONNECT_RESULT_UNION: UnionConfig = {
   variants: [
     { caseName: 'Replay', structName: 'ReconnectReplayResult', discriminantValue: 'replay' },
     { caseName: 'Snapshot', structName: 'ReconnectSnapshotResult', discriminantValue: 'snapshot' },
+  ],
+};
+
+const CHAT_SOURCE_UNION: UnionConfig = {
+  name: 'ChatSource',
+  discriminantField: 'kind',
+  variants: [
+    { caseName: 'Fork', structName: 'ForkChatSource', discriminantValue: 'fork' },
+    { caseName: 'SideChat', structName: 'SideChatSource', discriminantValue: 'sideChat' },
   ],
 };
 
@@ -1553,6 +1640,22 @@ function generateCommandsFile(project: Project): string {
 
   lines.push('// ─── Command Types ──────────────────────────────────────────────────────────');
   lines.push('');
+  lines.push(generateFixedChatSourceBranchKotlin(
+    'ForkChatSource',
+    'FORK',
+    'fork',
+    'Copies source history through a completed turn into the new chat.',
+    'Completed turn identifier in the source chat.\n\nContent through this turn is copied into the new chat\'s visible `turns`.',
+  ));
+  lines.push('');
+  lines.push(generateFixedChatSourceBranchKotlin(
+    'SideChatSource',
+    'SIDE_CHAT',
+    'sideChat',
+    'Supplies source context to a new side chat without copying it into the side\nchat\'s visible history.',
+    'Stable source-turn identifier in the source chat.\n\nHosts resolve this id against the source chat\'s current `activeTurn` or its\nretained `turns` when accepting `createChat`. If it names the current\nactive turn, the host snapshots the source chat\'s retained history plus\nthat turn\'s current user message and any partial assistant response already\navailable. Once that turn later becomes historical, it is still referenced\nby this same identifier.',
+  ));
+  lines.push('');
   const generated = new Set<string>();
   for (const ifaceName of COMMAND_STRUCTS) {
     if (generated.has(ifaceName)) continue;
@@ -1565,6 +1668,11 @@ function generateCommandsFile(project: Project): string {
       lines.push('');
     }
   }
+
+  lines.push('// ─── ChatSource Union ───────────────────────────────────────────────────────');
+  lines.push('');
+  lines.push(generateDiscriminatedUnion(CHAT_SOURCE_UNION));
+  lines.push('');
 
   lines.push('// ─── ReconnectResult Union ──────────────────────────────────────────────────');
   lines.push('');
@@ -1935,6 +2043,7 @@ function checkExhaustiveness(project: Project): void {
     'ChatInputAnswerValue',      // CHAT_INPUT_ANSWER_VALUE_UNION discriminated union
     'ChatInputAnswer',           // CHAT_INPUT_ANSWER_UNION discriminated union
     'ChatOrigin',                // hand-generated union for inline variants
+    'ChatSource',                // CHAT_SOURCE_UNION discriminated union
     'ChatToolCallApprovedAction', // merged into ChatToolCallConfirmedAction
     'ChatToolCallDeniedAction',   // merged into ChatToolCallConfirmedAction
     'ChatToolCallConfirmedAction', // emitted as merged variant
@@ -1960,6 +2069,8 @@ function checkExhaustiveness(project: Project): void {
     'AhpErrorCodeWithData',         // type-level alias; not a Kotlin type
     'JsonRpcErrorCode',             // type-level alias over JsonRpcErrorCodes const enum
     'ReconnectResult',              // RECONNECT_RESULT_UNION discriminated union
+    'ForkChatSource',               // generateFixedChatSourceBranchKotlin()
+    'SideChatSource',               // generateFixedChatSourceBranchKotlin()
     'ChangesetOperationTarget',     // generateChangesetOperationTargetKotlin()
   ]);
 

@@ -28,7 +28,8 @@ chat state and updates or clears `turnsNextCursor`.
 
 Hosts MUST also eagerly load older turns into state before applying any
 operation that references a turn outside the currently loaded window (for
-example, a fork or truncation targeting an older turn).
+example, a fork, side-chat source, chat attachment, or truncation targeting an
+older turn).
 
 ### Drafts
 
@@ -50,7 +51,7 @@ Clients MAY periodically sync their local input state into the draft by dispatch
 
 ```
 1. Client subscribes to the owning session URI (ahp-session:/<sid>)
-2. Client (or the server, via a tool call or fork) creates a chat with createChat
+2. Client (or the server, via a tool call, fork, or side chat) creates a chat with createChat
 3. Server allocates a chat URI (ahp-chat:/<cid>) and mutates the session's chats catalog
 4. Client subscribes to the chat URI to receive its ChatState snapshot
 5. Server streams chat actions over the chat channel until the chat (or its session) is disposed
@@ -61,9 +62,52 @@ Clients MAY periodically sync their local input state into the draft by dispatch
 [`createChat`](/reference/chat#createchat) is a JSON-RPC request. Callers identify the owning session via the request's `channel` parameter (`ahp-session:/<sid>`) and MAY supply:
 
 - an `initialMessage` to start the first turn immediately — carrying its own [`model`](/reference/chat#message) / [`agent`](/reference/chat#message) selection — and
-- a `source` of type [`ChatForkSource`](/reference/chat#chatforksource) to fork from an existing chat at a specific turn.
+- a `source` of type [`ChatSource`](/reference/chat#chatsource), either
+  `{ kind: "fork", chat, turnId }` or `{ kind: "sideChat", chat, turnId }`,
+  selecting a specific source turn. Side-chat sources MAY also carry
+  `selection: { text, responsePartId? }`, an immutable selected-text snapshot
+  captured when the host accepts `createChat`.
 
 The server allocates the chat URI and adds the chat to the session's catalog (`session/chatAdded` on the session channel) before returning.
+
+Clients MUST gate source-based creation using the selected
+[`AgentInfo.capabilities.multipleChats`](/reference/root#multiplechatscapability):
+
+- `fork: true` permits `source.kind: "fork"`.
+- `sideChat: true` permits `source.kind: "sideChat"`.
+Absence or `false` means the corresponding source form is unsupported. The host
+MUST reject an unsupported source. It MUST also reject a source chat outside the
+target session, an unknown source chat or turn, or a source that names the chat
+being created. For forks, the host MUST additionally reject any source whose
+`kind` is not `"fork"` — forks only target completed turns.
+
+For side chats, `turnId` is a stable identity, not a lifecycle snapshot. Hosts
+and clients resolve it against the source chat's current `activeTurn` or its
+retained `turns` as needed. This keeps `/btw`-style side chats from the
+currently active turn working even though that same turn later moves into
+historical `turns` when it completes.
+
+When `source.kind` is `"sideChat"` and `source.selection` is present, the host
+MUST snapshot that exact `selection.text` when it accepts `createChat`; it MUST
+be non-empty. Later source-turn edits or streaming deltas do not retroactively
+change the stored snapshot. `selection.responsePartId`, when present, is
+advisory provenance naming the response part that contained the text at snapshot
+time; it is **not** a live range, offset, or patch anchor.
+
+Forks and side chats use the source differently:
+
+- A **fork** copies source history through the referenced turn into the new
+  chat's visible `turns`, after which the chats diverge.
+- A **side chat** starts with its own empty visible history. The host supplies
+  source history through the referenced turn as agent context, but does not copy
+  that history into the side chat's `turns`. When the referenced `turnId`
+  resolves to the source chat's current `activeTurn`, the host snapshots the
+  source chat's retained history plus the active turn's current user message and
+  whatever assistant response parts are already available when accepting
+  `createChat`; later source-turn deltas do not retroactively change the side
+  chat's starting context. If `source.selection` is present, the host also
+  snapshots that exact selected text into the created chat's origin. An
+  `initialMessage`, when supplied, becomes the side chat's first visible turn.
 
 ### Origin
 
@@ -72,7 +116,8 @@ Each chat advertises how it came into existence via [`ChatOrigin`](/reference/ch
 | Kind | Meaning |
 |---|---|
 | `user` | User created the chat explicitly (e.g. via the host UI). |
-| `fork` | Forked from an existing chat at a specific turn — payload references the source chat URI and turn id. |
+| `fork` | Forked from an existing chat at a specific completed turn — payload references the source chat URI and stable source `turnId`. |
+| `sideChat` | Created as an independent side conversation using context through a specific source turn — payload references the source chat URI and stable source `turnId`, which may have been active or historical when the chat was created, and MAY retain an immutable `selection` snapshot captured at create acceptance. |
 | `tool` | Spawned by a tool call running in another chat — payload references the source chat URI and tool call id (e.g. a sub-agent delegation). |
 
 Clients MAY use the origin to render contextual UI (parent indicators, fork markers, "spawned by tool" badges), but origin is **not** a hierarchy — every chat is equally addressable.
@@ -81,10 +126,36 @@ A tool-spawned worker is described from both ends of the same edge. The worker c
 
 #### Ancestry and nesting depth
 
-A `fork` or `tool` origin names only the chat's **immediate** source chat (by URI), together with the turn or tool call that produced it. A chat's ancestry is therefore not stored directly; it is the chain you reconstruct by following `origin.chat` from one chat to the next. Because a tool-spawned chat can itself run tools that spawn further chats, these chains can be arbitrarily deep.
+A `fork`, `sideChat`, or `tool` origin names only the chat's **immediate** source chat (by URI), together with the turn or tool call that produced it. A chat's ancestry is therefore not stored directly; it is the chain you reconstruct by following `origin.chat` from one chat to the next. Because a tool-spawned chat can itself run tools that spawn further chats, these chains can be arbitrarily deep.
 
 - **No protocol-imposed depth limit.** AHP does not cap nesting depth or fan-out, and the wire carries no depth counter or maximum-depth field. Any bound is a host policy decision that the protocol neither enforces nor advertises; hosts SHOULD guard against runaway recursion or unbounded fan-out on their side.
 - **Ancestry is advisory and may be incomplete.** Every chat is a flat, equally-addressable peer in the session's [`chats`](/reference/session#sessionstate) catalog — `origin` is a rendering hint, not a structural parent link. A source chat MAY be pruned (`session/chatRemoved`) while a chat it spawned lives on, so an `origin.chat` URI is not guaranteed to resolve. Clients reconstructing ancestry MUST tolerate missing references and SHOULD guard against cycles and unbounded depth (for example, by capping how deep they walk or render).
+
+### Pulling a chat into another chat
+
+A message can attach a bounded transcript using a
+[`MessageChatAttachment`](/reference/chat#messagechatattachment). Its `resource`
+identifies another chat in the same session and `endTurn` identifies the last
+completed turn included in the transcript. The bound is required: later
+turns in the referenced chat MUST NOT retroactively change the context of an
+already-sent message.
+
+This is the standard way to pull a side-chat result back into its originating
+chat. It is not limited to that UX: any chat may attach another chat from the
+same session. No merge or chat-to-chat messaging action occurs; the attachment
+travels on the ordinary message in `chat/turnStarted`.
+
+When accepting the message, the host MUST resolve the referenced chat's retained
+transcript from its first turn through `endTurn`, inclusive, and supply it
+as model context. The host MUST reject an unknown chat, a cross-session chat, an
+unknown turn, or an active rather than completed turn. Chat attachments inside
+the referenced transcript MUST remain references and MUST NOT be recursively
+expanded, preventing cycles and unbounded context growth.
+
+The attachment itself remains durable turn state. If the referenced chat is
+later pruned, clients SHOULD continue rendering the stored `label` and treat
+opening `resource` as best-effort. Pruning does not alter the model input that
+the host already materialized when it accepted the containing message.
 
 ### Active chat
 

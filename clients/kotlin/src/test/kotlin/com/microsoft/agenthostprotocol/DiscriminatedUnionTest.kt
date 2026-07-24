@@ -18,6 +18,13 @@ import com.microsoft.agenthostprotocol.generated.ChatInputNumberQuestion
 import com.microsoft.agenthostprotocol.generated.ChatInputQuestion
 import com.microsoft.agenthostprotocol.generated.ChatInputQuestionNumber
 import com.microsoft.agenthostprotocol.generated.ChatInputQuestionKind
+import com.microsoft.agenthostprotocol.generated.ChatSource
+import com.microsoft.agenthostprotocol.generated.ChatSourceFork
+import com.microsoft.agenthostprotocol.generated.ChatSourceKind
+import com.microsoft.agenthostprotocol.generated.ChatSourceSideChat
+import com.microsoft.agenthostprotocol.generated.ForkChatSource
+import com.microsoft.agenthostprotocol.generated.SideChatSource
+import com.microsoft.agenthostprotocol.generated.SideChatSelection
 import com.microsoft.agenthostprotocol.generated.StringOrMarkdown
 import com.microsoft.agenthostprotocol.generated.ToolResultContent
 import kotlinx.serialization.json.JsonObject
@@ -26,6 +33,7 @@ import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
@@ -114,6 +122,85 @@ class DiscriminatedUnionTest {
         )
         val reObj = json.parseToJsonElement(reEncodedInteger).jsonObject
         assertEquals(JsonPrimitive("integer"), reObj["kind"])
+    }
+
+    @Test
+    fun `ChatSource fork and sideChat route by kind`() {
+        val forkWire = """{"kind":"fork","chat":"ahp-chat:/main","turnId":"turn-12"}"""
+        val sideChatWire = """{"kind":"sideChat","chat":"ahp-chat:/main","turnId":"turn-active","selection":{"text":"const value = compute()","responsePartId":"part-7"}}"""
+
+        val fork = json.decodeFromString(ChatSource.serializer(), forkWire)
+        val sideChat = json.decodeFromString(ChatSource.serializer(), sideChatWire)
+
+        val asFork = assertIs<ChatSourceFork>(fork)
+        val asSideChat = assertIs<ChatSourceSideChat>(sideChat)
+        assertEquals(ChatSourceKind.FORK, asFork.value.kind)
+        assertEquals("turn-12", asFork.value.turnId)
+        assertEquals(ChatSourceKind.SIDE_CHAT, asSideChat.value.kind)
+        assertEquals("turn-active", asSideChat.value.turnId)
+        assertEquals("const value = compute()", asSideChat.value.selection?.text)
+        assertEquals("part-7", asSideChat.value.selection?.responsePartId)
+
+        val reEncodedFork = json.encodeToString(
+            ChatSource.serializer(),
+            ChatSourceFork(ForkChatSource(chat = "ahp-chat:/main", turnId = "turn-12")),
+        )
+        val reEncodedSideChat = json.encodeToString(
+            ChatSource.serializer(),
+            ChatSourceSideChat(
+                SideChatSource(
+                    chat = "ahp-chat:/main",
+                    turnId = "turn-active",
+                    selection = SideChatSelection(
+                        text = "const value = compute()",
+                        responsePartId = "part-7",
+                    ),
+                ),
+            ),
+        )
+        assertEquals(JsonPrimitive("fork"), json.parseToJsonElement(reEncodedFork).jsonObject["kind"])
+        assertEquals(JsonPrimitive("sideChat"), json.parseToJsonElement(reEncodedSideChat).jsonObject["kind"])
+        assertEquals(JsonPrimitive("const value = compute()"), json.parseToJsonElement(reEncodedSideChat).jsonObject["selection"]?.jsonObject?.get("text"))
+    }
+
+    @Test
+    fun `ChatSource branches serialize exact kinds`() {
+        val fork = ForkChatSource(chat = "ahp-chat:/main", turnId = "turn-12")
+        val sideChat = SideChatSource(
+            chat = "ahp-chat:/main",
+            turnId = "turn-active",
+            selection = SideChatSelection(
+                text = "const value = compute()",
+                responsePartId = "part-7",
+            ),
+        )
+
+        assertEquals(ChatSourceKind.FORK, fork.kind)
+        assertEquals(ChatSourceKind.SIDE_CHAT, sideChat.kind)
+
+        val encodedForkBranch = json.encodeToString(ForkChatSource.serializer(), fork)
+        val encodedSideChatBranch = json.encodeToString(SideChatSource.serializer(), sideChat)
+        val encodedForkUnion = json.encodeToString(ChatSource.serializer(), ChatSourceFork(fork))
+        val encodedSideChatUnion = json.encodeToString(ChatSource.serializer(), ChatSourceSideChat(sideChat))
+
+        assertEquals(JsonPrimitive("fork"), json.parseToJsonElement(encodedForkBranch).jsonObject["kind"])
+        assertEquals(JsonPrimitive("sideChat"), json.parseToJsonElement(encodedSideChatBranch).jsonObject["kind"])
+        assertEquals(JsonPrimitive("fork"), json.parseToJsonElement(encodedForkUnion).jsonObject["kind"])
+        assertEquals(JsonPrimitive("sideChat"), json.parseToJsonElement(encodedSideChatUnion).jsonObject["kind"])
+        assertEquals(JsonPrimitive("part-7"), json.parseToJsonElement(encodedSideChatUnion).jsonObject["selection"]?.jsonObject?.get("responsePartId"))
+    }
+
+    @Test
+    fun `ChatSource rejects missing or unknown kind`() {
+        val missingKind = """{"chat":"ahp-chat:/main","turnId":"turn-12"}"""
+        val unknownKind = """{"kind":"future","chat":"ahp-chat:/main","turnId":"turn-12"}"""
+
+        assertFailsWith<IllegalStateException> {
+            json.decodeFromString(ChatSource.serializer(), missingKind)
+        }
+        assertFailsWith<IllegalStateException> {
+            json.decodeFromString(ChatSource.serializer(), unknownKind)
+        }
     }
 
     @Test

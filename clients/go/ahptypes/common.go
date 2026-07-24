@@ -197,3 +197,11 @@ func readDiscriminator(raw []byte, field string) (string, bool, error) {
 	}
 	return s, true, nil
 }
+
+func missingDiscriminatorError(typeName string, field string) error {
+	return fmt.Errorf("%s: missing %q discriminator", typeName, field)
+}
+
+func unknownDiscriminatorError(typeName string, field string, value string) error {
+	return fmt.Errorf("%s: unknown %q discriminator %q", typeName, field, value)
+}

@@ -91,6 +91,8 @@ public enum ChatOriginKind: String, Codable, Sendable {
     case user = "user"
     /// Forked from an existing chat at a specific turn.
     case fork = "fork"
+    /// Created as an independent side conversation from a specific turn.
+    case sideChat = "sideChat"
     /// Spawned by a tool call running in another chat (e.g. a sub-agent delegation).
     case tool = "tool"
 }
@@ -194,6 +196,8 @@ public enum MessageAttachmentKind: String, Codable, Sendable {
     case resource = "resource"
     /// An attachment that references annotations on an annotations channel.
     case annotations = "annotations"
+    /// An attachment that references a bounded transcript from another chat.
+    case chat = "chat"
 }
 
 /// Discriminant for response part types.
@@ -629,7 +633,8 @@ public struct AgentCapabilities: Codable, Sendable {
     /// The agent can host more than one concurrent chat per session. When absent,
     /// clients MUST NOT call `createChat` to open chats beyond the default one the
     /// session starts with. An empty object `{}` advertises multi-chat without
-    /// forking; set {@link MultipleChatsCapability.fork} to also allow forking.
+    /// source-based creation; set {@link MultipleChatsCapability.fork} or
+    /// {@link MultipleChatsCapability.sideChat} to allow the corresponding mode.
     public var multipleChats: MultipleChatsCapability?
     /// The session's agent can be granted tool access to more than one working
     /// directory. The directories are treated as equal peers except where the
@@ -652,14 +657,28 @@ public struct AgentCapabilities: Codable, Sendable {
 
 public struct MultipleChatsCapability: Codable, Sendable {
     /// The agent can fork a chat from a specific turn. When absent or `false`,
-    /// clients MUST NOT pass a {@link ChatForkSource} (`source`) to `createChat`.
+    /// clients MUST NOT pass a {@link ChatSource} with `kind: "fork"` to
+    /// `createChat`.
     /// Forking always implies multi-chat support.
     public var fork: Bool?
+    /// The agent can create a side chat from a specific turn. When absent or
+    /// `false`, clients MUST NOT pass a {@link ChatSource} with
+    /// `kind: "sideChat"` to `createChat`.
+    ///
+    /// A side chat receives the source turn as context without copying the source
+    /// transcript into its own visible history. The source is identified by a
+    /// stable `turnId`, which the host resolves against the source chat's current
+    /// `activeTurn` or retained history. When it names the current active turn,
+    /// the host snapshots the available partial assistant response at creation
+    /// time. Side-chat support always implies multi-chat support.
+    public var sideChat: Bool?
 
     public init(
-        fork: Bool? = nil
+        fork: Bool? = nil,
+        sideChat: Bool? = nil
     ) {
         self.fork = fork
+        self.sideChat = sideChat
     }
 }
 
@@ -1058,6 +1077,27 @@ public struct ChatSummary: Codable, Sendable {
         self.interactivity = interactivity
         self.workingDirectories = workingDirectories
         self.primaryWorkingDirectory = primaryWorkingDirectory
+    }
+}
+
+public struct SideChatSelection: Codable, Sendable {
+    /// Exact selected-text snapshot captured at `createChat` acceptance.
+    ///
+    /// MUST be non-empty.
+    public var text: String
+    /// Optional provenance for the response part that contained {@link text} when
+    /// the host took the snapshot.
+    ///
+    /// Advisory only: this is not a live range or offset and MUST NOT be used to
+    /// recompute `text`.
+    public var responsePartId: String?
+
+    public init(
+        text: String,
+        responsePartId: String? = nil
+    ) {
+        self.text = text
+        self.responsePartId = responsePartId
     }
 }
 
@@ -2298,6 +2338,67 @@ public struct MessageAnnotationsAttachment: Codable, Sendable {
         self.type = type
         self.resource = resource
         self.annotationIds = annotationIds
+    }
+}
+
+public struct MessageChatAttachment: Codable, Sendable {
+    /// A human-readable label for the attachment (e.g. the filename of a file
+    /// attachment). Used for display in UI.
+    public var label: String
+    /// If defined, the range in {@link Message.text} that references this
+    /// attachment. This is a text range, not a byte range.
+    public var range: TextRange?
+    /// Advisory display hint for clients rendering this attachment. Recognized
+    /// values include:
+    ///
+    /// - `'image'`: the attachment is an image
+    /// - `'document'`: the attachment is a textual document
+    /// - `'symbol'`: the attachment is a code symbol (e.g. a function or class)
+    /// - `'directory'`: the attachment is a folder
+    /// - `'selection'`: the attachment is a selection within a document
+    ///
+    /// Implementations MAY provide additional values; clients SHOULD fall back
+    /// to a reasonable default when an unknown value is encountered.
+    public var displayKind: String?
+    /// Additional implementation-defined metadata for the attachment.
+    ///
+    /// If the attachment was produced by the `completions` command, the client
+    /// MUST preserve every property of `_meta` originally returned by the agent
+    /// host when sending the user message containing the accepted completion.
+    public var meta: [String: AnyCodable]?
+    /// Discriminant
+    public var type: MessageAttachmentKind
+    /// URI of the referenced chat.
+    public var resource: String
+    /// Last completed turn included in the referenced transcript.
+    public var endTurn: String
+
+    enum CodingKeys: String, CodingKey {
+        case label
+        case range
+        case displayKind
+        case meta = "_meta"
+        case type
+        case resource
+        case endTurn
+    }
+
+    public init(
+        label: String,
+        range: TextRange? = nil,
+        displayKind: String? = nil,
+        meta: [String: AnyCodable]? = nil,
+        type: MessageAttachmentKind,
+        resource: String,
+        endTurn: String
+    ) {
+        self.label = label
+        self.range = range
+        self.displayKind = displayKind
+        self.meta = meta
+        self.type = type
+        self.resource = resource
+        self.endTurn = endTurn
     }
 }
 
@@ -5157,9 +5258,24 @@ public struct ChatOriginTool: Codable, Sendable {
     }
 }
 
+public struct ChatOriginSideChat: Codable, Sendable {
+    public var kind: ChatOriginKind
+    public var chat: String
+    public var turnId: String
+    public var selection: SideChatSelection?
+
+    public init(kind: ChatOriginKind = .sideChat, chat: String, turnId: String, selection: SideChatSelection? = nil) {
+        self.kind = kind
+        self.chat = chat
+        self.turnId = turnId
+        self.selection = selection
+    }
+}
+
 public enum ChatOrigin: Codable, Sendable {
     case user(ChatOriginUser)
     case fork(ChatOriginFork)
+    case sideChat(ChatOriginSideChat)
     case tool(ChatOriginTool)
 
     private enum DiscriminatorCodingKeys: String, CodingKey { case kind }
@@ -5170,6 +5286,7 @@ public enum ChatOrigin: Codable, Sendable {
         switch discriminant {
         case "user": self = .user(try ChatOriginUser(from: decoder))
         case "fork": self = .fork(try ChatOriginFork(from: decoder))
+        case "sideChat": self = .sideChat(try ChatOriginSideChat(from: decoder))
         case "tool": self = .tool(try ChatOriginTool(from: decoder))
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "Unknown ChatOrigin kind: \(discriminant)")
@@ -5180,6 +5297,7 @@ public enum ChatOrigin: Codable, Sendable {
         switch self {
         case .user(let value): try value.encode(to: encoder)
         case .fork(let value): try value.encode(to: encoder)
+        case .sideChat(let value): try value.encode(to: encoder)
         case .tool(let value): try value.encode(to: encoder)
         }
     }
@@ -5522,6 +5640,7 @@ public enum MessageAttachment: Codable, Sendable {
     case embeddedResource(MessageEmbeddedResourceAttachment)
     case resource(MessageResourceAttachment)
     case annotations(MessageAnnotationsAttachment)
+    case chat(MessageChatAttachment)
     /// Unknown or future discriminant; the raw payload is preserved
     /// and re-encoded verbatim for forward-compatibility.
     case unknown(AnyCodable)
@@ -5542,6 +5661,8 @@ public enum MessageAttachment: Codable, Sendable {
             self = .resource(try MessageResourceAttachment(from: decoder))
         case "annotations":
             self = .annotations(try MessageAnnotationsAttachment(from: decoder))
+        case "chat":
+            self = .chat(try MessageChatAttachment(from: decoder))
         default:
             self = .unknown(try AnyCodable(from: decoder))
         }
@@ -5553,6 +5674,7 @@ public enum MessageAttachment: Codable, Sendable {
         case .embeddedResource(let value): try value.encode(to: encoder)
         case .resource(let value): try value.encode(to: encoder)
         case .annotations(let value): try value.encode(to: encoder)
+        case .chat(let value): try value.encode(to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }
     }

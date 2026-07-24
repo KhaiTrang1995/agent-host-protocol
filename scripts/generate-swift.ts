@@ -515,6 +515,69 @@ function generateStructFromInterface(
   return generateSwiftStruct(name, props);
 }
 
+function generateFixedChatSourceBranchSwift(
+  name: 'ForkChatSource' | 'SideChatSource',
+  kindCase: 'fork' | 'sideChat',
+  doc: string,
+  turnIdDoc: string,
+): string {
+  const hasSelection = name === 'SideChatSource';
+  const lines = [
+    ...doc.split('\n').map(line => emitSwiftDocLine(line)),
+    `public struct ${name}: Codable, Sendable {`,
+    '    /// Discriminant',
+    `    public var kind: ChatSourceKind { .${kindCase} }`,
+    '    /// URI of the existing source chat.',
+    '    public var chat: URI',
+    ...turnIdDoc.split('\n').map(line => emitSwiftDocLine(line, '    ')),
+    '    public var turnId: String',
+    ...(hasSelection
+      ? [
+          ...'Optional immutable selected-text snapshot to carry into the created side\nchat\'s origin.'.split('\n').map(line => emitSwiftDocLine(line, '    ')),
+          '    public var selection: SideChatSelection?',
+        ]
+      : []),
+    '',
+    '    private enum CodingKeys: String, CodingKey {',
+    '        case kind',
+    '        case chat',
+    '        case turnId',
+    ...(hasSelection ? ['        case selection'] : []),
+    '    }',
+    '',
+    '    public init(',
+    '        chat: URI,',
+    '        turnId: String' + (hasSelection ? ',' : ''),
+    ...(hasSelection ? ['        selection: SideChatSelection? = nil'] : []),
+    '    ) {',
+    '        self.chat = chat',
+    '        self.turnId = turnId',
+    ...(hasSelection ? ['        self.selection = selection'] : []),
+    '    }',
+    '',
+    '    public init(from decoder: Decoder) throws {',
+    '        let container = try decoder.container(keyedBy: CodingKeys.self)',
+    '        let kind = try container.decode(ChatSourceKind.self, forKey: .kind)',
+    `        guard kind == .${kindCase} else {`,
+    `            throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "Expected ${name} kind ${kindCase}")`,
+    '        }',
+    '        self.chat = try container.decode(URI.self, forKey: .chat)',
+    '        self.turnId = try container.decode(String.self, forKey: .turnId)',
+    ...(hasSelection ? ['        self.selection = try container.decodeIfPresent(SideChatSelection.self, forKey: .selection)'] : []),
+    '    }',
+    '',
+    '    public func encode(to encoder: Encoder) throws {',
+    '        var container = encoder.container(keyedBy: CodingKeys.self)',
+    `        try container.encode(ChatSourceKind.${kindCase}, forKey: .kind)`,
+    '        try container.encode(chat, forKey: .chat)',
+    '        try container.encode(turnId, forKey: .turnId)',
+    ...(hasSelection ? ['        try container.encodeIfPresent(selection, forKey: .selection)'] : []),
+    '    }',
+    '}',
+  ];
+  return lines.join('\n');
+}
+
 /**
  * Emit a Swift counterpart for `Partial<T>`: same properties as `T` but with
  * every field forced optional. The synthetic struct is referenced by
@@ -556,7 +619,7 @@ const STATE_STRUCTS = [
   'MultipleChatsCapability',
   'MultipleWorkingDirectoriesCapability',
   'SessionModelInfo', 'ModelSelection', 'AgentSelection', 'ConfigPropertySchema', 'ConfigSchema',
-  'PendingMessage', 'ChatState', 'ChatSummary', 'SessionState', 'SessionActiveClient',
+  'PendingMessage', 'ChatState', 'ChatSummary', 'SideChatSelection', 'SessionState', 'SessionActiveClient',
   'SessionChatInputRequest', 'SessionToolConfirmationRequest', 'SessionToolClientExecutionRequest',
   'SessionToolAuthenticationRequest',
   'SessionSummary', 'ChangesSummary', 'ProjectInfo', 'SessionConfigState', 'Turn', 'ActiveTurn', 'Message',
@@ -572,7 +635,7 @@ const STATE_STRUCTS = [
   'ChatInputRequest',
   'TextPosition', 'TextRange', 'TextSelection',
   'SimpleMessageAttachment', 'MessageEmbeddedResourceAttachment', 'MessageResourceAttachment',
-  'MessageAnnotationsAttachment',
+  'MessageAnnotationsAttachment', 'MessageChatAttachment',
   'MarkdownResponsePart', 'ContentRef',
   'ResourceReponsePart', 'ToolCallResponsePart', 'ReasoningResponsePart',
   'SystemNotificationResponsePart', 'InputRequestResponsePart',
@@ -724,6 +787,7 @@ const MESSAGE_ATTACHMENT_UNION: UnionConfig = {
     { caseName: 'embeddedResource', structName: 'MessageEmbeddedResourceAttachment', discriminantValue: 'embeddedResource' },
     { caseName: 'resource', structName: 'MessageResourceAttachment', discriminantValue: 'resource' },
     { caseName: 'annotations', structName: 'MessageAnnotationsAttachment', discriminantValue: 'annotations' },
+    { caseName: 'chat', structName: 'MessageChatAttachment', discriminantValue: 'chat' },
   ],
 };
 
@@ -985,9 +1049,24 @@ public struct ChatOriginTool: Codable, Sendable {
     }
 }
 
+public struct ChatOriginSideChat: Codable, Sendable {
+    public var kind: ChatOriginKind
+    public var chat: String
+    public var turnId: String
+    public var selection: SideChatSelection?
+
+    public init(kind: ChatOriginKind = .sideChat, chat: String, turnId: String, selection: SideChatSelection? = nil) {
+        self.kind = kind
+        self.chat = chat
+        self.turnId = turnId
+        self.selection = selection
+    }
+}
+
 public enum ChatOrigin: Codable, Sendable {
     case user(ChatOriginUser)
     case fork(ChatOriginFork)
+    case sideChat(ChatOriginSideChat)
     case tool(ChatOriginTool)
 
     private enum DiscriminatorCodingKeys: String, CodingKey { case kind }
@@ -998,6 +1077,7 @@ public enum ChatOrigin: Codable, Sendable {
         switch discriminant {
         case "user": self = .user(try ChatOriginUser(from: decoder))
         case "fork": self = .fork(try ChatOriginFork(from: decoder))
+        case "sideChat": self = .sideChat(try ChatOriginSideChat(from: decoder))
         case "tool": self = .tool(try ChatOriginTool(from: decoder))
         default:
             throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "Unknown ChatOrigin kind: \\(discriminant)")
@@ -1008,6 +1088,7 @@ public enum ChatOrigin: Codable, Sendable {
         switch self {
         case .user(let value): try value.encode(to: encoder)
         case .fork(let value): try value.encode(to: encoder)
+        case .sideChat(let value): try value.encode(to: encoder)
         case .tool(let value): try value.encode(to: encoder)
         }
     }
@@ -1342,14 +1423,14 @@ function generateActionsFile(project: Project): string {
 
 // ─── Commands File Generator ─────────────────────────────────────────────────
 
-const COMMAND_ENUMS = ['ReconnectResultType', 'ContentEncoding', 'CompletionItemKind', 'ResourceType', 'ResourceWriteMode'];
+const COMMAND_ENUMS = ['ReconnectResultType', 'ChatSourceKind', 'ContentEncoding', 'CompletionItemKind', 'ResourceType', 'ResourceWriteMode'];
 
 const COMMAND_STRUCTS = [
   'InitializeParams', 'InitializeResult', 'ClientCapabilities', 'Implementation',
   'ReconnectParams', 'ReconnectReplayResult', 'ReconnectSnapshotResult',
   'SubscribeParams', 'SubscribeView', 'SubscriptionDeliveryOptions', 'SubscribeResult',
   'SessionForkSource', 'CreateSessionParams', 'DisposeSessionParams',
-  'ChatForkSource', 'CreateChatParams', 'DisposeChatParams',
+  'CreateChatParams', 'DisposeChatParams',
   'ListSessionsParams', 'ListSessionsResult',
   'ResourceReadParams', 'ResourceReadResult',
   'ResourceWriteParams', 'ResourceWriteResult',
@@ -1383,6 +1464,15 @@ const RECONNECT_RESULT_UNION: UnionConfig = {
   ],
 };
 
+const CHAT_SOURCE_UNION: UnionConfig = {
+  name: 'ChatSource',
+  discriminantField: 'kind',
+  variants: [
+    { caseName: 'fork', structName: 'ForkChatSource', discriminantValue: 'fork' },
+    { caseName: 'sideChat', structName: 'SideChatSource', discriminantValue: 'sideChat' },
+  ],
+};
+
 function generateCommandsFile(project: Project): string {
   const lines: string[] = [GENERATED_HEADER];
 
@@ -1396,6 +1486,20 @@ function generateCommandsFile(project: Project): string {
   }
 
   lines.push('// MARK: - Command Types\n');
+  lines.push(generateFixedChatSourceBranchSwift(
+    'ForkChatSource',
+    'fork',
+    'Copies source history through a completed turn into the new chat.',
+    'Completed turn identifier in the source chat.\n\nContent through this turn is copied into the new chat\'s visible `turns`.',
+  ));
+  lines.push('');
+  lines.push(generateFixedChatSourceBranchSwift(
+    'SideChatSource',
+    'sideChat',
+    'Supplies source context to a new side chat without copying it into the side\nchat\'s visible history.',
+    'Stable source-turn identifier in the source chat.\n\nHosts resolve this id against the source chat\'s current `activeTurn` or its\nretained `turns` when accepting `createChat`. If it names the current\nactive turn, the host snapshots the source chat\'s retained history plus\nthat turn\'s current user message and any partial assistant response already\navailable. Once that turn later becomes historical, it is still referenced\nby this same identifier.',
+  ));
+  lines.push('');
   // Track which interfaces we've already generated to handle duplicates
   const generated = new Set<string>();
   for (const ifaceName of COMMAND_STRUCTS) {
@@ -1409,6 +1513,10 @@ function generateCommandsFile(project: Project): string {
       lines.push('');
     }
   }
+
+  lines.push('// MARK: - Command Unions\n');
+  lines.push(generateDiscriminatedUnion(CHAT_SOURCE_UNION));
+  lines.push('');
 
   lines.push('// MARK: - ReconnectResult Union\n');
   lines.push(generateDiscriminatedUnion(RECONNECT_RESULT_UNION));
@@ -1971,6 +2079,7 @@ function checkExhaustiveness(project: Project): void {
     'ChatInputAnswerValue',      // SESSION_INPUT_ANSWER_VALUE_UNION discriminated union
     'ChatInputAnswer',           // CHAT_INPUT_ANSWER_UNION discriminated union
     'ChatOrigin',                // hand-generated union for inline variants
+    'ChatSource',                // CHAT_SOURCE_UNION discriminated union
     'ChatToolCallApprovedAction',
     'ChatToolCallDeniedAction',
     'ChatToolCallConfirmedAction',
@@ -1996,6 +2105,8 @@ function checkExhaustiveness(project: Project): void {
     'AhpErrorCodeWithData',         // type-level alias; not a Swift type
     'JsonRpcErrorCode',             // type-level alias over JsonRpcErrorCodes const enum
     'ReconnectResult',              // RECONNECT_RESULT_UNION discriminated union
+    'ForkChatSource',               // generateFixedChatSourceBranchSwift()
+    'SideChatSource',               // generateFixedChatSourceBranchSwift()
     'ChangesetOperationTarget',     // TS discriminated union; consumers should add a Swift case-iterable enum
   ]);
 

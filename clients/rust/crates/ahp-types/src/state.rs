@@ -146,6 +146,9 @@ pub enum ChatOriginKind {
     /// Forked from an existing chat at a specific turn.
     #[serde(rename = "fork")]
     Fork,
+    /// Created as an independent side conversation from a specific turn.
+    #[serde(rename = "sideChat")]
+    SideChat,
     /// Spawned by a tool call running in another chat (e.g. a sub-agent delegation).
     #[serde(rename = "tool")]
     Tool,
@@ -294,6 +297,9 @@ pub enum MessageAttachmentKind {
     /// An attachment that references annotations on an annotations channel.
     #[serde(rename = "annotations")]
     Annotations,
+    /// An attachment that references a bounded transcript from another chat.
+    #[serde(rename = "chat")]
+    Chat,
 }
 
 /// Discriminant for response part types.
@@ -798,7 +804,8 @@ pub struct AgentCapabilities {
     /// The agent can host more than one concurrent chat per session. When absent,
     /// clients MUST NOT call `createChat` to open chats beyond the default one the
     /// session starts with. An empty object `{}` advertises multi-chat without
-    /// forking; set {@link MultipleChatsCapability.fork} to also allow forking.
+    /// source-based creation; set {@link MultipleChatsCapability.fork} or
+    /// {@link MultipleChatsCapability.sideChat} to allow the corresponding mode.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub multiple_chats: Option<MultipleChatsCapability>,
     /// The session's agent can be granted tool access to more than one working
@@ -818,10 +825,23 @@ pub struct AgentCapabilities {
 #[serde(rename_all = "camelCase")]
 pub struct MultipleChatsCapability {
     /// The agent can fork a chat from a specific turn. When absent or `false`,
-    /// clients MUST NOT pass a {@link ChatForkSource} (`source`) to `createChat`.
+    /// clients MUST NOT pass a {@link ChatSource} with `kind: "fork"` to
+    /// `createChat`.
     /// Forking always implies multi-chat support.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fork: Option<bool>,
+    /// The agent can create a side chat from a specific turn. When absent or
+    /// `false`, clients MUST NOT pass a {@link ChatSource} with
+    /// `kind: "sideChat"` to `createChat`.
+    ///
+    /// A side chat receives the source turn as context without copying the source
+    /// transcript into its own visible history. The source is identified by a
+    /// stable `turnId`, which the host resolves against the source chat's current
+    /// `activeTurn` or retained history. When it names the current active turn,
+    /// the host snapshots the available partial assistant response at creation
+    /// time. Side-chat support always implies multi-chat support.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side_chat: Option<bool>,
 }
 
 /// Options for the {@link AgentCapabilities.multipleWorkingDirectories} capability.
@@ -1123,6 +1143,26 @@ pub struct ChatSummary {
     /// See {@link ChatState.primaryWorkingDirectory} for the full semantics.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primary_working_directory: Option<Uri>,
+}
+
+/// Immutable selected-text snapshot captured when a side chat is created.
+///
+/// The host records this exact text when it accepts `createChat`; later changes
+/// to the source chat do not alter it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SideChatSelection {
+    /// Exact selected-text snapshot captured at `createChat` acceptance.
+    ///
+    /// MUST be non-empty.
+    pub text: String,
+    /// Optional provenance for the response part that contained {@link text} when
+    /// the host took the snapshot.
+    ///
+    /// Advisory only: this is not a live range or offset and MUST NOT be used to
+    /// recompute `text`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_part_id: Option<String>,
 }
 
 /// Full state for a single session, loaded when a client subscribes to the session's URI.
@@ -2100,6 +2140,53 @@ pub struct MessageAnnotationsAttachment {
     /// omitted, the attachment references all annotations on the channel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub annotation_ids: Option<Vec<String>>,
+}
+
+/// An attachment that references a chat transcript through a fixed completed
+/// turn.
+///
+/// The referenced chat MUST belong to the same session as the message's chat.
+/// The host resolves the transcript from its first retained turn through
+/// `endTurn`, inclusive, when accepting the message. Later turns do not
+/// change the context represented by an already-sent attachment.
+///
+/// Hosts MUST NOT recursively expand chat attachments found inside the
+/// referenced transcript. Clients SHOULD keep rendering `label` if the
+/// referenced chat is later pruned, and treat opening `resource` as best-effort.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageChatAttachment {
+    /// A human-readable label for the attachment (e.g. the filename of a file
+    /// attachment). Used for display in UI.
+    pub label: String,
+    /// If defined, the range in {@link Message.text} that references this
+    /// attachment. This is a text range, not a byte range.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<TextRange>,
+    /// Advisory display hint for clients rendering this attachment. Recognized
+    /// values include:
+    ///
+    /// - `'image'`: the attachment is an image
+    /// - `'document'`: the attachment is a textual document
+    /// - `'symbol'`: the attachment is a code symbol (e.g. a function or class)
+    /// - `'directory'`: the attachment is a folder
+    /// - `'selection'`: the attachment is a selection within a document
+    ///
+    /// Implementations MAY provide additional values; clients SHOULD fall back
+    /// to a reasonable default when an unknown value is encountered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_kind: Option<String>,
+    /// Additional implementation-defined metadata for the attachment.
+    ///
+    /// If the attachment was produced by the `completions` command, the client
+    /// MUST preserve every property of `_meta` originally returned by the agent
+    /// host when sending the user message containing the accepted completion.
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<JsonObject>,
+    /// URI of the referenced chat.
+    pub resource: Uri,
+    /// Last completed turn included in the referenced transcript.
+    pub end_turn: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -4168,9 +4255,21 @@ pub enum ChatOrigin {
     Fork {
         /// URI of the chat this one was forked from.
         chat: Uri,
-        /// Turn the fork was taken from.
+        /// Completed source-turn identifier the fork was taken from.
         #[serde(rename = "turnId")]
         turn_id: String,
+    },
+    /// Independent side conversation created from a specific turn.
+    #[serde(rename = "sideChat")]
+    SideChat {
+        /// URI of the chat that supplied the side-chat context.
+        chat: Uri,
+        /// Stable source-turn identifier through which context was supplied.
+        #[serde(rename = "turnId")]
+        turn_id: String,
+        /// Optional immutable selected-text snapshot captured when the side chat was created.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selection: Option<SideChatSelection>,
     },
     /// Spawned by a tool call in another chat.
     #[serde(rename = "tool")]
@@ -4367,6 +4466,8 @@ pub enum MessageAttachment {
     Resource(MessageResourceAttachment),
     #[serde(rename = "annotations")]
     Annotations(MessageAnnotationsAttachment),
+    #[serde(rename = "chat")]
+    Chat(MessageChatAttachment),
     /// Unknown or future variant — preserved as raw JSON for round-trip fidelity.
     /// Reducers treat this as a no-op.
     #[serde(untagged)]

@@ -184,6 +184,11 @@ enum class ChatOriginKind {
     @SerialName("fork")
     FORK,
     /**
+     * Created as an independent side conversation from a specific turn.
+     */
+    @SerialName("sideChat")
+    SIDE_CHAT,
+    /**
      * Spawned by a tool call running in another chat (e.g. a sub-agent delegation).
      */
     @SerialName("tool")
@@ -380,7 +385,12 @@ enum class MessageAttachmentKind {
      * An attachment that references annotations on an annotations channel.
      */
     @SerialName("annotations")
-    ANNOTATIONS
+    ANNOTATIONS,
+    /**
+     * An attachment that references a bounded transcript from another chat.
+     */
+    @SerialName("chat")
+    CHAT
 }
 
 /**
@@ -948,7 +958,8 @@ data class AgentCapabilities(
      * The agent can host more than one concurrent chat per session. When absent,
      * clients MUST NOT call `createChat` to open chats beyond the default one the
      * session starts with. An empty object `{}` advertises multi-chat without
-     * forking; set {@link MultipleChatsCapability.fork} to also allow forking.
+     * source-based creation; set {@link MultipleChatsCapability.fork} or
+     * {@link MultipleChatsCapability.sideChat} to allow the corresponding mode.
      */
     val multipleChats: MultipleChatsCapability? = null,
     /**
@@ -968,10 +979,24 @@ data class AgentCapabilities(
 data class MultipleChatsCapability(
     /**
      * The agent can fork a chat from a specific turn. When absent or `false`,
-     * clients MUST NOT pass a {@link ChatForkSource} (`source`) to `createChat`.
+     * clients MUST NOT pass a {@link ChatSource} with `kind: "fork"` to
+     * `createChat`.
      * Forking always implies multi-chat support.
      */
-    val fork: Boolean? = null
+    val fork: Boolean? = null,
+    /**
+     * The agent can create a side chat from a specific turn. When absent or
+     * `false`, clients MUST NOT pass a {@link ChatSource} with
+     * `kind: "sideChat"` to `createChat`.
+     *
+     * A side chat receives the source turn as context without copying the source
+     * transcript into its own visible history. The source is identified by a
+     * stable `turnId`, which the host resolves against the source chat's current
+     * `activeTurn` or retained history. When it names the current active turn,
+     * the host snapshots the available partial assistant response at creation
+     * time. Side-chat support always implies multi-chat support.
+     */
+    val sideChat: Boolean? = null
 )
 
 @Serializable
@@ -1298,6 +1323,24 @@ data class ChatSummary(
      * See {@link ChatState.primaryWorkingDirectory} for the full semantics.
      */
     val primaryWorkingDirectory: String? = null
+)
+
+@Serializable
+data class SideChatSelection(
+    /**
+     * Exact selected-text snapshot captured at `createChat` acceptance.
+     *
+     * MUST be non-empty.
+     */
+    val text: String,
+    /**
+     * Optional provenance for the response part that contained {@link text} when
+     * the host took the snapshot.
+     *
+     * Advisory only: this is not a live range or offset and MUST NOT be used to
+     * recompute `text`.
+     */
+    val responsePartId: String? = null
 )
 
 @Serializable
@@ -2314,6 +2357,55 @@ data class MessageAnnotationsAttachment(
      * omitted, the attachment references all annotations on the channel.
      */
     val annotationIds: List<String>? = null
+)
+
+@Serializable
+data class MessageChatAttachment(
+    /**
+     * A human-readable label for the attachment (e.g. the filename of a file
+     * attachment). Used for display in UI.
+     */
+    val label: String,
+    /**
+     * If defined, the range in {@link Message.text} that references this
+     * attachment. This is a text range, not a byte range.
+     */
+    val range: TextRange? = null,
+    /**
+     * Advisory display hint for clients rendering this attachment. Recognized
+     * values include:
+     *
+     * - `'image'`: the attachment is an image
+     * - `'document'`: the attachment is a textual document
+     * - `'symbol'`: the attachment is a code symbol (e.g. a function or class)
+     * - `'directory'`: the attachment is a folder
+     * - `'selection'`: the attachment is a selection within a document
+     *
+     * Implementations MAY provide additional values; clients SHOULD fall back
+     * to a reasonable default when an unknown value is encountered.
+     */
+    val displayKind: String? = null,
+    /**
+     * Additional implementation-defined metadata for the attachment.
+     *
+     * If the attachment was produced by the `completions` command, the client
+     * MUST preserve every property of `_meta` originally returned by the agent
+     * host when sending the user message containing the accepted completion.
+     */
+    @SerialName("_meta")
+    val meta: Map<String, JsonElement>? = null,
+    /**
+     * Discriminant
+     */
+    val type: MessageAttachmentKind,
+    /**
+     * URI of the referenced chat.
+     */
+    val resource: String,
+    /**
+     * Last completed turn included in the referenced transcript.
+     */
+    val endTurn: String
 )
 
 @Serializable
@@ -4572,6 +4664,7 @@ data class ResourceChange(
 sealed interface ChatOrigin {
     @JvmInline value class User(val value: ChatOriginUser) : ChatOrigin
     @JvmInline value class Fork(val value: ChatOriginFork) : ChatOrigin
+    @JvmInline value class SideChat(val value: ChatOriginSideChat) : ChatOrigin
     @JvmInline value class Tool(val value: ChatOriginTool) : ChatOrigin
     @JvmInline value class Unknown(val raw: JsonObject) : ChatOrigin
 }
@@ -4595,6 +4688,14 @@ data class ChatOriginTool(
     val toolCallId: String,
 )
 
+@Serializable
+data class ChatOriginSideChat(
+    val kind: ChatOriginKind = ChatOriginKind.SIDE_CHAT,
+    val chat: String,
+    val turnId: String,
+    val selection: SideChatSelection? = null,
+)
+
 internal object ChatOriginSerializer : KSerializer<ChatOrigin> {
     override val descriptor: SerialDescriptor = buildClassSerialDescriptor("ChatOrigin")
 
@@ -4605,6 +4706,7 @@ internal object ChatOriginSerializer : KSerializer<ChatOrigin> {
         return when ((obj["kind"] as? JsonPrimitive)?.contentOrNull) {
             "user" -> ChatOrigin.User(input.json.decodeFromJsonElement(ChatOriginUser.serializer(), element))
             "fork" -> ChatOrigin.Fork(input.json.decodeFromJsonElement(ChatOriginFork.serializer(), element))
+            "sideChat" -> ChatOrigin.SideChat(input.json.decodeFromJsonElement(ChatOriginSideChat.serializer(), element))
             "tool" -> ChatOrigin.Tool(input.json.decodeFromJsonElement(ChatOriginTool.serializer(), element))
             else -> ChatOrigin.Unknown(obj)
         }
@@ -4615,6 +4717,7 @@ internal object ChatOriginSerializer : KSerializer<ChatOrigin> {
         val element: JsonElement = when (value) {
             is ChatOrigin.User -> output.json.encodeToJsonElement(ChatOriginUser.serializer(), value.value)
             is ChatOrigin.Fork -> output.json.encodeToJsonElement(ChatOriginFork.serializer(), value.value)
+            is ChatOrigin.SideChat -> output.json.encodeToJsonElement(ChatOriginSideChat.serializer(), value.value)
             is ChatOrigin.Tool -> output.json.encodeToJsonElement(ChatOriginTool.serializer(), value.value)
             is ChatOrigin.Unknown -> value.raw
         }
@@ -5087,6 +5190,8 @@ value class MessageAttachmentEmbeddedResource(val value: MessageEmbeddedResource
 value class MessageAttachmentResource(val value: MessageResourceAttachment) : MessageAttachment
 @JvmInline
 value class MessageAttachmentAnnotations(val value: MessageAnnotationsAttachment) : MessageAttachment
+@JvmInline
+value class MessageAttachmentChat(val value: MessageChatAttachment) : MessageAttachment
 /**
  * Forward-compat catch-all for unknown MessageAttachment discriminators.
  *
@@ -5115,6 +5220,7 @@ internal object MessageAttachmentSerializer : KSerializer<MessageAttachment> {
             "embeddedResource" -> MessageAttachmentEmbeddedResource(input.json.decodeFromJsonElement(MessageEmbeddedResourceAttachment.serializer(), element))
             "resource" -> MessageAttachmentResource(input.json.decodeFromJsonElement(MessageResourceAttachment.serializer(), element))
             "annotations" -> MessageAttachmentAnnotations(input.json.decodeFromJsonElement(MessageAnnotationsAttachment.serializer(), element))
+            "chat" -> MessageAttachmentChat(input.json.decodeFromJsonElement(MessageChatAttachment.serializer(), element))
             else -> MessageAttachmentUnknown(obj)
         }
     }
@@ -5127,6 +5233,7 @@ internal object MessageAttachmentSerializer : KSerializer<MessageAttachment> {
             is MessageAttachmentEmbeddedResource -> output.json.encodeToJsonElement(MessageEmbeddedResourceAttachment.serializer(), value.value)
             is MessageAttachmentResource -> output.json.encodeToJsonElement(MessageResourceAttachment.serializer(), value.value)
             is MessageAttachmentAnnotations -> output.json.encodeToJsonElement(MessageAnnotationsAttachment.serializer(), value.value)
+            is MessageAttachmentChat -> output.json.encodeToJsonElement(MessageChatAttachment.serializer(), value.value)
             is MessageAttachmentUnknown -> value.raw
         }
         output.encodeJsonElement(element)
