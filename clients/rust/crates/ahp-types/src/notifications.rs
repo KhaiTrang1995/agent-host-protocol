@@ -250,12 +250,13 @@ pub struct PartialSessionSummary {
     pub project: Option<ProjectInfo>,
     /// The working directories the session's agent has tool access to, as
     /// maintained by the `session/workingDirectorySet` /
-    /// `session/workingDirectoryRemoved` actions. Directories are **equal peers** —
-    /// the session has no primary. Individual chats MAY restrict to a subset via
-    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`} and
-    /// designate one of their own directories as primary (see
-    /// {@link ChatState.primaryWorkingDirectory}); a chat that sets no subset
-    /// operates against this full set.
+    /// `session/workingDirectoryRemoved` actions. Directories are equal peers
+    /// except when the agent advertises
+    /// {@link MultipleWorkingDirectoriesCapability.immutablePrimary} (the first
+    /// entry is then a fixed process root). Individual chats MAY restrict to a
+    /// subset via {@link ChatSummary.workingDirectories | their own
+    /// `workingDirectories`}; a chat that sets none operates against this full
+    /// set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_directories: Option<Vec<Uri>>,
     /// Lightweight summary of this session's inline annotations channel

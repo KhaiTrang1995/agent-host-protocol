@@ -638,8 +638,8 @@ public struct AgentCapabilities: Codable, Sendable {
     public var multipleChats: MultipleChatsCapability?
     /// The session's agent can be granted tool access to more than one working
     /// directory. The directories are treated as equal peers except where the
-    /// agent advertises {@link MultipleWorkingDirectoriesCapability.requiresPrimary}
-    /// (some backends need one directory designated as a primary root).
+    /// agent advertises {@link MultipleWorkingDirectoriesCapability.immutablePrimary}
+    /// (some backends pin their first directory as a fixed process root).
     ///
     /// When absent, clients MUST NOT mutate a session's or chat's working-directory
     /// set and MUST NOT set more than one entry in
@@ -683,24 +683,22 @@ public struct MultipleChatsCapability: Codable, Sendable {
 }
 
 public struct MultipleWorkingDirectoriesCapability: Codable, Sendable {
-    /// The agent requires each chat to designate one of its working directories as
-    /// the **primary** — a distinguished root the chat is centered on (e.g. the
-    /// agent's process root for that chat, the default location for relative
-    /// paths). Primary is a **per-chat** notion, fixed at chat creation. When
-    /// `true`, a client SHOULD supply {@link CreateChatParams.primaryWorkingDirectory}
-    /// (and {@link CreateSessionParams.primaryWorkingDirectory}, which seeds the
-    /// session's default chat); a host MAY reject creation that omits it, or fall
-    /// back to the first entry of the chat's working directories. The chosen
-    /// primary is reported (read-only) on {@link ChatState.primaryWorkingDirectory}.
+    /// The agent's **first** working directory (index `0` of
+    /// {@link CreateSessionParams.workingDirectories}) is an immutable primary:
+    /// it is fixed for the lifetime of the session — clients MUST NOT remove or
+    /// reorder it. Additional directories after it remain equal peers that can be
+    /// added and removed freely.
     ///
-    /// When absent or `false`, the agent has no primary — all directories are
-    /// equal peers and clients need not designate one.
-    public var requiresPrimary: Bool?
+    /// Advertised by backends whose agent process is rooted at a single directory
+    /// that cannot change once the session has started (e.g. the SDK's primary
+    /// `workingDirectory`). When absent or `false`, all directories are equal
+    /// peers and any of them may be removed.
+    public var immutablePrimary: Bool?
 
     public init(
-        requiresPrimary: Bool? = nil
+        immutablePrimary: Bool? = nil
     ) {
-        self.requiresPrimary = requiresPrimary
+        self.immutablePrimary = immutablePrimary
     }
 }
 
@@ -932,19 +930,6 @@ public struct ChatState: Codable, Sendable {
     /// Dispatch `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` to
     /// update the subset on a running chat.
     public var workingDirectories: [String]?
-    /// The chat's primary working directory — the distinguished root this chat is
-    /// centered on (e.g. the agent's process root for this chat, the default
-    /// location for relative paths). MUST be one of this chat's effective working
-    /// directories ({@link workingDirectories}, or the session's set when that is
-    /// absent). Present when the agent advertises
-    /// {@link MultipleWorkingDirectoriesCapability.requiresPrimary}.
-    ///
-    /// **Read-only and fixed at creation.** It is set from
-    /// {@link CreateChatParams.primaryWorkingDirectory} (or, for the session's
-    /// default chat, {@link CreateSessionParams.primaryWorkingDirectory}) and does
-    /// not change over the chat's lifetime — there is no action to mutate it, and
-    /// it does not participate in `session/chatUpdated`.
-    public var primaryWorkingDirectory: String?
     /// Completed turns
     public var turns: [Turn]
     /// Cursor for loading older completed turns into this chat state.
@@ -984,7 +969,6 @@ public struct ChatState: Codable, Sendable {
         case origin
         case interactivity
         case workingDirectories
-        case primaryWorkingDirectory
         case turns
         case turnsNextCursor
         case activeTurn
@@ -1003,7 +987,6 @@ public struct ChatState: Codable, Sendable {
         origin: ChatOrigin? = nil,
         interactivity: ChatInteractivity? = nil,
         workingDirectories: [String]? = nil,
-        primaryWorkingDirectory: String? = nil,
         turns: [Turn],
         turnsNextCursor: String? = nil,
         activeTurn: ActiveTurn? = nil,
@@ -1020,7 +1003,6 @@ public struct ChatState: Codable, Sendable {
         self.origin = origin
         self.interactivity = interactivity
         self.workingDirectories = workingDirectories
-        self.primaryWorkingDirectory = primaryWorkingDirectory
         self.turns = turns
         self.turnsNextCursor = turnsNextCursor
         self.activeTurn = activeTurn
@@ -1053,9 +1035,6 @@ public struct ChatSummary: Codable, Sendable {
     /// The subset of the session's working directories this chat uses.
     /// See {@link ChatState.workingDirectories} for the full semantics.
     public var workingDirectories: [String]?
-    /// The chat's primary working directory.
-    /// See {@link ChatState.primaryWorkingDirectory} for the full semantics.
-    public var primaryWorkingDirectory: String?
 
     public init(
         resource: String,
@@ -1065,8 +1044,7 @@ public struct ChatSummary: Codable, Sendable {
         modifiedAt: String,
         origin: ChatOrigin? = nil,
         interactivity: ChatInteractivity? = nil,
-        workingDirectories: [String]? = nil,
-        primaryWorkingDirectory: String? = nil
+        workingDirectories: [String]? = nil
     ) {
         self.resource = resource
         self.title = title
@@ -1076,7 +1054,6 @@ public struct ChatSummary: Codable, Sendable {
         self.origin = origin
         self.interactivity = interactivity
         self.workingDirectories = workingDirectories
-        self.primaryWorkingDirectory = primaryWorkingDirectory
     }
 }
 
@@ -1114,12 +1091,13 @@ public struct SessionState: Codable, Sendable {
     public var project: ProjectInfo?
     /// The working directories the session's agent has tool access to, as
     /// maintained by the `session/workingDirectorySet` /
-    /// `session/workingDirectoryRemoved` actions. Directories are **equal peers** —
-    /// the session has no primary. Individual chats MAY restrict to a subset via
-    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`} and
-    /// designate one of their own directories as primary (see
-    /// {@link ChatState.primaryWorkingDirectory}); a chat that sets no subset
-    /// operates against this full set.
+    /// `session/workingDirectoryRemoved` actions. Directories are equal peers
+    /// except when the agent advertises
+    /// {@link MultipleWorkingDirectoriesCapability.immutablePrimary} (the first
+    /// entry is then a fixed process root). Individual chats MAY restrict to a
+    /// subset via {@link ChatSummary.workingDirectories | their own
+    /// `workingDirectories`}; a chat that sets none operates against this full
+    /// set.
     public var workingDirectories: [String]?
     /// Lightweight summary of this session's inline annotations channel
     /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render
@@ -1433,12 +1411,13 @@ public struct SessionSummary: Codable, Sendable {
     public var project: ProjectInfo?
     /// The working directories the session's agent has tool access to, as
     /// maintained by the `session/workingDirectorySet` /
-    /// `session/workingDirectoryRemoved` actions. Directories are **equal peers** —
-    /// the session has no primary. Individual chats MAY restrict to a subset via
-    /// {@link ChatSummary.workingDirectories | their own `workingDirectories`} and
-    /// designate one of their own directories as primary (see
-    /// {@link ChatState.primaryWorkingDirectory}); a chat that sets no subset
-    /// operates against this full set.
+    /// `session/workingDirectoryRemoved` actions. Directories are equal peers
+    /// except when the agent advertises
+    /// {@link MultipleWorkingDirectoriesCapability.immutablePrimary} (the first
+    /// entry is then a fixed process root). Individual chats MAY restrict to a
+    /// subset via {@link ChatSummary.workingDirectories | their own
+    /// `workingDirectories`}; a chat that sets none operates against this full
+    /// set.
     public var workingDirectories: [String]?
     /// Lightweight summary of this session's inline annotations channel
     /// (`ahp-session:/<uuid>/annotations`). Surfaced so badge UI can render

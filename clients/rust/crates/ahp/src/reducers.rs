@@ -1974,7 +1974,6 @@ mod tests {
             origin: None,
             interactivity: None,
             working_directories: None,
-            primary_working_directory: None,
             turns: Vec::new(),
             turns_next_cursor: None,
             active_turn: None,
@@ -2071,7 +2070,6 @@ mod tests {
             origin: None,
             interactivity: None,
             working_directories: None,
-            primary_working_directory: None,
         };
         let added = StateAction::SessionChatAdded(ahp_types::actions::SessionChatAddedAction {
             summary: chat.clone(),

@@ -169,13 +169,10 @@ throughout — no juggling three disconnected sessions.
 - **It is not per-file or per-glob scoping.** The unit is a working directory (a
   root), not arbitrary path patterns within it.
 
-- **No mandatory primary; when needed, it's per-chat.** All directories are
-  peers by default and the **session has no primary at all**. A backend that
-  *needs* one distinguished root advertises `requiresPrimary`; the client then
-  designates it explicitly per **chat** via `primaryWorkingDirectory` (on
-  `createChat`, or `createSession` to seed the default chat). It is read-only
-  and fixed at chat creation — never inferred from array position, never mutated
-  after birth.
+- **No mandatory primary.** All directories are peers by default. A backend that
+  *must* pin its first directory (a fixed process root) advertises
+  `immutablePrimary` on the capability; clients then keep index `0` fixed. The
+  protocol has no other notion of a "main" directory.
 
 - **It is not multi-root *chats as sub-sessions*.** A chat narrowing to a subset
   is still one thread under one session's trust and identity. Independent agents
@@ -233,12 +230,12 @@ as today.
 | Symbol | File | Kind |
 | --- | --- | --- |
 | `AgentCapabilities.multipleWorkingDirectories?` | `channels-root/state.ts` | added (capability) |
-| `MultipleWorkingDirectoriesCapability` (`requiresPrimary?`) | `channels-root/state.ts` | added (type) |
-| `CreateSessionParams.workingDirectories?` / `primaryWorkingDirectory?` | `channels-session/commands.ts` | added |
+| `MultipleWorkingDirectoriesCapability` (`immutablePrimary?`) | `channels-root/state.ts` | added (type) |
+| `CreateSessionParams.workingDirectories?` | `channels-session/commands.ts` | added |
 | `SessionMetadata.workingDirectories?` (→ `SessionState`, `SessionSummary`) | `channels-session/state.ts` | added |
 | `session/workingDirectorySet` / `session/workingDirectoryRemoved` actions | `channels-session/actions.ts` | added (action) |
-| `ChatState.workingDirectories?` / `primaryWorkingDirectory?` (& `ChatSummary`) | `channels-chat/state.ts` | added |
-| `CreateChatParams.workingDirectories?` / `primaryWorkingDirectory?` | `channels-chat/commands.ts` | added |
+| `ChatState.workingDirectories?` / `ChatSummary.workingDirectories?` | `channels-chat/state.ts` | added |
+| `CreateChatParams.workingDirectories?` | `channels-chat/commands.ts` | added |
 | `chat/workingDirectorySet` / `chat/workingDirectoryRemoved` actions | `channels-chat/actions.ts` | added (action) |
 | 4 `ActionType` entries + `ACTION_INTRODUCED_IN` (`0.7.0`) | `common/actions.ts`, `version/registry.ts` | added |
 
@@ -265,8 +262,8 @@ interface AgentCapabilities {
   multipleWorkingDirectories?: MultipleWorkingDirectoriesCapability;
 }
 interface MultipleWorkingDirectoriesCapability {
-  /** The agent needs one directory designated as its primary root. */
-  requiresPrimary?: boolean;
+  /** First directory is a fixed process root; clients MUST NOT remove/reorder it. */
+  immutablePrimary?: boolean;
 }
 
 // ── Session create — channels-session/commands.ts ────────────────────────
@@ -274,14 +271,12 @@ interface CreateSessionParams extends BaseParams {
   // …existing…
   /** The session's equal-peer working directories. */
   workingDirectories?: URI[];
-  /** Seeds the default chat's primary (⊆ workingDirectories); when requiresPrimary. */
-  primaryWorkingDirectory?: URI;
 }
 
 // ── Session state — channels-session/state.ts (→ SessionState/SessionSummary)
 interface SessionMetadata {
   // …existing…
-  workingDirectories?: URI[];   // equal peers; the session has NO primary
+  workingDirectories?: URI[];
 }
 
 // ── Session runtime mutation — channels-session/actions.ts ────────────────
@@ -300,13 +295,10 @@ interface ChatState /* and ChatSummary */ {
   // …existing…
   /** The chat's subset — every entry MUST be one of the session's dirs. */
   workingDirectories?: URI[];
-  /** Read-only, fixed at creation; no action, not in chatUpdated. */
-  primaryWorkingDirectory?: URI;
 }
 interface CreateChatParams extends BaseParams {
   // …existing…
   workingDirectories?: URI[]; // subset ⊆ session; absent → whole session set
-  primaryWorkingDirectory?: URI; // ⊆ chat's dirs; when requiresPrimary
 }
 // channel = chat URI. Gated by multipleWorkingDirectories. @clientDispatchable.
 interface ChatWorkingDirectorySetAction {
@@ -338,27 +330,17 @@ interface ChatWorkingDirectoryRemovedAction {
   handshake.
 - Removal actions are idempotent and modelled as
   *reconfigure-to-the-reduced-set*; a host MAY decline to apply a removal (e.g.
-  a directory still designated as some chat's primary), leaving the set
-  unchanged.
+  an `immutablePrimary` directory), leaving the set unchanged.
 
 ---
 
 ## 9. Design decisions & resolved questions
 
-- **Primary is per-chat, read-only, fixed at creation.** *Resolved:* the set is
-  equal peers by default and the **session has no primary**. Rejected a
+- **No mandatory primary.** *Resolved:* the set is equal peers. Rejected a
   "primary + additional" split because it re-introduces the confusion the user
-  called out ("what's the relation between primary and secondary?"). An agent
-  that needs one distinguished root advertises `requiresPrimary`; the client
-  designates it **per chat** via `primaryWorkingDirectory`
-  (`createChat`, or `createSession` to seed the default chat). It is stored
-  read-only on `ChatState`/`ChatSummary` (user-visible, recoverable by late
-  subscribers) but has **no mutating action** and is not part of
-  `session/chatUpdated` — so it's visible yet immutable. "In state" and
-  "mutable" are orthogonal in AHP: mutability comes from an action existing, not
-  from where the value lives. Deliberately *not* positional — never inferred
-  from array index — and a role-on-entry shape was rejected because it would
-  couple the immutable primary to the mutable set's lifecycle.
+  called out ("what's the relation between primary and secondary?"). Backends
+  that genuinely pin a fixed process root opt in via
+  `MultipleWorkingDirectoriesCapability.immutablePrimary` (index `0` fixed).
 
 - **Hard-remove the singular `workingDirectory`.** *Resolved (per review):*
   removing these fields is a breaking change, so the feature targets a MINOR
@@ -393,8 +375,7 @@ interface ChatWorkingDirectoryRemovedAction {
 
 - **Removal semantics.** *Resolved:* no single-remove primitive is assumed; the
   `*/workingDirectoryRemoved` action reduces to the reduced set, so it is
-  idempotent and safe to retry. A host MAY decline (e.g. a directory still
-  designated as some chat's primary).
+  idempotent and safe to retry. A host MAY decline (e.g. an immutable primary).
 
 ---
 
