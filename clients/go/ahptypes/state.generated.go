@@ -1720,10 +1720,19 @@ type MessageAnnotationsAttachment struct {
 // An attachment that references a chat transcript through a fixed completed
 // turn.
 //
-// The referenced chat MUST belong to the same session as the message's chat.
-// The host resolves the transcript from its first retained turn through
-// `endTurn`, inclusive, when accepting the message. Later turns do not
-// change the context represented by an already-sent attachment.
+// The referenced chat MAY belong to a different session than the message's
+// chat. The attachment's model representation identifies the chat in a way
+// that hosts can resolve regardless of the session that owns it.
+//
+// When `endTurn` is omitted, the host MUST resolve and pin the referenced
+// chat's latest completed turn when accepting the message. This lets clients
+// attach a chat without knowing its turn identifiers. When provided, `endTurn`
+// MUST reference a completed, retained turn. The host resolves the transcript
+// from its first retained turn through the pinned turn, inclusive. Later turns
+// do not change the context represented by an already-sent attachment.
+//
+// Hosts MUST reject an attachment that omits `endTurn` when the referenced chat
+// has no completed retained turns.
 //
 // Hosts MUST NOT recursively expand chat attachments found inside the
 // referenced transcript. Clients SHOULD keep rendering `label` if the
@@ -1757,8 +1766,9 @@ type MessageChatAttachment struct {
 	Type MessageAttachmentKind `json:"type"`
 	// URI of the referenced chat.
 	Resource URI `json:"resource"`
-	// Last completed turn included in the referenced transcript.
-	EndTurn string `json:"endTurn"`
+	// Last completed turn included in the referenced transcript. When omitted,
+	// the host pins the latest completed turn when accepting the message.
+	EndTurn *string `json:"endTurn,omitempty"`
 }
 
 type MarkdownResponsePart struct {

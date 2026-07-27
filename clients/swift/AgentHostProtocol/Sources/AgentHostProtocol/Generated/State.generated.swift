@@ -2370,8 +2370,9 @@ public struct MessageChatAttachment: Codable, Sendable {
     public var type: MessageAttachmentKind
     /// URI of the referenced chat.
     public var resource: String
-    /// Last completed turn included in the referenced transcript.
-    public var endTurn: String
+    /// Last completed turn included in the referenced transcript. When omitted,
+    /// the host pins the latest completed turn when accepting the message.
+    public var endTurn: String?
 
     enum CodingKeys: String, CodingKey {
         case label
@@ -2390,7 +2391,7 @@ public struct MessageChatAttachment: Codable, Sendable {
         meta: [String: AnyCodable]? = nil,
         type: MessageAttachmentKind,
         resource: String,
-        endTurn: String
+        endTurn: String? = nil
     ) {
         self.label = label
         self.range = range

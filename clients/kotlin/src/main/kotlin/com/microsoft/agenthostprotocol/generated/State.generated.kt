@@ -2403,9 +2403,10 @@ data class MessageChatAttachment(
      */
     val resource: String,
     /**
-     * Last completed turn included in the referenced transcript.
+     * Last completed turn included in the referenced transcript. When omitted,
+     * the host pins the latest completed turn when accepting the message.
      */
-    val endTurn: String
+    val endTurn: String? = null
 )
 
 @Serializable
