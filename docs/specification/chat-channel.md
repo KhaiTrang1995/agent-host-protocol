@@ -135,21 +135,28 @@ A `fork`, `sideChat`, or `tool` origin names only the chat's **immediate** sourc
 
 A message can attach a bounded transcript using a
 [`MessageChatAttachment`](/reference/chat#messagechatattachment). Its `resource`
-identifies another chat in the same session and `endTurn` identifies the last
-completed turn included in the transcript. The bound is required: later
-turns in the referenced chat MUST NOT retroactively change the context of an
-already-sent message.
+identifies another chat, which MAY belong to a different session. The model
+representation of the attachment identifies the chat in a way that hosts can
+resolve regardless of which session owns it. When supplied, `endTurn` identifies
+the last completed turn included in the transcript. When it is omitted, the host
+pins the referenced chat's latest completed turn when accepting the message. This
+lets clients attach chats whose turn identifiers they do not know. In either
+case, the bound prevents later turns in the referenced chat from retroactively
+changing the context of an already-sent message.
 
 This is the standard way to pull a side-chat result back into its originating
 chat. It is not limited to that UX: any chat may attach another chat from the
-same session. No merge or chat-to-chat messaging action occurs; the attachment
-travels on the ordinary message in `chat/turnStarted`.
+same or a different session. No merge or chat-to-chat messaging action occurs;
+the attachment travels on the ordinary message in `chat/turnStarted`.
 
 When accepting the message, the host MUST resolve the referenced chat's retained
-transcript from its first turn through `endTurn`, inclusive, and supply it
-as model context. The host MUST reject an unknown chat, a cross-session chat, an
-unknown turn, or an active rather than completed turn. Chat attachments inside
-the referenced transcript MUST remain references and MUST NOT be recursively
+transcript from its first turn through the supplied `endTurn`, or through the
+latest completed turn when `endTurn` is omitted, and supply it as model context.
+When provided, `endTurn` MUST reference a completed, retained turn. The host
+MUST reject an attachment that references an unknown chat, specifies an
+unknown, active, or non-retained `endTurn`, or omits `endTurn` when the
+referenced chat has no completed retained turns. Chat attachments inside the
+referenced transcript MUST remain references and MUST NOT be recursively
 expanded, preventing cycles and unbounded context growth.
 
 The attachment itself remains durable turn state. If the referenced chat is

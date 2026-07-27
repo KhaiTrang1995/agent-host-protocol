@@ -3507,7 +3507,7 @@
     },
     "MessageChatAttachment": {
       "type": "object",
-      "description": "An attachment that references a chat transcript through a fixed completed\nturn.\n\nThe referenced chat MUST belong to the same session as the message's chat.\nThe host resolves the transcript from its first retained turn through\n`endTurn`, inclusive, when accepting the message. Later turns do not\nchange the context represented by an already-sent attachment.\n\nHosts MUST NOT recursively expand chat attachments found inside the\nreferenced transcript. Clients SHOULD keep rendering `label` if the\nreferenced chat is later pruned, and treat opening `resource` as best-effort.",
+      "description": "An attachment that references a chat transcript through a fixed completed\nturn.\n\nThe referenced chat MAY belong to a different session than the message's\nchat. The attachment's model representation identifies the chat in a way\nthat hosts can resolve regardless of the session that owns it.\n\nWhen `endTurn` is omitted, the host MUST resolve and pin the referenced\nchat's latest completed turn when accepting the message. This lets clients\nattach a chat without knowing its turn identifiers. When provided, `endTurn`\nMUST reference a completed, retained turn. The host resolves the transcript\nfrom its first retained turn through the pinned turn, inclusive. Later turns\ndo not change the context represented by an already-sent attachment.\n\nHosts MUST reject an attachment that omits `endTurn` when the referenced chat\nhas no completed retained turns.\n\nHosts MUST NOT recursively expand chat attachments found inside the\nreferenced transcript. Clients SHOULD keep rendering `label` if the\nreferenced chat is later pruned, and treat opening `resource` as best-effort.",
       "properties": {
         "label": {
           "type": "string",
@@ -3536,14 +3536,13 @@
         },
         "endTurn": {
           "type": "string",
-          "description": "Last completed turn included in the referenced transcript."
+          "description": "Last completed turn included in the referenced transcript. When omitted,\nthe host pins the latest completed turn when accepting the message."
         }
       },
       "required": [
         "label",
         "type",
-        "resource",
-        "endTurn"
+        "resource"
       ]
     },
     "MarkdownResponsePart": {
