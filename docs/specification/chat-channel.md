@@ -154,10 +154,11 @@ transcript from its first turn through the supplied `endTurn`, or through the
 latest completed turn when `endTurn` is omitted, and supply it as model context.
 When provided, `endTurn` MUST reference a completed, retained turn. The host
 MUST reject an attachment that references an unknown chat, specifies an
-unknown, active, or non-retained `endTurn`, or omits `endTurn` when the
-referenced chat has no completed retained turns. Chat attachments inside the
-referenced transcript MUST remain references and MUST NOT be recursively
-expanded, preventing cycles and unbounded context growth.
+unknown, active, or non-retained `endTurn`. When the referenced chat has no
+completed retained turns, the resolved transcript is empty and the host MUST
+NOT reject the attachment on that basis. Chat attachments inside the referenced
+transcript MUST remain references and MUST NOT be recursively expanded,
+preventing cycles and unbounded context growth.
 
 The attachment itself remains durable turn state. If the referenced chat is
 later pruned, clients SHOULD continue rendering the stored `label` and treat

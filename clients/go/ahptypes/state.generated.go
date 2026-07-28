@@ -1715,8 +1715,8 @@ type MessageAnnotationsAttachment struct {
 // from its first retained turn through the pinned turn, inclusive. Later turns
 // do not change the context represented by an already-sent attachment.
 //
-// Hosts MUST reject an attachment that omits `endTurn` when the referenced chat
-// has no completed retained turns.
+// When the referenced chat has no completed retained turns, the resolved
+// transcript is empty and hosts MUST NOT reject the attachment on that basis.
 //
 // Hosts MUST NOT recursively expand chat attachments found inside the
 // referenced transcript. Clients SHOULD keep rendering `label` if the
