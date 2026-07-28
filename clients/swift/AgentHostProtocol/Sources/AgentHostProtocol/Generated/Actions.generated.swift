@@ -1979,9 +1979,6 @@ public struct PartialChatSummary: Codable, Sendable {
     /// The subset of the session's working directories this chat uses.
     /// See {@link ChatState.workingDirectories} for the full semantics.
     public var workingDirectories: [String]?
-    /// The chat's primary working directory.
-    /// See {@link ChatState.primaryWorkingDirectory} for the full semantics.
-    public var primaryWorkingDirectory: String?
 
     public init(
         resource: String? = nil,
@@ -1991,8 +1988,7 @@ public struct PartialChatSummary: Codable, Sendable {
         modifiedAt: String? = nil,
         origin: ChatOrigin? = nil,
         interactivity: ChatInteractivity? = nil,
-        workingDirectories: [String]? = nil,
-        primaryWorkingDirectory: String? = nil
+        workingDirectories: [String]? = nil
     ) {
         self.resource = resource
         self.title = title
@@ -2002,7 +1998,6 @@ public struct PartialChatSummary: Codable, Sendable {
         self.origin = origin
         self.interactivity = interactivity
         self.workingDirectories = workingDirectories
-        self.primaryWorkingDirectory = primaryWorkingDirectory
     }
 }
 

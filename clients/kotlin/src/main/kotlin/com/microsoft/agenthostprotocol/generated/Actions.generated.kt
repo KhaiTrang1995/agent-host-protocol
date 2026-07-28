@@ -1510,12 +1510,7 @@ data class PartialChatSummary(
      * The subset of the session's working directories this chat uses.
      * See {@link ChatState.workingDirectories} for the full semantics.
      */
-    val workingDirectories: List<String>? = null,
-    /**
-     * The chat's primary working directory.
-     * See {@link ChatState.primaryWorkingDirectory} for the full semantics.
-     */
-    val primaryWorkingDirectory: String? = null
+    val workingDirectories: List<String>? = null
 )
 
 // ─── StateAction Union ──────────────────────────────────────────────────────

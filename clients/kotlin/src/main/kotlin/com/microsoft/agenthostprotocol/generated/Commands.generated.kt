@@ -505,9 +505,8 @@ data class CreateSessionParams(
      * The working directories the session's agent is granted tool access to.
      * A session may span multiple directories; they are equal peers except when
      * the agent advertises
-     * {@link MultipleWorkingDirectoriesCapability.requiresPrimary}, in which case
-     * one of them should be designated the primary via
-     * {@link primaryWorkingDirectory}.
+     * {@link MultipleWorkingDirectoriesCapability.immutablePrimary} (in which case
+     * the first entry is a fixed process root).
      *
      * A client MUST NOT supply more than one entry unless the agent advertises
      * {@link AgentCapabilities.multipleWorkingDirectories}; a server without that
@@ -520,26 +519,6 @@ data class CreateSessionParams(
      * from the source session identified by `fork`.
      */
     val workingDirectories: List<String>? = null,
-    /**
-     * The primary working directory for the session's **default chat**.
-     *
-     * A session has no primary of its own — primary is a per-chat notion (see
-     * {@link ChatState.primaryWorkingDirectory}). But `createSession` implicitly
-     * creates the session's default chat, and there is no separate `createChat`
-     * call to carry that chat's create-time fields. This field is therefore the
-     * only place a client can designate the **default chat's** primary at birth;
-     * it is copied into that chat's read-only `primaryWorkingDirectory`. For any
-     * non-default chat, pass {@link CreateChatParams.primaryWorkingDirectory}
-     * instead.
-     *
-     * When set, it MUST be one of {@link workingDirectories}. A client SHOULD
-     * supply this when the agent advertises
-     * {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY
-     * reject creation that omits it, or fall back to the first entry of
-     * `workingDirectories`. Ignored for forked sessions (a fork inherits the
-     * source session's chats and their primaries).
-     */
-    val primaryWorkingDirectory: String? = null,
     /**
      * Fork from an existing session. The new session is populated with content
      * from the source session up to and including the specified turn's response.
@@ -623,19 +602,7 @@ data class CreateChatParams(
      * A client MUST NOT supply this field unless the agent advertises
      * {@link AgentCapabilities.multipleWorkingDirectories}.
      */
-    val workingDirectories: List<String>? = null,
-    /**
-     * The chat's primary working directory — the distinguished root this chat is
-     * centered on. When set, it MUST be one of the chat's effective working
-     * directories ({@link workingDirectories}, or the session's set when that is
-     * omitted). A client SHOULD supply this when the agent advertises
-     * {@link MultipleWorkingDirectoriesCapability.requiresPrimary}; a host MAY
-     * reject creation that omits it, or fall back to the first of the chat's
-     * directories. Fixed at creation and reported (read-only) on
-     * {@link ChatState.primaryWorkingDirectory}. Ignored for forks (a chat whose
-     * `source.kind` is `"fork"` inherits the source chat's primary).
-     */
-    val primaryWorkingDirectory: String? = null
+    val workingDirectories: List<String>? = null
 )
 
 @Serializable

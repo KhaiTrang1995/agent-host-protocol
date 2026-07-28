@@ -151,7 +151,6 @@ ChatState {
   modifiedAt: string
   origin?: ChatOrigin      // how the chat came to exist (user / fork / sideChat / tool)
   workingDirectories?: URI[]      // subset of session's workingDirectories
-  primaryWorkingDirectory?: URI      // this chat's primary, read-only (set at creation, when requiresPrimary)
 
   turns: Turn[]                       // completed turns
   turnsNextCursor?: string            // page older turns via fetchTurns
@@ -577,16 +576,16 @@ The forked session is an independent copy — subsequent changes to either sessi
 ## Multiroot Sessions
 
 A session can be granted tool access to more than one working directory when the
-agent advertises the `multipleWorkingDirectories` capability. At the session
-level the directories are always **equal peers** — a session has no primary. A
-**primary** is a per-chat notion (see [below](#per-chat-working-directory-subsets));
-the session simply owns the set every chat draws from.
+agent advertises the `multipleWorkingDirectories` capability. The directories are
+**equal peers** unless the agent advertises
+`multipleWorkingDirectories.immutablePrimary`, in which case the first entry
+(`workingDirectories[0]`) is a fixed primary root that clients MUST NOT remove or
+reorder — the remaining entries stay equal peers that can be added and removed
+freely.
 
 ### Creating a multiroot session
 
-Pass `workingDirectories` (plural) in `createSession`. When the agent
-`requiresPrimary`, also pass `primaryWorkingDirectory` — it seeds the primary of
-the session's **default chat** (the session itself stores no primary):
+Pass `workingDirectories` (plural) in `createSession`:
 
 ```typescript
 createSession({
@@ -596,7 +595,6 @@ createSession({
     'file:///workspace/frontend',
     'file:///workspace/backend',
   ],
-  primaryWorkingDirectory: 'file:///workspace/frontend',  // seeds default chat, when requiresPrimary
 });
 ```
 
@@ -604,21 +602,12 @@ A client MUST NOT pass more than one entry unless the agent advertises
 `multipleWorkingDirectories`. Servers without that capability treat only the
 first entry as the session's working directory and ignore the rest.
 
-When the agent advertises `multipleWorkingDirectories.requiresPrimary`, a client
-SHOULD supply `primaryWorkingDirectory` (which MUST be one of
-`workingDirectories`); a host MAY reject a creation that omits it, or fall back
-to the first entry. It becomes the default chat's read-only
-`ChatState.primaryWorkingDirectory`.
+When the agent advertises `multipleWorkingDirectories.immutablePrimary`, the
+first entry (`workingDirectories[0]`) is a fixed process root for the lifetime of
+the session — clients MUST NOT remove or reorder it.
 
-> **Why is `primaryWorkingDirectory` on `createSession` if the session has no
-> primary?** Because `createSession` implicitly creates the session's **default
-> chat**, and there is no separate `createChat` call to carry that chat's
-> create-time fields. This field is the only place to designate the default
-> chat's primary at birth. For any additional chat, pass its primary to
-> `createChat` instead.
-
-Forked sessions ignore `workingDirectories` / `primaryWorkingDirectory` — they
-inherit the working directories (and per-chat primaries) of the source session.
+Forked sessions ignore `workingDirectories` — they inherit the working
+directories of the source session.
 
 ### Managing directories after creation
 
@@ -628,11 +617,19 @@ mutate it by **dispatching actions**, not by calling commands:
 | Action | Effect |
 | --- | --- |
 | `session/workingDirectorySet` | Adds `directory` to the set (creating it if absent). A no-op when the directory is already present. |
-| `session/workingDirectoryRemoved` | Removes `directory` from the set. A no-op when it is not present. There is no atomic backend "remove one" primitive — the host reconfigures its agent to the reduced set. A host MAY decline to apply the removal (e.g. a directory still designated as some chat's primary), leaving the set unchanged. |
+| `session/workingDirectoryRemoved` | Removes `directory` from the set. A no-op when it is not present. There is no atomic backend "remove one" primitive — the host reconfigures its agent to the reduced set. A host MAY decline to apply the removal (e.g. the immutable primary at index 0), leaving the set unchanged. |
 
 Both are `@clientDispatchable`. The resulting set is observed on
 `SessionState.workingDirectories` like any other state — there is no separate
 result payload.
+
+> **How the immutable primary is enforced.** The pure reducers apply these
+> mutations verbatim — `session/workingDirectorySet` appends, and
+> `session/workingDirectoryRemoved` removes by value and *will* drop
+> `workingDirectories[0]` if handed such an action. The `immutablePrimary`
+> guarantee therefore lives at the **dispatch-validation / host-acceptance**
+> layer, not in the reducer: a client MUST NOT dispatch a removal (or reorder) of
+> the primary, and a host MAY reject or reconcile one that arrives.
 
 Before dispatching either action, a client MUST verify that the agent advertises
 `multipleWorkingDirectories`.
@@ -648,31 +645,22 @@ The effective set for a chat is recorded in `ChatState.workingDirectories` /
 `ChatSummary.workingDirectories`. When absent the chat inherits the full
 session set.
 
-A chat also designates its own **primary** working directory —
-`ChatState.primaryWorkingDirectory` (mirrored on `ChatSummary`). It is
-**read-only and fixed at chat creation**: there is no action to change it, and
-it does not participate in `session/chatUpdated`. Present only when the agent
-`requiresPrimary`. Each chat can pick a different primary from its own effective
-directories.
-
 #### Setting at create time
 
 Pass `workingDirectories` to `createChat`. Every entry must already exist in
-the session's `workingDirectories`. When the agent `requiresPrimary`, also pass
-`primaryWorkingDirectory` (one of the chat's effective directories):
+the session's `workingDirectories`:
 
 ```typescript
 createChat({
   channel: 'ahp-session:/<uuid>',
   chat: 'ahp-chat:/<uuid>',
   workingDirectories: ['file:///workspace/frontend'],  // subset
-  primaryWorkingDirectory: 'file:///workspace/frontend',  // this chat's primary, when requiresPrimary
 });
 ```
 
 Forked chats (those whose `source.kind` is `"fork"`) inherit the source
-chat's `workingDirectories` and primary, so both fields are ignored for forks.
-Side chats can still choose their own subset and primary,
+chat's `workingDirectories`, so the field is ignored for forks.
+Side chats can still choose their own subset,
 and they still reference their source with a stable `turnId` whether that turn
 was active or historical when the side chat was created. They MAY also retain a
 selected-text snapshot in `origin.selection`; that snapshot is fixed when the
